@@ -1,0 +1,82 @@
+[
+  {
+    "type": "frame",
+    "name": "Local order before abstract criticism",
+    "summary": "The first corrective move is often to repair what is immediately disordered before attacking the world in the abstract.",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 1,
+    "note": "manual twelve-rules concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Meaning outranks expedience",
+    "summary": "A life organized around convenience and short-term gain tends to become spiritually thin and unstable.",
+    "theme_name": "meaning",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "aimlessness",
+    "source_document_id": 1,
+    "note": "manual twelve-rules concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Comparison should be diachronic, not envious",
+    "summary": "The proper comparison is with your earlier self, not with the current surface of other people.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 1,
+    "note": "manual twelve-rules concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Truth repairs structure",
+    "summary": "Telling the truth does not merely express morality; it prevents the fragmentation of perception, relationship, and future action.",
+    "theme_name": "truth",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 1,
+    "note": "manual twelve-rules concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Self-contempt destroys correction capacity",
+    "summary": "If failure is turned into proof of total worthlessness, the person loses the ability to improve the failing part.",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 1,
+    "note": "manual twelve-rules concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Parenting requires boundaries before resentment builds",
+    "summary": "Failure to impose loving limits on children often breeds later hatred, chaos, and relational collapse.",
+    "theme_name": "responsibility",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 1,
+    "note": "manual twelve-rules concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Silence can become relational poison",
+    "summary": "Avoiding difficult speech may buy temporary calm but often compounds resentment and long-term destruction.",
+    "theme_name": "resentment",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "resentment-loop",
+    "source_document_id": 1,
+    "note": "manual twelve-rules concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Treat yourself as someone worth helping",
+    "summary": "Self-respect is not indulgence; it is a precondition for sustainable discipline and responsibility.",
+    "theme_name": "responsibility",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 1,
+    "note": "manual twelve-rules concept harvest"
+  }
+]

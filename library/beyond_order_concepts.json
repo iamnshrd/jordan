@@ -1,0 +1,202 @@
+[
+  {
+    "type": "principle",
+    "name": "Responsibility and meaning are linked",
+    "summary": "Meaning deepens when responsibility is accepted voluntarily rather than evaded.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest"
+  },
+  {
+    "type": "pattern",
+    "name": "Excess order becomes deadness",
+    "summary": "Too much order calcifies life into rigidity and kills exploration, adaptation, and renewal.",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest"
+  },
+  {
+    "type": "pattern",
+    "name": "Excess chaos dissolves agency",
+    "summary": "Too much chaos dissolves continuity, self-command, and the ability to act coherently over time.",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Resentment-deceit-arrogance triad",
+    "summary": "A recurring moral-psychological cluster where grievance hardens into dishonesty and superiority, producing corruption of perception and character.",
+    "theme_name": "resentment",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "resentment-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Relationship maintenance is active work",
+    "summary": "Romance and intimacy survive through deliberate maintenance, negotiation, and truthful effort rather than sentiment alone.",
+    "theme_name": "responsibility",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "resentment-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Write memory to transform it",
+    "summary": "Disturbing memory becomes more workable when articulated carefully and completely instead of remaining diffuse and haunting.",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest"
+  },
+  {
+    "type": "principle",
+    "name": "Aim at one thing seriously",
+    "summary": "Working intensely on at least one meaningful domain can unify effort, reveal capacity, and build direction.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Anti-ideology as anti-possession",
+    "summary": "Ideology promises false certainty and often substitutes abstraction for reality, responsibility, and attention to what is actually in front of you.",
+    "theme_name": "truth",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Beauty as local redemption",
+    "summary": "Making one room beautiful is not decoration alone; it is a disciplined act of vision, order, and local meaningfulness.",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Opportunity appears in abandoned responsibility",
+    "summary": "Where others have dropped responsibility, opportunity often appears for the person willing to shoulder burden competently.",
+    "theme_name": "responsibility",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "No decision is itself a decision",
+    "summary": "Avoiding choice often becomes the worst choice because drift hardens into structure by default.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Do not do what you hate as anti-self-betrayal",
+    "summary": "Repeatedly organizing life around what one hates corrodes character, motivation, and respect for one's own future.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Competence attracts trust and room to move",
+    "summary": "Making yourself genuinely useful creates leverage, trust, and meaningful openings that abstraction never produces on its own.",
+    "theme_name": "responsibility",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Order must serve life, not suffocate it",
+    "summary": "Healthy structure stabilizes action, but rigid order becomes sterile when it blocks experimentation, vitality, and adaptation.",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Beauty enlarges habitable order",
+    "summary": "Creating beauty in a bounded space is a way of expanding order beyond mere utility into something that invites attention and care.",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Writing metabolizes the unfinished past",
+    "summary": "Detailed written confrontation with painful memory reduces vagueness, repetition, and passive possession by the past.",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Negotiation is the alternative to tyranny in love",
+    "summary": "Intimate life decays into domination or submission when truthful negotiation collapses.",
+    "theme_name": "responsibility",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "resentment-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Ideology is false certainty weaponized",
+    "summary": "Ideology offers conceptual possession in place of reality contact, humility, and responsible attention to particulars.",
+    "theme_name": "truth",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Gratitude is not denial of suffering",
+    "summary": "Gratitude matters not because suffering is unreal, but because it refuses total moral and psychological capture by pain.",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Corruption begins with tolerated inner fog",
+    "summary": "What remains unnamed, avoided, and half-seen tends to corrupt conduct before it becomes visible as open failure.",
+    "theme_name": "truth",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 3,
+    "note": "manual beyond-order concept harvest batch2"
+  }
+]

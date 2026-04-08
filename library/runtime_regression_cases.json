@@ -1,0 +1,22 @@
+[
+  {
+    "question": "Я не понимаю, куда мне двигаться в карьере и что вообще для меня призвание",
+    "expect_preferred_source": "beyond-order"
+  },
+  {
+    "question": "У нас с женой постоянные конфликты и скрытая обида",
+    "expect_preferred_source": "beyond-order"
+  },
+  {
+    "question": "Мне стыдно за себя и я чувствую отвращение к себе",
+    "expect_preferred_source": "12-rules"
+  },
+  {
+    "question": "Я потерял смысл, дисциплину и направление",
+    "expect_preferred_source": "12-rules"
+  },
+  {
+    "question": "Моя жизнь превращается в хаос, я всё больше спиваюсь и теряю контроль",
+    "expect_preferred_source": "maps-of-meaning"
+  }
+]

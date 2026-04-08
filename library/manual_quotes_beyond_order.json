@@ -1,0 +1,242 @@
+[
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Imagine who you could be, and then aim single-mindedly at that.",
+    "note": "manual beyond-order career seed",
+    "quote_type": "discipline-quote",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Notice that opportunity lurks where responsibility has been abdicated.",
+    "note": "manual beyond-order responsibility seed",
+    "quote_type": "principle-quote",
+    "theme_name": "responsibility",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Do not do what you hate.",
+    "note": "manual beyond-order work seed",
+    "quote_type": "discipline-quote",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Work as hard as you possibly can on at least one thing and see what happens.",
+    "note": "manual beyond-order discipline seed",
+    "quote_type": "discipline-quote",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Try to make one room in your home as beautiful as possible.",
+    "note": "manual beyond-order order seed",
+    "quote_type": "discipline-quote",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "If old memories still upset you, write them down carefully and completely.",
+    "note": "manual beyond-order memory seed",
+    "quote_type": "principle-quote",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Plan and work diligently to maintain the romance in your relationship.",
+    "note": "manual beyond-order relationship seed",
+    "quote_type": "relationship-quote",
+    "theme_name": "responsibility",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "resentment-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Do not allow yourself to become resentful, deceitful, or arrogant.",
+    "note": "manual beyond-order resentment seed",
+    "quote_type": "resentment-quote",
+    "theme_name": "resentment",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "resentment-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Be grateful in spite of your suffering.",
+    "note": "manual beyond-order suffering seed",
+    "quote_type": "shame-quote",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "The triad of resentment, deceit, and arrogance is as good a decomposition of what constitutes evil as I have been able to formulate.",
+    "note": "manual beyond-order triad seed",
+    "quote_type": "resentment-quote",
+    "theme_name": "resentment",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "resentment-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Do not carelessly denigrate social institutions or creative achievement.",
+    "note": "manual beyond-order institution seed",
+    "quote_type": "principle-quote",
+    "theme_name": "responsibility",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Do not hide unwanted things in the fog.",
+    "note": "manual beyond-order fog seed",
+    "quote_type": "principle-quote",
+    "theme_name": "truth",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Responsibility and meaning are conjoined.",
+    "note": "manual beyond-order meaning responsibility seed",
+    "quote_type": "principle-quote",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Pick up the extra weight.",
+    "note": "manual beyond-order extra weight seed",
+    "quote_type": "discipline-quote",
+    "theme_name": "responsibility",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "The worst decision of all is no decision.",
+    "note": "manual beyond-order decision seed",
+    "quote_type": "discipline-quote",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Discipline and unity are not enemies of spirit.",
+    "note": "manual beyond-order discipline spirit seed",
+    "quote_type": "discipline-quote",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Cleaning your room is not enough.",
+    "note": "manual beyond-order room seed",
+    "quote_type": "discipline-quote",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Do not fall twice into the same pit.",
+    "note": "manual beyond-order memory repetition seed",
+    "quote_type": "principle-quote",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Negotiation, tyranny, or slavery: those are the alternatives when romance collapses into power.",
+    "note": "manual beyond-order relationship power seed",
+    "quote_type": "relationship-quote",
+    "theme_name": "responsibility",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "resentment-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "The right attitude to the horror of existence is the alternative to resentment, deceit, and arrogance.",
+    "note": "manual beyond-order horror alternative seed",
+    "quote_type": "resentment-quote",
+    "theme_name": "resentment",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "resentment-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Down can define up.",
+    "note": "manual beyond-order suffering polarity seed",
+    "quote_type": "shame-quote",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Courage—but superordinate, love.",
+    "note": "manual beyond-order courage love seed",
+    "quote_type": "relationship-quote",
+    "theme_name": "responsibility",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "resentment-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "The place you should be is where you have not yet become corrupt.",
+    "note": "manual beyond-order place seed",
+    "quote_type": "principle-quote",
+    "theme_name": "truth",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
+    "quote_text": "Make yourself invaluable.",
+    "note": "manual beyond-order invaluable seed",
+    "quote_type": "discipline-quote",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness"
+  }
+]

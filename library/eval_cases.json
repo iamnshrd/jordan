@@ -1,0 +1,77 @@
+[
+  {
+    "id": "meaning-01",
+    "question": "Я потерял смысл, дисциплину и направление",
+    "expect_theme": "meaning",
+    "expect_principle": "clean-up-what-is-in-front-of-you",
+    "expect_pattern": "aimlessness"
+  },
+  {
+    "id": "avoidance-01",
+    "question": "Я постоянно откладываю и не могу начать важные дела",
+    "expect_theme": "order-and-chaos",
+    "expect_principle": "clean-up-what-is-in-front-of-you",
+    "expect_pattern": "avoidance-loop"
+  },
+  {
+    "id": "resentment-01",
+    "question": "Я зол на всех и чувствую, что жизнь со мной обошлась несправедливо",
+    "expect_theme": "resentment",
+    "expect_principle": "take-responsibility-before-blame",
+    "expect_pattern": "resentment-loop"
+  },
+  {
+    "id": "relationship-01",
+    "question": "У нас с женой постоянные конфликты и скрытая обида",
+    "expect_theme": "responsibility",
+    "acceptable_themes": ["responsibility", "resentment"],
+    "expect_principle": "tell-the-truth-or-at-least-dont-lie",
+    "acceptable_principles": ["tell-the-truth-or-at-least-dont-lie", "take-responsibility-before-blame"],
+    "expect_pattern": "resentment-loop"
+  },
+  {
+    "id": "shame-01",
+    "question": "Мне стыдно за себя и я чувствую отвращение к себе",
+    "expect_theme": "suffering",
+    "expect_principle": "tell-the-truth-or-at-least-dont-lie",
+    "expect_pattern": "avoidance-loop"
+  }
+  ,
+  {
+    "id": "self-deception-01",
+    "question": "Я постоянно вру себе, что у меня всё под контролем",
+    "expect_theme": "truth",
+    "expect_principle": "tell-the-truth-or-at-least-dont-lie",
+    "expect_pattern": "avoidance-loop",
+    "expect_quote_type": "principle-quote"
+  },
+  {
+    "id": "career-01",
+    "question": "Я не понимаю, куда мне двигаться в карьере и что вообще для меня призвание",
+    "expect_theme": "meaning",
+    "acceptable_themes": ["meaning", "responsibility"],
+    "expect_principle": "take-responsibility-before-blame",
+    "acceptable_principles": ["take-responsibility-before-blame", "clean-up-what-is-in-front-of-you"],
+    "expect_pattern": "aimlessness",
+    "expect_quote_type": "discipline-quote"
+  },
+  {
+    "id": "parenting-01",
+    "question": "Я не понимаю, как воспитывать ребенка, чтобы не вырастить маленького тирана",
+    "expect_theme": "responsibility",
+    "expect_principle": "clean-up-what-is-in-front-of-you",
+    "acceptable_principles": ["clean-up-what-is-in-front-of-you", "tell-the-truth-or-at-least-dont-lie"],
+    "expect_pattern": "avoidance-loop",
+    "expect_quote_type": "relationship-quote"
+  },
+  {
+    "id": "addiction-01",
+    "question": "Моя жизнь превращается в хаос, я всё больше спиваюсь и теряю контроль",
+    "expect_theme": "order-and-chaos",
+    "acceptable_themes": ["order-and-chaos", "suffering"],
+    "expect_principle": "clean-up-what-is-in-front-of-you",
+    "acceptable_principles": ["clean-up-what-is-in-front-of-you", "take-responsibility-before-blame"],
+    "expect_pattern": "avoidance-loop",
+    "expect_quote_type": "discipline-quote"
+  }
+]

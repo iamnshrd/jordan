@@ -1,0 +1,19 @@
+{
+  "documents": [
+    {
+      "source_pdf": "books/12-pravil-zhizni-protivoyadie-khaosu-ru.pdf",
+      "text_path": "texts/12-pravil-zhizni-protivoyadie-khaosu-ru.txt",
+      "status": "chunked"
+    },
+    {
+      "source_pdf": "books/maps-of-meaning-ru.pdf",
+      "text_path": "texts/maps-of-meaning-ru.txt",
+      "status": "chunked"
+    },
+    {
+      "source_pdf": "books/beyond-order-12-more-rules-for-life-2021.epub",
+      "text_path": "texts/beyond-order-12-more-rules-for-life-2021.txt",
+      "status": "chunked"
+    }
+  ]
+}

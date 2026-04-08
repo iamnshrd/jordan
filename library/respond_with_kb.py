@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import subprocess
+from pathlib import Path
+
+SYNTH = Path('/root/.openclaw/multi-agent/agents/jordan-peterson/library/synthesize_response.py')
+UPDATE = Path('/root/.openclaw/multi-agent/agents/jordan-peterson/library/update_continuity.py')
+CONT = Path('/root/.openclaw/multi-agent/agents/jordan-peterson/workspace/continuity.json')
+VOICE = Path('/root/.openclaw/multi-agent/agents/jordan-peterson/library/voice_modes.json')
+
+
+def load_continuity():
+    if CONT.exists():
+        return json.loads(CONT.read_text())
+    return {"user_patterns": [], "recurring_themes": [], "open_loops": [], "last_updated": None}
+
+
+def synthesize(question):
+    out = subprocess.check_output(['python3', str(SYNTH), question], text=True)
+    return json.loads(out)
+
+
+def update(question, theme, pattern, open_loop=''):
+    cmd = ['python3', str(UPDATE), question]
+    if theme:
+        cmd += ['--theme', theme]
+    if pattern:
+        cmd += ['--pattern', pattern]
+    if open_loop:
+        cmd += ['--open-loop', open_loop]
+    subprocess.check_output(cmd, text=True)
+
+
+def load_voice(mode_name='default'):
+    if VOICE.exists():
+        data = json.loads(VOICE.read_text())
+        return data.get(mode_name) or data.get('default')
+    return {
+        'opening': 'Сначала нужно точно назвать, что здесь ломается.',
+        'pattern': 'Под этим, похоже, работает следующий паттерн.',
+        'responsibility': 'А значит, избегаемая ответственность выглядит примерно так.',
+        'step': 'Следующий практический шаг такой.',
+        'longer': 'А более глубокая коррекция выглядит так.'
+    }
+
+
+def render(data, continuity, mode='deep', voice_mode='default'):
+    lines = []
+    if mode == 'quick':
+        lines.append(data.get('core_problem', '—'))
+        lines.append('')
+        lines.append('Следующий шаг: ' + data.get('practical_next_step', '—'))
+        return '\n'.join(lines).strip()
+
+    voice = load_voice(voice_mode)
+    lines.append(voice['opening'])
+    lines.append(data.get('core_problem', '—'))
+    lines.append('')
+    lines.append(voice['pattern'])
+    lines.append(data.get('relevant_pattern', '—'))
+    lines.append('')
+    lines.append(voice['responsibility'])
+    lines.append(data.get('responsibility_avoided', '—'))
+    lines.append('')
+    lines.append('Поэтому опорный принцип здесь не в абстрактном героизме, а в более узкой и требовательной дисциплине.')
+    lines.append(data.get('guiding_principle', '—'))
+    if data.get('supporting_quote'):
+        lines.append('')
+        lines.append('Цитата: ' + data['supporting_quote'])
+    blend = data.get('source_blend') or {}
+    if blend.get('primary') and blend.get('secondary') and mode == 'deep':
+        lines.append('')
+        lines.append(f"Источник рамки: {blend['primary']} -> {blend['secondary']}")
+    lines.append('')
+    lines.append(voice['step'])
+    lines.append(data.get('practical_next_step', '—'))
+    lines.append('')
+    lines.append(voice['longer'])
+    lines.append(data.get('longer_term_correction', '—'))
+    patterns = continuity.get('user_patterns', [])
+    themes = continuity.get('recurring_themes', [])
+    resolved = continuity.get('resolved_loops', [])
+    if mode == 'deep' and (patterns or themes or resolved):
+        lines.append('')
+        lines.append('Контекст continuity:')
+        if themes:
+            theme_names = [t['name'] if isinstance(t, dict) else str(t) for t in themes[:5]]
+            lines.append('- recurring themes: ' + ', '.join(theme_names))
+        if patterns:
+            pattern_names = [p['name'] if isinstance(p, dict) else str(p) for p in patterns[:5]]
+            lines.append('- recurring patterns: ' + ', '.join(pattern_names))
+        if resolved:
+            resolved_names = [r['summary'] if isinstance(r, dict) else str(r) for r in resolved[:3]]
+            lines.append('- recently resolved: ' + '; '.join(resolved_names))
+    return '\n'.join(lines).strip()
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('question')
+    ap.add_argument('--mode', choices=['quick', 'deep'], default='deep')
+    ap.add_argument('--voice', choices=['default', 'concise', 'hard', 'reflective'], default='default')
+    args = ap.parse_args()
+    data = synthesize(args.question)
+    selected = data.get('raw_selection', {})
+    theme = ((selected.get('selected_theme') or {}).get('name'))
+    pattern = ((selected.get('selected_pattern') or {}).get('name'))
+    open_loop = ''
+    if data.get('confidence') in {'medium', 'high'}:
+        open_loop = data.get('core_problem', '')
+        update(args.question, theme or '', pattern or '', open_loop)
+    continuity = load_continuity()
+    print(render(data, continuity, mode=args.mode, voice_mode=args.voice))
+
+
+if __name__ == '__main__':
+    main()

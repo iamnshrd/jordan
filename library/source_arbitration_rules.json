@@ -1,0 +1,40 @@
+{
+  "routes": [
+    {
+      "name": "basic-discipline",
+      "if_any": ["комнат", "дисциплин", "порядок", "не могу начать", "отклады", "прокраст"],
+      "prefer": ["12-rules", "beyond-order", "maps-of-meaning"],
+      "blend": false
+    },
+    {
+      "name": "career-vocation",
+      "if_any": ["карьер", "призвание", "профес", "путь", "work", "vocation"],
+      "prefer": ["beyond-order", "12-rules", "maps-of-meaning"],
+      "blend": true
+    },
+    {
+      "name": "relationship-maintenance",
+      "if_any": ["отношен", "жена", "муж", "роман", "конфликт", "брак"],
+      "prefer": ["beyond-order", "12-rules", "maps-of-meaning"],
+      "blend": true
+    },
+    {
+      "name": "shame-self-contempt",
+      "if_any": ["стыд", "позор", "отвращение к себе", "никчем"],
+      "prefer": ["12-rules", "maps-of-meaning", "beyond-order"],
+      "blend": true
+    },
+    {
+      "name": "mythic-meaning-collapse",
+      "if_any": ["хаос", "неизвестн", "символ", "жертв", "трансформ", "иерарх", "ценност", "карта"],
+      "prefer": ["maps-of-meaning", "beyond-order", "12-rules"],
+      "blend": true
+    },
+    {
+      "name": "resentment-moral-corrosion",
+      "if_any": ["обид", "гореч", "resentment", "ароган", "идеолог", "несправед"],
+      "prefer": ["beyond-order", "maps-of-meaning", "12-rules"],
+      "blend": true
+    }
+  ]
+}

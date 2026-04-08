@@ -1,0 +1,202 @@
+[
+  {
+    "type": "frame",
+    "name": "Meaning is a lived map, not an abstract slogan",
+    "summary": "Human beings act within maps of significance; when that map collapses, confusion and paralysis follow even if facts remain available.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Order is the known; chaos is the unknown",
+    "summary": "Order stabilizes action through familiarity, while chaos represents what has not yet been integrated into the person's world.",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Growth occurs at the boundary between order and chaos",
+    "summary": "Development happens neither in total stability nor total dissolution, but at the difficult edge where the unknown is encountered and metabolized.",
+    "theme_name": "order-and-chaos",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "The unknown is both threat and possibility",
+    "summary": "What is not yet understood appears as danger, but it is also the source of transformation, novelty, and renewed competence.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Shame marks exposed insufficiency before reorganization",
+    "summary": "Shame often appears when weakness, vulnerability, or inadequacy becomes visible and the old self-concept can no longer hide from reality.",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Sacrifice is the price of psychological renewal",
+    "summary": "Transformation usually demands surrender of an old identity, attachment, certainty, or pattern before a better order can emerge.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Resentment can become a counterfeit map",
+    "summary": "When chaos and suffering are not integrated, bitterness can harden into a false explanatory system that substitutes grievance for orientation.",
+    "theme_name": "resentment",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "resentment-loop",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Belief is revealed in action before speech",
+    "summary": "What a person actually believes is disclosed in behavior and sacrifice structure more reliably than in stated opinion alone.",
+    "theme_name": "truth",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "The heroic stance is voluntary confrontation with the unknown",
+    "summary": "The mature response to destabilizing reality is not denial or regression, but active encounter, learning, and restructuring.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Value disorganization produces motivational conflict",
+    "summary": "When values are internally confused or hierarchically disordered, action fragments and the person feels divided against himself.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "The map fails before the person knows how to speak about it",
+    "summary": "People often experience anxiety, irritability, paralysis, or despair before they can articulate that their interpretive world has collapsed.",
+    "theme_name": "meaning",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "aimlessness",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Stable identity depends on a trustworthy value hierarchy",
+    "summary": "Identity remains coherent when values are ranked in a way that reliably organizes perception, action, and sacrifice.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "The dragon of chaos guards the next stage of growth",
+    "summary": "What appears most threatening often conceals the very challenge required for enlargement of competence and character.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Myth names recurrent psychological realities",
+    "summary": "Mythic imagery endures because it encodes stable patterns of fear, transformation, sacrifice, danger, and renewal.",
+    "theme_name": "meaning",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "aimlessness",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Voluntary sacrifice outruns forced loss",
+    "summary": "What is relinquished consciously can be integrated into development, while involuntary loss is more likely to become bitterness or collapse.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Avoided anomaly accumulates into dread",
+    "summary": "Ignored inconsistencies do not disappear; they accumulate pressure until they emerge as anxiety, rupture, or crisis.",
+    "theme_name": "truth",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Ritual stabilizes value before explanation catches up",
+    "summary": "Behavioral order often precedes conscious understanding; people live out structures of value before they can formulate them explicitly.",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Shame can become a doorway to reformation rather than pure condemnation",
+    "summary": "If tolerated truthfully, shame can orient the person toward restructuring instead of merely proving worthlessness.",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Resentment offers false explanation with no renewal",
+    "summary": "Bitterness can explain pain cheaply, but it does not produce new competence, truthful sacrifice, or reorganized order.",
+    "theme_name": "resentment",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "resentment-loop",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest batch2"
+  },
+  {
+    "type": "frame",
+    "name": "Transformation requires tolerating partial disintegration",
+    "summary": "Psychological renewal often feels like controlled collapse because the previous order must loosen before a stronger one can form.",
+    "theme_name": "suffering",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 2,
+    "note": "manual maps-of-meaning concept harvest batch2"
+  }
+]

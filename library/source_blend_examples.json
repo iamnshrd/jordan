@@ -1,0 +1,26 @@
+[
+  {
+    "route": "career-vocation",
+    "primary_source": "beyond-order",
+    "secondary_source": "12-rules",
+    "why": "Use Beyond Order for chosen burden and vocation; use 12 Rules for first-order discipline and anti-expedience grounding."
+  },
+  {
+    "route": "shame-self-contempt",
+    "primary_source": "12-rules",
+    "secondary_source": "maps-of-meaning",
+    "why": "Use 12 Rules for immediate correction of self-contempt; use Maps of Meaning when shame marks deeper collapse of adaptation and identity."
+  },
+  {
+    "route": "addiction-chaos",
+    "primary_source": "maps-of-meaning",
+    "secondary_source": "beyond-order",
+    "why": "Use Maps of Meaning for chaos/unknown structure; use Beyond Order for resentment, corruption, and rebuilding through burden."
+  },
+  {
+    "route": "relationship-maintenance",
+    "primary_source": "beyond-order",
+    "secondary_source": "12-rules",
+    "why": "Use Beyond Order for negotiation/romance maintenance; use 12 Rules for truthful speech and boundary-setting."
+  }
+]

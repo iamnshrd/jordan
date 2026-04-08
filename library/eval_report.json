@@ -1,0 +1,278 @@
+{
+  "total": 9,
+  "theme_pass": 9,
+  "principle_pass": 9,
+  "pattern_pass": 9,
+  "quote_pass": 9,
+  "all_pass": 9,
+  "results": [
+    {
+      "id": "meaning-01",
+      "question": "Я потерял смысл, дисциплину и направление",
+      "expect_theme": "meaning",
+      "acceptable_themes": [
+        "meaning"
+      ],
+      "got_theme": "meaning",
+      "theme_ok": true,
+      "expect_principle": "clean-up-what-is-in-front-of-you",
+      "acceptable_principles": [
+        "clean-up-what-is-in-front-of-you"
+      ],
+      "got_principle": "clean-up-what-is-in-front-of-you",
+      "principle_ok": true,
+      "expect_pattern": "aimlessness",
+      "acceptable_patterns": [
+        "aimlessness"
+      ],
+      "got_pattern": "aimlessness",
+      "pattern_ok": true,
+      "expect_quote_type": null,
+      "got_quote_type": "discipline-quote",
+      "quote_ok": true,
+      "confidence": "high",
+      "theme_reason": "meaning-loss tie-break",
+      "principle_reason": "discipline/order tie-break",
+      "pattern_reason": "meaning-direction tie-break"
+    },
+    {
+      "id": "avoidance-01",
+      "question": "Я постоянно откладываю и не могу начать важные дела",
+      "expect_theme": "order-and-chaos",
+      "acceptable_themes": [
+        "order-and-chaos"
+      ],
+      "got_theme": "order-and-chaos",
+      "theme_ok": true,
+      "expect_principle": "clean-up-what-is-in-front-of-you",
+      "acceptable_principles": [
+        "clean-up-what-is-in-front-of-you"
+      ],
+      "got_principle": "clean-up-what-is-in-front-of-you",
+      "principle_ok": true,
+      "expect_pattern": "avoidance-loop",
+      "acceptable_patterns": [
+        "avoidance-loop"
+      ],
+      "got_pattern": "avoidance-loop",
+      "pattern_ok": true,
+      "expect_quote_type": null,
+      "got_quote_type": "discipline-quote",
+      "quote_ok": true,
+      "confidence": "medium",
+      "theme_reason": "top-score fallback",
+      "principle_reason": "discipline/order tie-break",
+      "pattern_reason": "avoidance tie-break"
+    },
+    {
+      "id": "resentment-01",
+      "question": "Я зол на всех и чувствую, что жизнь со мной обошлась несправедливо",
+      "expect_theme": "resentment",
+      "acceptable_themes": [
+        "resentment"
+      ],
+      "got_theme": "resentment",
+      "theme_ok": true,
+      "expect_principle": "take-responsibility-before-blame",
+      "acceptable_principles": [
+        "take-responsibility-before-blame"
+      ],
+      "got_principle": "take-responsibility-before-blame",
+      "principle_ok": true,
+      "expect_pattern": "resentment-loop",
+      "acceptable_patterns": [
+        "resentment-loop"
+      ],
+      "got_pattern": "resentment-loop",
+      "pattern_ok": true,
+      "expect_quote_type": null,
+      "got_quote_type": null,
+      "quote_ok": true,
+      "confidence": "medium",
+      "theme_reason": "resentment tie-break",
+      "principle_reason": "top-score fallback",
+      "pattern_reason": "top-score fallback"
+    },
+    {
+      "id": "relationship-01",
+      "question": "У нас с женой постоянные конфликты и скрытая обида",
+      "expect_theme": "responsibility",
+      "acceptable_themes": [
+        "responsibility",
+        "resentment"
+      ],
+      "got_theme": "resentment",
+      "theme_ok": true,
+      "expect_principle": "tell-the-truth-or-at-least-dont-lie",
+      "acceptable_principles": [
+        "tell-the-truth-or-at-least-dont-lie",
+        "take-responsibility-before-blame"
+      ],
+      "got_principle": "tell-the-truth-or-at-least-dont-lie",
+      "principle_ok": true,
+      "expect_pattern": "resentment-loop",
+      "acceptable_patterns": [
+        "resentment-loop"
+      ],
+      "got_pattern": "resentment-loop",
+      "pattern_ok": true,
+      "expect_quote_type": null,
+      "got_quote_type": "relationship-quote",
+      "quote_ok": true,
+      "confidence": "high",
+      "theme_reason": "resentment tie-break",
+      "principle_reason": "relationship tie-break",
+      "pattern_reason": "resentment tie-break"
+    },
+    {
+      "id": "shame-01",
+      "question": "Мне стыдно за себя и я чувствую отвращение к себе",
+      "expect_theme": "suffering",
+      "acceptable_themes": [
+        "suffering"
+      ],
+      "got_theme": "suffering",
+      "theme_ok": true,
+      "expect_principle": "tell-the-truth-or-at-least-dont-lie",
+      "acceptable_principles": [
+        "tell-the-truth-or-at-least-dont-lie"
+      ],
+      "got_principle": "tell-the-truth-or-at-least-dont-lie",
+      "principle_ok": true,
+      "expect_pattern": "avoidance-loop",
+      "acceptable_patterns": [
+        "avoidance-loop"
+      ],
+      "got_pattern": "avoidance-loop",
+      "pattern_ok": true,
+      "expect_quote_type": null,
+      "got_quote_type": "shame-quote",
+      "quote_ok": true,
+      "confidence": "medium",
+      "theme_reason": "shame tie-break",
+      "principle_reason": "shame tie-break",
+      "pattern_reason": "top-score fallback"
+    },
+    {
+      "id": "self-deception-01",
+      "question": "Я постоянно вру себе, что у меня всё под контролем",
+      "expect_theme": "truth",
+      "acceptable_themes": [
+        "truth"
+      ],
+      "got_theme": "truth",
+      "theme_ok": true,
+      "expect_principle": "tell-the-truth-or-at-least-dont-lie",
+      "acceptable_principles": [
+        "tell-the-truth-or-at-least-dont-lie"
+      ],
+      "got_principle": "tell-the-truth-or-at-least-dont-lie",
+      "principle_ok": true,
+      "expect_pattern": "avoidance-loop",
+      "acceptable_patterns": [
+        "avoidance-loop"
+      ],
+      "got_pattern": "avoidance-loop",
+      "pattern_ok": true,
+      "expect_quote_type": "principle-quote",
+      "got_quote_type": "principle-quote",
+      "quote_ok": true,
+      "confidence": "medium",
+      "theme_reason": "top-score fallback",
+      "principle_reason": "truth tie-break",
+      "pattern_reason": "top-score fallback"
+    },
+    {
+      "id": "career-01",
+      "question": "Я не понимаю, куда мне двигаться в карьере и что вообще для меня призвание",
+      "expect_theme": "meaning",
+      "acceptable_themes": [
+        "meaning",
+        "responsibility"
+      ],
+      "got_theme": "meaning",
+      "theme_ok": true,
+      "expect_principle": "take-responsibility-before-blame",
+      "acceptable_principles": [
+        "take-responsibility-before-blame",
+        "clean-up-what-is-in-front-of-you"
+      ],
+      "got_principle": "take-responsibility-before-blame",
+      "principle_ok": true,
+      "expect_pattern": "aimlessness",
+      "acceptable_patterns": [
+        "aimlessness"
+      ],
+      "got_pattern": "aimlessness",
+      "pattern_ok": true,
+      "expect_quote_type": "discipline-quote",
+      "got_quote_type": "discipline-quote",
+      "quote_ok": true,
+      "confidence": "medium",
+      "theme_reason": "top-score fallback",
+      "principle_reason": "top-score fallback",
+      "pattern_reason": "top-score fallback"
+    },
+    {
+      "id": "parenting-01",
+      "question": "Я не понимаю, как воспитывать ребенка, чтобы не вырастить маленького тирана",
+      "expect_theme": "responsibility",
+      "acceptable_themes": [
+        "responsibility"
+      ],
+      "got_theme": "responsibility",
+      "theme_ok": true,
+      "expect_principle": "clean-up-what-is-in-front-of-you",
+      "acceptable_principles": [
+        "clean-up-what-is-in-front-of-you",
+        "tell-the-truth-or-at-least-dont-lie"
+      ],
+      "got_principle": "clean-up-what-is-in-front-of-you",
+      "principle_ok": true,
+      "expect_pattern": "avoidance-loop",
+      "acceptable_patterns": [
+        "avoidance-loop"
+      ],
+      "got_pattern": "avoidance-loop",
+      "pattern_ok": true,
+      "expect_quote_type": "relationship-quote",
+      "got_quote_type": "relationship-quote",
+      "quote_ok": true,
+      "confidence": "medium",
+      "theme_reason": "parenting tie-break",
+      "principle_reason": "parenting tie-break",
+      "pattern_reason": "top-score fallback"
+    },
+    {
+      "id": "addiction-01",
+      "question": "Моя жизнь превращается в хаос, я всё больше спиваюсь и теряю контроль",
+      "expect_theme": "order-and-chaos",
+      "acceptable_themes": [
+        "order-and-chaos",
+        "suffering"
+      ],
+      "got_theme": "order-and-chaos",
+      "theme_ok": true,
+      "expect_principle": "clean-up-what-is-in-front-of-you",
+      "acceptable_principles": [
+        "clean-up-what-is-in-front-of-you",
+        "take-responsibility-before-blame"
+      ],
+      "got_principle": "clean-up-what-is-in-front-of-you",
+      "principle_ok": true,
+      "expect_pattern": "avoidance-loop",
+      "acceptable_patterns": [
+        "avoidance-loop"
+      ],
+      "got_pattern": "avoidance-loop",
+      "pattern_ok": true,
+      "expect_quote_type": "discipline-quote",
+      "got_quote_type": "discipline-quote",
+      "quote_ok": true,
+      "confidence": "medium",
+      "theme_reason": "top-score fallback",
+      "principle_reason": "discipline/order tie-break",
+      "pattern_reason": "top-score fallback"
+    }
+  ]
+}

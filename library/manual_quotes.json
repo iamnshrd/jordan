@@ -1,0 +1,72 @@
+[
+  {
+    "document_id": 1,
+    "chunk_id": 0,
+    "quote_text": "Прежде чем критиковать мир, наведите идеальный порядок у себя дома.",
+    "note": "manual seed priority",
+    "quote_type": "discipline-quote",
+    "theme_name": "meaning",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "aimlessness"
+  },
+  {
+    "document_id": 1,
+    "chunk_id": 0,
+    "quote_text": "Наведите идеальный порядок у себя дома.",
+    "note": "manual clean discipline seed",
+    "quote_type": "discipline-quote",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 1,
+    "chunk_id": 0,
+    "quote_text": "Стремитесь к тому, что наполнено смыслом, а не только к тому, что выгодно.",
+    "note": "manual meaning seed",
+    "quote_type": "discipline-quote",
+    "theme_name": "meaning",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "aimlessness"
+  },
+  {
+    "document_id": 1,
+    "chunk_id": 0,
+    "quote_text": "Не давайте детям делать то, что заставит вас их невзлюбить.",
+    "note": "manual seed",
+    "quote_type": "relationship-quote",
+    "theme_name": "responsibility",
+    "principle_name": null,
+    "pattern_name": null
+  },
+  {
+    "document_id": 1,
+    "chunk_id": 0,
+    "quote_text": "Если вам есть что сказать по-настоящему трудное, молчание в моменте может казаться проще, но в долгосрочной перспективе это убийственно.",
+    "note": "manual resentment/relationship seed",
+    "quote_type": "relationship-quote",
+    "theme_name": "resentment",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "resentment-loop"
+  },
+  {
+    "document_id": 1,
+    "chunk_id": 0,
+    "quote_text": "Стыд за поступок можно исправлять. Но если ты превращаешь свою ошибку в доказательство собственной никчемности, ты разрушаешь возможность исправления.",
+    "note": "manual shame seed",
+    "quote_type": "shame-quote",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop"
+  },
+  {
+    "document_id": 1,
+    "chunk_id": 0,
+    "quote_text": "Стремитесь к тому, что наполнено смыслом, а не только к тому, что выгодно.",
+    "note": "manual career discipline seed",
+    "quote_type": "discipline-quote",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness"
+  }
+]

@@ -1,0 +1,17 @@
+.env
+.env.*
+openclaw.jordan.json
+library/jordan_knowledge.db
+workspace/continuity.json
+workspace/MEMORY.md
+__pycache__/
+*.pyc
+library/tmp/
+library/texts/
+library/ingest_report.json
+library/runtime_audit_report.json
+library/runtime_regression_report.json
+library/voice_regression_report.json
+workspace/continuity_summary.json
+workspace/.openclaw/
+library/books/
