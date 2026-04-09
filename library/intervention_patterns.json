@@ -1,0 +1,32 @@
+[
+  {
+    "pattern_name": "narrow-burden",
+    "when_to_use": ["career-vocation", "aimlessness", "drift"],
+    "when_not_to_use": ["acute collapse needing stabilization first"],
+    "opening_move": "name one burden voluntarily",
+    "core_move": "shrink abstraction into one chosen responsibility",
+    "followup_move": "repeatable next step",
+    "tone_profile": "hard",
+    "next_step_style": "single-commitment"
+  },
+  {
+    "pattern_name": "separate-guilt-from-identity",
+    "when_to_use": ["shame-self-contempt", "self-loathing"],
+    "when_not_to_use": ["active deceit without accountability"],
+    "opening_move": "separate failure from total self-condemnation",
+    "core_move": "name act clearly without identity annihilation",
+    "followup_move": "one corrective act",
+    "tone_profile": "reflective",
+    "next_step_style": "repair-action"
+  },
+  {
+    "pattern_name": "truthful-negotiation",
+    "when_to_use": ["relationship-maintenance", "resentment-loop"],
+    "when_not_to_use": ["no relational channel exists at all"],
+    "opening_move": "name the unspoken resentment",
+    "core_move": "replace silent poison with direct speech",
+    "followup_move": "one difficult conversation",
+    "tone_profile": "default",
+    "next_step_style": "conversation-step"
+  }
+]

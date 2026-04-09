@@ -13,5 +13,12 @@ library/runtime_audit_report.json
 library/runtime_regression_report.json
 library/voice_regression_report.json
 workspace/continuity_summary.json
+workspace/context_graph.json
+workspace/effectiveness_memory.json
+workspace/progress_state.json
+workspace/session_checkpoints.jsonl
+workspace/session_state.json
+workspace/user_reaction_estimate.json
+workspace/user_state.json
 workspace/.openclaw/
 library/books/

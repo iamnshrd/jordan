@@ -1,0 +1,29 @@
+{
+  "12-rules": {
+    "best_for": ["basic-discipline", "shame-self-contempt", "truth-basics", "parenting-boundaries"],
+    "worst_for": ["deep-mythic-collapse"],
+    "primary_routes": ["basic-discipline", "shame-self-contempt"],
+    "secondary_routes": ["career-vocation", "relationship-maintenance"],
+    "failure_modes": ["too simplistic", "too first-order when deeper symbolic framing is needed"],
+    "tone_bias": "direct",
+    "depth_level": 1
+  },
+  "beyond-order": {
+    "best_for": ["career-vocation", "relationship-maintenance", "resentment-moral-corrosion", "anti-ideology"],
+    "worst_for": ["very basic stabilization"],
+    "primary_routes": ["career-vocation", "relationship-maintenance", "resentment-moral-corrosion"],
+    "secondary_routes": ["basic-discipline", "shame-self-contempt"],
+    "failure_modes": ["too subtle when blunt stabilization is needed"],
+    "tone_bias": "mature",
+    "depth_level": 2
+  },
+  "maps-of-meaning": {
+    "best_for": ["mythic-meaning-collapse", "chaos-unknown", "symbolic-disorientation"],
+    "worst_for": ["simple next-step-only discipline problems"],
+    "primary_routes": ["mythic-meaning-collapse", "chaos-unknown"],
+    "secondary_routes": ["resentment-moral-corrosion", "shame-self-contempt"],
+    "failure_modes": ["too abstract", "too mythic when user needs a concrete burden"],
+    "tone_bias": "symbolic",
+    "depth_level": 3
+  }
+}

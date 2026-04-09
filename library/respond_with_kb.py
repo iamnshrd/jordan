@@ -45,43 +45,34 @@ def load_voice(mode_name='default'):
     }
 
 
-def render(data, continuity, mode='deep', voice_mode='default'):
-    lines = []
-    if mode == 'quick':
-        lines.append(data.get('core_problem', '—'))
-        lines.append('')
-        lines.append('Следующий шаг: ' + data.get('practical_next_step', '—'))
-        return '\n'.join(lines).strip()
+def render_quick(data):
+    return '\n'.join([
+        data.get('core_problem', '—'),
+        '',
+        'Следующий шаг: ' + data.get('practical_next_step', '—')
+    ]).strip()
 
-    voice = load_voice(voice_mode)
-    lines.append(voice['opening'])
-    lines.append(data.get('core_problem', '—'))
-    lines.append('')
-    lines.append(voice['pattern'])
-    lines.append(data.get('relevant_pattern', '—'))
-    lines.append('')
-    lines.append(voice['responsibility'])
-    lines.append(data.get('responsibility_avoided', '—'))
-    lines.append('')
-    lines.append('Поэтому опорный принцип здесь не в абстрактном героизме, а в более узкой и требовательной дисциплине.')
-    lines.append(data.get('guiding_principle', '—'))
-    if data.get('supporting_quote'):
-        lines.append('')
-        lines.append('Цитата: ' + data['supporting_quote'])
-    blend = data.get('source_blend') or {}
-    if blend.get('primary') and blend.get('secondary') and mode == 'deep':
-        lines.append('')
-        lines.append(f"Источник рамки: {blend['primary']} -> {blend['secondary']}")
-    lines.append('')
-    lines.append(voice['step'])
-    lines.append(data.get('practical_next_step', '—'))
-    lines.append('')
-    lines.append(voice['longer'])
-    lines.append(data.get('longer_term_correction', '—'))
+
+def render_practical(data):
+    return '\n'.join([
+        data.get('core_problem', '—'),
+        '',
+        'Опорный принцип: ' + data.get('guiding_principle', '—'),
+        '',
+        'Следующий шаг:',
+        data.get('practical_next_step', '—'),
+        '',
+        'Что менять глубже:',
+        data.get('longer_term_correction', '—'),
+    ]).strip()
+
+
+def render_continuity_block(continuity):
+    lines = []
     patterns = continuity.get('user_patterns', [])
     themes = continuity.get('recurring_themes', [])
     resolved = continuity.get('resolved_loops', [])
-    if mode == 'deep' and (patterns or themes or resolved):
+    if patterns or themes or resolved:
         lines.append('')
         lines.append('Контекст continuity:')
         if themes:
@@ -93,13 +84,53 @@ def render(data, continuity, mode='deep', voice_mode='default'):
         if resolved:
             resolved_names = [r['summary'] if isinstance(r, dict) else str(r) for r in resolved[:3]]
             lines.append('- recently resolved: ' + '; '.join(resolved_names))
+    return lines
+
+
+def render_deep(data, continuity, voice_mode='default'):
+    voice = load_voice(voice_mode)
+    lines = [
+        voice['opening'],
+        data.get('core_problem', '—'),
+        '',
+        voice['pattern'],
+        data.get('relevant_pattern', '—'),
+        '',
+        voice['responsibility'],
+        data.get('responsibility_avoided', '—'),
+        '',
+        'Поэтому опорный принцип здесь не в абстрактном героизме, а в более узкой и требовательной дисциплине.',
+        data.get('guiding_principle', '—'),
+    ]
+    if data.get('supporting_quote'):
+        lines += ['', 'Цитата: ' + data['supporting_quote']]
+    blend = data.get('source_blend') or {}
+    if blend.get('primary') and blend.get('secondary'):
+        lines += ['', f"Источник рамки: {blend['primary']} -> {blend['secondary']}"]
+    lines += [
+        '',
+        voice['step'],
+        data.get('practical_next_step', '—'),
+        '',
+        voice['longer'],
+        data.get('longer_term_correction', '—'),
+    ]
+    lines += render_continuity_block(continuity)
     return '\n'.join(lines).strip()
+
+
+def render(data, continuity, mode='deep', voice_mode='default'):
+    if mode == 'quick':
+        return render_quick(data)
+    if mode == 'practical':
+        return render_practical(data)
+    return render_deep(data, continuity, voice_mode=voice_mode)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('question')
-    ap.add_argument('--mode', choices=['quick', 'deep'], default='deep')
+    ap.add_argument('--mode', choices=['quick', 'practical', 'deep'], default='deep')
     ap.add_argument('--voice', choices=['default', 'concise', 'hard', 'reflective'], default='default')
     args = ap.parse_args()
     data = synthesize(args.question)

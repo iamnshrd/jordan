@@ -6,6 +6,9 @@ from pathlib import Path
 
 DB = Path('/root/.openclaw/multi-agent/agents/jordan-peterson/library/jordan_knowledge.db')
 ARBITRATION = Path('/root/.openclaw/multi-agent/agents/jordan-peterson/library/source_arbitration_rules.json')
+ARCHETYPES = Path('/root/.openclaw/multi-agent/agents/jordan-peterson/library/question_archetypes.json')
+USER_STATE = Path('/root/.openclaw/multi-agent/agents/jordan-peterson/workspace/user_state.json')
+EFFECT = Path('/root/.openclaw/multi-agent/agents/jordan-peterson/workspace/effectiveness_memory.json')
 DOC_SOURCE_HINTS = {
     1: '12-rules',
     2: 'maps-of-meaning',
@@ -190,6 +193,32 @@ def score_named_rows(rows, keyword_map, question, adjustments=None):
     return scored
 
 
+def load_archetypes():
+    if ARCHETYPES.exists():
+        return json.loads(ARCHETYPES.read_text())
+    return []
+
+
+def load_user_state():
+    if USER_STATE.exists():
+        return json.loads(USER_STATE.read_text())
+    return {}
+
+
+def load_effectiveness():
+    if EFFECT.exists():
+        return json.loads(EFFECT.read_text())
+    return {}
+
+
+def load_source_route_strength():
+    conn = sqlite3.connect(DB)
+    cur = conn.cursor()
+    rows = cur.execute('SELECT source_name, route_name, strength FROM source_route_strength').fetchall()
+    conn.close()
+    return {(s, r): strength for s, r, strength in rows}
+
+
 def load_arbitration_rules():
     if ARBITRATION.exists():
         return json.loads(ARBITRATION.read_text()).get('routes', [])
@@ -198,18 +227,36 @@ def load_arbitration_rules():
 
 def infer_preferred_sources(question):
     q = question.lower()
+    for arch in load_archetypes():
+        if any(x in q for x in arch.get('if_user_says', [])):
+            return arch.get('preferred_sources', ['12-rules', 'beyond-order', 'maps-of-meaning'])
     for route in load_arbitration_rules():
         if any(x in q for x in route.get('if_any', [])):
             return route.get('prefer', ['12-rules', 'beyond-order', 'maps-of-meaning'])
+    state = load_user_state()
+    if state.get('dominant_theme') == 'suffering':
+        return ['12-rules', 'maps-of-meaning', 'beyond-order']
+    if state.get('dominant_theme') == 'meaning':
+        return ['beyond-order', '12-rules', 'maps-of-meaning']
     return ['12-rules', 'beyond-order', 'maps-of-meaning']
 
 
-def apply_source_preference(rows, preferred_sources):
+def apply_source_preference(rows, preferred_sources, question=''):
+    effect = load_effectiveness()
+    strength_map = load_source_route_strength()
     order = {name: idx for idx, name in enumerate(preferred_sources)}
+    q = question.lower()
+    route_guess = 'meaning' if any(x in q for x in ['карьер', 'призвание', 'смысл']) else 'suffering' if any(x in q for x in ['стыд', 'позор']) else 'resentment' if any(x in q for x in ['обид', 'гореч', 'конфликт']) else 'order-and-chaos' if 'хаос' in q else ''
     for row in rows:
         source_name = DOC_SOURCE_HINTS.get(row.get('document_id'))
+        route_key = f'{source_name}::{route_guess}' if source_name and route_guess else ''
+        route_stats = effect.get('source_routes', {}).get(route_key, {}) if route_key else {}
+        helpful = route_stats.get('times_helpful', 0)
+        resisted = route_stats.get('times_resisted', 0)
+        strength = strength_map.get((source_name, route_guess), 0) if source_name and route_guess else 0
+        row['_effect_score'] = helpful * 20 - resisted * 15 + strength * 3
         row['_source_preference'] = order.get(source_name, 999)
-    rows.sort(key=lambda x: (x.get('_source_preference', 999), -x.get('_score', 0), -x.get('hits', 0), x.get('name', x.get('id', 0))))
+    rows.sort(key=lambda x: (x.get('_source_preference', 999), -x.get('_effect_score', 0), -x.get('_score', 0), -x.get('hits', 0), x.get('name', x.get('id', 0))))
     return rows
 
 
@@ -235,6 +282,18 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts, lim
         route_quote_types,
     )
     rows = [row_to_dict(cur, row) for row in cur.fetchall()]
+    pack_preferred_sources = []
+    pack_quote_ids = set()
+    for arch in load_archetypes():
+        if any(x in q for x in arch.get('if_user_says', [])):
+            pack_preferred_sources = arch.get('preferred_sources', [])
+            route_name = arch.get('archetype_name')
+            if route_name:
+                row = cur.execute('SELECT id FROM route_quote_packs WHERE route_name=? LIMIT 1', (route_name,)).fetchone()
+                if row:
+                    pack_id = row[0]
+                    pack_quote_ids = {qid for (qid,) in cur.execute('SELECT quote_id FROM quote_pack_items WHERE pack_id=?', (pack_id,)).fetchall()}
+            break
 
     question_words = [w for w in ''.join(ch if ch.isalnum() or ch.isspace() else ' ' for ch in q).split() if len(w) >= 4]
     for row in rows:
@@ -247,6 +306,11 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts, lim
             score += 40
         if row.get('quote_type') == route_quote_types[0]:
             score += 120
+        source_name = DOC_SOURCE_HINTS.get(row.get('document_id'))
+        if row.get('id') in pack_quote_ids:
+            score += 160
+        if pack_preferred_sources and source_name in pack_preferred_sources:
+            score += max(0, 90 - 20 * pack_preferred_sources.index(source_name))
         if any(x in q for x in ['карьер', 'призвание', 'vocation', 'профес', 'путь']):
             if row.get('quote_type') == 'discipline-quote':
                 score += 120
@@ -266,7 +330,7 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts, lim
             score -= 30
         row['_score'] = score
     preferred_sources = infer_preferred_sources(question)
-    rows = apply_source_preference(rows, preferred_sources)
+    rows = apply_source_preference(rows, preferred_sources, question)
 
     # ensure clean manual route quotes are not crowded out by noisy extracted fragments
     if route_quote_types and route_quote_types[0] == 'discipline-quote':

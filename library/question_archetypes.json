@@ -1,0 +1,35 @@
+[
+  {
+    "archetype_name": "career-vocation",
+    "if_user_says": ["карьер", "призвание", "путь", "работа"],
+    "likely_theme": "meaning",
+    "likely_pattern": "aimlessness",
+    "preferred_sources": ["beyond-order", "12-rules", "maps-of-meaning"],
+    "preferred_quote_types": ["discipline-quote", "principle-quote"],
+    "default_intervention_style": "narrow-burden",
+    "voice_bias": "hard",
+    "risk_flags": ["drift", "indecision"]
+  },
+  {
+    "archetype_name": "shame-self-contempt",
+    "if_user_says": ["стыд", "позор", "отвращение к себе", "никчем"],
+    "likely_theme": "suffering",
+    "likely_pattern": "avoidance-loop",
+    "preferred_sources": ["12-rules", "maps-of-meaning", "beyond-order"],
+    "preferred_quote_types": ["shame-quote", "principle-quote"],
+    "default_intervention_style": "separate-guilt-from-identity",
+    "voice_bias": "reflective",
+    "risk_flags": ["collapse", "self-condemnation"]
+  },
+  {
+    "archetype_name": "relationship-maintenance",
+    "if_user_says": ["отношен", "жена", "муж", "конфликт", "брак"],
+    "likely_theme": "responsibility",
+    "likely_pattern": "resentment-loop",
+    "preferred_sources": ["beyond-order", "12-rules", "maps-of-meaning"],
+    "preferred_quote_types": ["relationship-quote", "resentment-quote"],
+    "default_intervention_style": "truthful-negotiation",
+    "voice_bias": "default",
+    "risk_flags": ["resentment", "silence"]
+  }
+]
