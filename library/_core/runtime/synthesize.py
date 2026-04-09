@@ -6,8 +6,7 @@ immediately overwritten by db_driven_* calls have been removed.
 """
 from library._core.runtime.frame import select_frame
 from library._core.kb.query_v3 import query_v3
-from library.config import PROGRESS_STATE
-from library.utils import load_json
+from library._core.session.progress import estimate as estimate_progress
 
 
 # ── text maps ─────────────────────────────────────────────────────────
@@ -361,7 +360,7 @@ def apply_priority_pruning(practical, longer_term, practical_extras,
 def synthesize(question):
     selected = select_frame(question)
     bundle = selected.get('bundle', {})
-    progress = load_json(PROGRESS_STATE)
+    progress = estimate_progress(question)
 
     theme_name = (selected.get('selected_theme') or {}).get('name')
     principle_name = (selected.get('selected_principle') or {}).get('name')
