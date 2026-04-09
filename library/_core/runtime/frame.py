@@ -5,12 +5,27 @@ Restructured from: select_frame.py
 from library._core.runtime.retrieve import build_response_bundle
 
 
+def infer_route_name(question):
+    q = question.lower()
+    if any(x in q for x in ['стыд', 'позор', 'отвращение к себе', 'никчем']):
+        return 'shame-self-contempt'
+    if any(x in q for x in ['отношен', 'партнер', 'конфликт', 'жена', 'муж', 'брак']):
+        return 'relationship-conflict'
+    if any(x in q for x in ['карьер', 'призвание', 'путь', 'работ', 'туман', 'размыт', 'плыть по течению', 'нет жизни', 'нет структуры']):
+        return 'career-vocation'
+    if any(x in q for x in ['отклады', 'прокраст', 'не могу начать', 'жестк', 'расписан', 'график']):
+        return 'avoidance-paralysis'
+    if any(x in q for x in ['обид', 'гореч', 'злость', 'несправед']):
+        return 'resentment'
+    return 'general'
+
+
 def choose_theme(bundle, question):
     q = question.lower()
     rows = bundle.get('top_themes', [])
 
-    if any(x in q for x in ['смысл', 'направление', 'цель', 'дисциплин']):
-        for preferred in ['meaning', 'order-and-chaos', 'responsibility']:
+    if any(x in q for x in ['смысл', 'направление', 'цель', 'дисциплин', 'туман', 'размыт', 'плыть по течению', 'нет жизни', 'нет структуры']):
+        for preferred in ['meaning', 'responsibility', 'order-and-chaos']:
             for row in rows:
                 if row['name'] == preferred:
                     return row, 'meaning-loss tie-break'
@@ -53,14 +68,14 @@ def choose_principle(bundle, question):
     rows = bundle.get('top_principles', [])
 
     if any(x in q for x in ['дисциплин', 'хаос', 'беспоряд',
-                             'не могу начать']):
+                             'не могу начать', 'жестк', 'расписан', 'график']):
         for preferred in ['clean-up-what-is-in-front-of-you',
                           'take-responsibility-before-blame']:
             for row in rows:
                 if row['name'] == preferred:
                     return row, 'discipline/order tie-break'
 
-    if any(x in q for x in ['смысл', 'направление', 'цель']):
+    if any(x in q for x in ['смысл', 'направление', 'цель', 'туман', 'размыт', 'плыть по течению', 'нет жизни', 'нет структуры']):
         for preferred in ['take-responsibility-before-blame',
                           'clean-up-what-is-in-front-of-you']:
             for row in rows:
@@ -103,7 +118,7 @@ def choose_pattern(bundle, question):
     q = question.lower()
     rows = bundle.get('top_patterns', [])
 
-    if any(x in q for x in ['смысл', 'направление', 'цель']):
+    if any(x in q for x in ['смысл', 'направление', 'цель', 'туман', 'размыт', 'плыть по течению', 'нет жизни', 'нет структуры']):
         for preferred in ['aimlessness', 'avoidance-loop']:
             for row in rows:
                 if row['name'] == preferred:
@@ -147,6 +162,7 @@ def select_frame(question):
 
     return {
         'question': question,
+        'route_name': infer_route_name(question),
         'selected_theme': theme,
         'selected_theme_reason': theme_reason,
         'selected_principle': principle,

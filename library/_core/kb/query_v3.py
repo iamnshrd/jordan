@@ -17,6 +17,26 @@ def confidence_rank(level, curation):
     return score
 
 
+def bridge_bonus(template_name, theme, pattern):
+    bonus = 0
+    if template_name == 'anti-vagueness-bridge' and theme == 'meaning' and pattern == 'aimlessness':
+        bonus += 5
+    if template_name == 'self-negotiation-bridge' and pattern == 'avoidance-loop':
+        bonus += 4
+    return bonus
+
+
+def next_step_bonus(step_name, theme, pattern, archetype):
+    bonus = 0
+    if archetype == 'career-vocation' and step_name in {'define-anti-ideal', 'specify-goal-and-failure'}:
+        bonus += 5
+    if pattern == 'avoidance-loop' and step_name in {'design-tomorrow-you-want', 'negotiate-work-reward'}:
+        bonus += 4
+    if theme == 'meaning' and step_name == 'audit-life-domains':
+        bonus += 3
+    return bonus
+
+
 def query_v3(theme='', pattern='', archetype=''):
     """Main V3 query. Returns rich dict with bridge, next_step, quote_pack, etc."""
     with connect() as conn:
@@ -32,7 +52,10 @@ def query_v3(theme='', pattern='', archetype=''):
                 WHERE (b.used_for_theme = ? OR ? = '') AND (b.used_for_pattern = ? OR ? = '')
             ''', (theme, theme, pattern, pattern)).fetchall()
             if candidates:
-                candidates = sorted(candidates, key=lambda r: (-confidence_rank(r[6], r[7]), r[0]))
+                candidates = sorted(
+                    candidates,
+                    key=lambda r: (-(confidence_rank(r[6], r[7]) + bridge_bonus(r[0], theme, pattern)), r[0])
+                )
                 bridge = candidates[0]
 
         next_step = None
@@ -45,7 +68,10 @@ def query_v3(theme='', pattern='', archetype=''):
                 WHERE (n.used_for_archetype = ? OR ? = '') OR (n.used_for_theme = ? OR ? = '') OR (n.used_for_pattern = ? OR ? = '')
             ''', (archetype, archetype, theme, theme, pattern, pattern)).fetchall()
             if candidates:
-                candidates = sorted(candidates, key=lambda r: (-confidence_rank(r[4], r[5]), r[0]))
+                candidates = sorted(
+                    candidates,
+                    key=lambda r: (-(confidence_rank(r[4], r[5]) + next_step_bonus(r[0], theme, pattern, archetype)), r[0])
+                )
                 next_step = candidates[0]
 
         quote_pack = None

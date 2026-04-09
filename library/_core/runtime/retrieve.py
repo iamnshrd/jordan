@@ -285,6 +285,34 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
                               limit=4):
     q = question.lower()
 
+    course_quote_shortlist = []
+    if any(x in q for x in ['туман', 'размыт', 'плыть по течению', 'нет жизни', 'нет структуры']):
+        course_quote_shortlist = [
+            'There is no no-vision option.',
+            'A plan is a narrow and focused vision.',
+            "If you don't have a life, you're going to be miserable, but you're not depressed. You just don't have a life.",
+            'The probability that you need none of the essential domains of life is zero.',
+        ]
+    elif any(x in q for x in ['жестк', 'расписан', 'график', 'откладываю', 'прокраст']):
+        course_quote_shortlist = [
+            'Small changes are still necessarily related to the structure of the whole. That\'s what gives them their meaning.',
+            'You want things in your life to be worth the trouble.',
+            'It doesn\'t matter where you encounter chaos. It just matters that you do encounter it.',
+            'Abstract ideas become meaningful when they are implementable.',
+        ]
+
+    if course_quote_shortlist:
+        placeholders = ','.join(['?'] * len(course_quote_shortlist))
+        cur.execute(
+            f'SELECT id, document_id, quote_text, note, quote_type, theme_name, principle_name, pattern_name FROM quotes WHERE quote_text IN ({placeholders})',
+            course_quote_shortlist,
+        )
+        shortlist_rows = [row_to_dict(cur, row) for row in cur.fetchall()]
+        if shortlist_rows:
+            order = {text: idx for idx, text in enumerate(course_quote_shortlist)}
+            shortlist_rows.sort(key=lambda r: order.get(r.get('quote_text'), 999))
+            return shortlist_rows[:limit]
+
     if any(x in q for x in ['смысл', 'направление', 'цель', 'дисциплин',
                              'не могу начать', 'отклады']):
         route_quote_types = ['discipline-quote', 'principle-quote']
@@ -346,12 +374,22 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
 
     for row in rows:
         score = 0
+        note = row.get('note') or ''
+        text = (row.get('quote_text') or '').lower()
         if row.get('theme_name') in selected_names:
             score += 60
         if row.get('principle_name') in selected_names:
             score += 80
         if row.get('pattern_name') in selected_names:
             score += 40
+
+        if any(x in q for x in ['туман', 'размыт', 'плыть по течению', 'нет жизни', 'нет структуры']):
+            if 'manual course quote seed' in note and any(x in text for x in ['no-vision option', 'narrow and focused vision', "don\'t have a life", 'probability that you need none']):
+                score += 320
+
+        if any(x in q for x in ['жестк', 'расписан', 'график', 'откладываю', 'прокраст']):
+            if 'manual course quote seed' in note and any(x in text for x in ['small changes', 'worth the trouble', 'encounter chaos']):
+                score += 320
         if row.get('quote_type') == route_quote_types[0]:
             score += 120
         source_name = DOC_SOURCE_HINTS.get(row.get('document_id'))
@@ -360,12 +398,19 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
         if pack_preferred_sources and source_name in pack_preferred_sources:
             score += max(0, 90 - 20 * pack_preferred_sources.index(source_name))
         if any(x in q for x in ['карьер', 'призвание', 'vocation', 'профес',
-                                  'путь']):
+                                  'путь', 'туман', 'размыт', 'плыть по течению', 'нет жизни', 'нет структуры']):
             if row.get('quote_type') == 'discipline-quote':
                 score += 120
             if (row.get('note') or '').startswith('manual'):
                 score += 140
-        text = (row.get('quote_text') or '').lower()
+            if 'manual course quote seed' in (row.get('note') or ''):
+                score += 180
+
+        if any(x in q for x in ['жестк', 'расписан', 'график', 'откладываю', 'прокраст']):
+            if 'manual course quote seed' in (row.get('note') or ''):
+                score += 180
+            if row.get('quote_type') == 'discipline-quote':
+                score += 100
         for w in question_words:
             if w in text:
                 score += 8

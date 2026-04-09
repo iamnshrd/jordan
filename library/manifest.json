@@ -14,6 +14,41 @@
       "source_pdf": "books/beyond-order-12-more-rules-for-life-2021.epub",
       "text_path": "texts/beyond-order-12-more-rules-for-life-2021.txt",
       "status": "chunked"
+    },
+    {
+      "source_pdf": "articles/Джордан Питерсон — Что сделает тебя успешным [TwvS8POQI24].txt",
+      "text_path": "texts/jordan-peterson-what-will-make-you-successful-twvS8POQI24.txt",
+      "status": "chunked"
+    },
+    {
+      "source_pdf": "articles/Peterson Academy — How to Plan Your Life — 1. Between Order and Chaos.srt",
+      "text_path": "texts/peterson-academy-how-to-plan-your-life-1-between-order-and-chaos.txt",
+      "status": "chunked"
+    },
+    {
+      "source_pdf": "articles/Peterson Academy — How to Plan Your Life — 2. The Walled Garden.srt",
+      "text_path": "texts/peterson-academy-how-to-plan-your-life-2-the-walled-garden.txt",
+      "status": "chunked"
+    },
+    {
+      "source_pdf": "articles/Peterson Academy — How to Plan Your Life — 3. Desire and Discipline.srt",
+      "text_path": "texts/peterson-academy-how-to-plan-your-life-3-desire-and-discipline.txt",
+      "status": "chunked"
+    },
+    {
+      "source_pdf": "articles/Peterson Academy — How to Plan Your Life — 4. Fear as a Catalyst.srt",
+      "text_path": "texts/peterson-academy-how-to-plan-your-life-4-fear-as-a-catalyst.txt",
+      "status": "chunked"
+    },
+    {
+      "source_pdf": "articles/Peterson Academy — How to Plan Your Life — 5. Faith in Tragedy.srt",
+      "text_path": "texts/peterson-academy-how-to-plan-your-life-5-faith-in-tragedy.txt",
+      "status": "chunked"
+    },
+    {
+      "source_pdf": "articles/Peterson Academy — How to Plan Your Life — 6. A Higher Vision.srt",
+      "text_path": "texts/peterson-academy-how-to-plan-your-life-6-a-higher-vision.txt",
+      "status": "chunked"
     }
   ]
 }

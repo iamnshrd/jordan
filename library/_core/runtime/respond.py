@@ -100,7 +100,9 @@ def render_deep(data, continuity, voice_mode='default'):
         voice['longer'],
         data.get('longer_term_correction', '—'),
     ]
-    lines += render_continuity_block(continuity)
+    policy = data.get('selection_policy') or {}
+    if not policy.get('suppress_continuity'):
+        lines += render_continuity_block(continuity)
     return '\n'.join(lines).strip()
 
 

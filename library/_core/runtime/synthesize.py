@@ -357,6 +357,18 @@ def apply_priority_pruning(practical, longer_term, practical_extras,
 
 # ── main synthesis ────────────────────────────────────────────────────
 
+def unify_selection_policy(selected, bridge, next_step_v3, question):
+    route = selected.get('route_name') or 'general'
+    policy = {
+        'route': route,
+        'prefer_bridge': bool(bridge),
+        'prefer_next_step': bool(next_step_v3),
+        'suppress_continuity': route in {'career-vocation', 'avoidance-paralysis'},
+        'diagnosis_style': 'direct' if route in {'career-vocation', 'avoidance-paralysis'} else 'reflective',
+    }
+    return policy
+
+
 def synthesize(question):
     selected = select_frame(question)
     bundle = selected.get('bundle', {})
@@ -397,6 +409,7 @@ def synthesize(question):
 
     bridge = v3.get('bridge') or {}
     next_step_v3 = v3.get('next_step') or {}
+    policy = unify_selection_policy(selected, bridge, next_step_v3, question)
     if bridge.get('diagnosis_stub'):
         core_problem = bridge['diagnosis_stub']
     responsibility_avoided = db_driven_responsibility_text(
@@ -443,6 +456,7 @@ def synthesize(question):
 
     return {
         'question': question,
+        'selection_policy': policy,
         'core_problem': core_problem,
         'relevant_pattern': pattern_text,
         'responsibility_avoided': responsibility_avoided,
