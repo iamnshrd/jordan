@@ -30,12 +30,12 @@ def assemble(user_id: str = 'default', store: StateStore | None = None):
 
     themes = [
         x.get('name')
-        for x in cont.get('recurring_themes', [])[:5]
+        for x in (cont.get('recurring_themes') or [])[:5]
         if isinstance(x, dict)
     ]
     patterns = [
         x.get('name')
-        for x in cont.get('user_patterns', [])[:5]
+        for x in (cont.get('user_patterns') or [])[:5]
         if isinstance(x, dict)
     ]
 

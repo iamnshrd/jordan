@@ -2,10 +2,10 @@
 
 Use this flow when the user's question is psychological, philosophical, moral, or about discipline / meaning / relationships / responsibility.
 
-## Preferred entrypoint
-Run:
+## Entrypoint
 ```bash
-python3 ../library/runtime_orchestrator.py "<question>"
+python -m library run "<question>"       # full orchestrated response
+python -m library prompt "<question>"    # LLM prompt for OpenClaw
 ```
 
 This decides:
@@ -13,13 +13,25 @@ This decides:
 - mode (`quick` / `practical` / `deep`)
 - whether to ask a clarifying question
 - whether to answer via the KB-backed path
+- retrieval validation (relevance check)
 
-## Lower-level path
-If needed, use these manually:
-1. `retrieve_for_prompt.py`
-2. `select_frame.py`
-3. `synthesize_response.py`
-4. `render_response.py`
+## Other commands
+```bash
+python -m library frame "<question>"                       # select psychological frame
+python -m library respond "<question>" --mode deep --voice hard  # generate response
+python -m library retrieve "<question>"                    # build response bundle
+```
+
+## Architecture
+All runtime logic lives in `library/_core/runtime/`:
+- `orchestrator.py` — main pipeline (orchestrate / orchestrate_for_llm)
+- `retrieve.py` — FTS + hybrid retrieval, evidence ranking
+- `frame.py` — frame selection
+- `synthesize.py` — response synthesis
+- `respond.py` — rendering
+- `llm_prompt.py` — LLM prompt assembly for OpenClaw
+- `retrieval_validator.py` — relevance validation
+- `voice.py` — voice mode selection
 
 ## Final answer discipline
 - Use the KB to guide the frame, not to replace judgment.

@@ -35,13 +35,14 @@ def update_session(question, theme='', pattern='', principle='',
 
 
 def _top_name(items):
-    if not items:
+    dicts = [x for x in items if isinstance(x, dict)]
+    if not dicts:
         return None
-    items = sorted(
-        items,
+    dicts = sorted(
+        dicts,
         key=lambda x: (-x.get('salience', 0), -x.get('count', 0)),
     )
-    return items[0].get('name') or items[0].get('summary')
+    return dicts[0].get('name') or dicts[0].get('summary')
 
 
 def build_user_profile(user_id: str = 'default',
@@ -49,12 +50,14 @@ def build_user_profile(user_id: str = 'default',
     """Derive user_state from continuity.  Returns the profile dict."""
     store = store or get_default_store()
     data = store.get_json(user_id, KEY_CONTINUITY)
-    open_loops = data.get('open_loops', [])
-    resolved = data.get('resolved_loops', [])
+    open_loops = data.get('open_loops') or []
+    resolved = data.get('resolved_loops') or []
+    recurring_themes = data.get('recurring_themes') or []
+    user_patterns = data.get('user_patterns') or []
     profile = {
         'dominant_loop': _top_name(open_loops),
-        'dominant_theme': _top_name(data.get('recurring_themes', [])),
-        'dominant_pattern': _top_name(data.get('user_patterns', [])),
+        'dominant_theme': _top_name(recurring_themes),
+        'dominant_pattern': _top_name(user_patterns),
         'instability_level': (
             'high' if len(open_loops) >= 4
             else 'medium' if len(open_loops) >= 2
@@ -65,7 +68,7 @@ def build_user_profile(user_id: str = 'default',
         'confrontation_tolerance': 'medium',
         'recommended_voice': (
             'reflective'
-            if _top_name(data.get('recurring_themes', [])) == 'suffering'
+            if _top_name(recurring_themes) == 'suffering'
             else 'default'
         ),
     }

@@ -20,7 +20,18 @@ def estimate(question='', user_id: str = 'default',
     rows = store.read_jsonl(user_id, KEY_CHECKPOINTS)
 
     if question:
+        q_norm = ' '.join(question.lower().split())
+        q_words = set(q_norm.split())
         recent = [r for r in rows if r.get('question') == question][-3:]
+        if not recent and q_words:
+            for r in rows:
+                rq = ' '.join((r.get('question') or '').lower().split())
+                rq_words = set(rq.split())
+                if q_words and rq_words:
+                    overlap = len(q_words & rq_words) / max(len(q_words), 1)
+                    if overlap >= 0.6:
+                        recent.append(r)
+            recent = recent[-3:]
     else:
         recent = rows[-3:]
 

@@ -24,6 +24,7 @@ ALLOWED_TABLES = frozenset({
     'motif_cases', 'motif_interventions',
     'pattern_next_steps', 'theme_next_steps',
     'archetype_quote_packs', 'quote_pack_items',
+    'chunk_embeddings',
 })
 
 
@@ -42,6 +43,7 @@ def connect(db_path=None, auto_migrate: bool = True):
     after opening the connection to bring the DB up to the latest version.
     """
     conn = sqlite3.connect(db_path or DB_PATH)
+    conn.execute('PRAGMA foreign_keys = ON')
     try:
         if auto_migrate:
             ensure_schema(conn)
@@ -57,39 +59,6 @@ def connect(db_path=None, auto_migrate: bool = True):
 def row_to_dict(cur, row):
     """Convert a sqlite3 row tuple to a dict using cursor description."""
     return {d[0]: row[i] for i, d in enumerate(cur.description)}
-
-
-def search_chunks(cur, query, limit=5):
-    """Full-text search over document_chunks_fts."""
-    cur.execute(
-        """
-        SELECT dc.id, dc.chunk_index,
-               snippet(document_chunks_fts, 0, '[', ']', ' … ', 16) AS snippet
-        FROM document_chunks_fts fts
-        JOIN document_chunks dc ON dc.id = fts.rowid
-        WHERE document_chunks_fts MATCH ?
-        LIMIT ?
-        """,
-        (query, limit),
-    )
-    return [row_to_dict(cur, row) for row in cur.fetchall()]
-
-
-def search_chunks_with_source(cur, query, limit=8):
-    """Full-text search returning source_pdf alongside chunk data."""
-    cur.execute(
-        """
-        SELECT dc.id, d.source_pdf, dc.chunk_index,
-               snippet(document_chunks_fts, 0, '[', ']', ' … ', 12) AS snippet
-        FROM document_chunks_fts fts
-        JOIN document_chunks dc ON dc.id = fts.rowid
-        JOIN documents d ON d.id = dc.document_id
-        WHERE document_chunks_fts MATCH ?
-        LIMIT ?
-        """,
-        (query, limit),
-    )
-    return [row_to_dict(cur, row) for row in cur.fetchall()]
 
 
 def list_table(conn, table, limit=20):

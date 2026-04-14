@@ -17,6 +17,7 @@ from library._core.kb.extract import extract as extract_candidates
 from library._core.kb.normalize import normalize as normalize_candidates
 from library._core.kb.evidence import write_evidence
 from library._core.kb.quotes import extract_quotes, normalize_quotes, load_quotes
+from library._core.ingest.epub import convert as epub_convert
 
 log = logging.getLogger('jordan')
 
@@ -51,6 +52,7 @@ def _load_processed_set() -> set[str]:
         try:
             rec = json.loads(line)
         except json.JSONDecodeError:
+            log.warning('Skipping malformed line in ingest_jobs.jsonl: %s', line[:120])
             continue
         if rec.get('status') == 'processed':
             names.add(rec.get('file', ''))
@@ -85,7 +87,10 @@ def ingest(dry_run: bool = False):
     """
     _ensure_dirs()
 
-    if not check_pdftotext():
+    has_pdfs = any(
+        p.suffix.lower() == '.pdf' for p in INCOMING.iterdir() if p.is_file()
+    )
+    if has_pdfs and not check_pdftotext():
         msg = ('pdftotext not found. Install poppler-utils '
                '(apt install poppler-utils / brew install poppler).')
         log.error(msg)
@@ -96,10 +101,11 @@ def ingest(dry_run: bool = False):
     processed, skipped, errors = [], [], []
     need_rebuild = False
 
+    supported_suffixes = {'.pdf', '.epub'}
     for path in sorted(INCOMING.iterdir()):
         if not path.is_file():
             continue
-        if path.suffix.lower() != '.pdf':
+        if path.suffix.lower() not in supported_suffixes:
             skipped.append({'file': path.name, 'reason': 'unsupported_suffix'})
             continue
 
@@ -121,15 +127,24 @@ def ingest(dry_run: bool = False):
             continue
 
         target_dir = classify_target(staging_path)
-        target_name = slugify(staging_path.stem) + '.pdf'
+        base_name = slugify(staging_path.stem)
+        suffix = staging_path.suffix.lower()
+        target_name = base_name + suffix
         target = target_dir / target_name
 
         if target.exists():
-            skipped.append({'file': path.name, 'reason': 'already_exists'})
-            shutil.move(str(staging_path), str(PROCESSED / path.name))
-            _append_job({'file': path.name, 'status': 'skipped_duplicate',
-                         'timestamp': now_iso()})
-            continue
+            import hashlib as _hl
+            h = _hl.md5(staging_path.read_bytes()).hexdigest()[:8]
+            alt_name = f'{base_name}_{h}{suffix}'
+            alt_target = target_dir / alt_name
+            if alt_target.exists():
+                skipped.append({'file': path.name, 'reason': 'already_exists'})
+                shutil.move(str(staging_path), str(PROCESSED / path.name))
+                _append_job({'file': path.name, 'status': 'skipped_duplicate',
+                             'timestamp': now_iso()})
+                continue
+            target_name = alt_name
+            target = alt_target
 
         try:
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -139,7 +154,23 @@ def ingest(dry_run: bool = False):
             text_path = TEXTS / text_name
             TEXTS.mkdir(parents=True, exist_ok=True)
 
-            subprocess.check_call(['pdftotext', str(target), str(text_path)])
+            if target.suffix.lower() == '.epub':
+                import zipfile, tempfile
+                from pathlib import Path as _P
+                with tempfile.TemporaryDirectory() as tmp:
+                    tmp_path = _P(tmp).resolve()
+                    with zipfile.ZipFile(str(target), 'r') as zf:
+                        safe = []
+                        for member in zf.namelist():
+                            dest = (tmp_path / member).resolve()
+                            if not str(dest).startswith(str(tmp_path)):
+                                log.warning('Skipping suspicious zip entry: %s', member)
+                                continue
+                            safe.append(member)
+                        zf.extractall(tmp, members=safe)
+                    epub_convert(tmp, str(text_path))
+            else:
+                subprocess.check_call(['pdftotext', str(target), str(text_path)])
             register_book(target.name, text_name, 'text_extracted')
 
             shutil.copy2(str(target), str(PROCESSED / path.name))
@@ -178,6 +209,16 @@ def ingest(dry_run: bool = False):
         extract_quotes()
         normalize_quotes()
         load_quotes()
+        try:
+            from library._core.kb.embeddings import embed_all_chunks, get_embedding_provider
+            provider = get_embedding_provider()
+            if provider is not None:
+                result = embed_all_chunks(provider)
+                log.info('Embeddings generated: %s', result)
+            else:
+                log.info('No embedding provider configured, skipping embedding generation')
+        except Exception as exc:
+            log.warning('Embedding generation skipped: %s', exc)
 
     report = {
         'processed': processed,

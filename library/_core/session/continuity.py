@@ -43,6 +43,11 @@ def load(user_id: str = 'default', store: StateStore | None = None):
     store = store or get_default_store()
     data = store.get_json(user_id, KEY_CONTINUITY)
     if data:
+        for key, default_val in _DEFAULT_V3.items():
+            if data.get(key) is None:
+                data[key] = default_val if not isinstance(default_val, list) else list(default_val)
+            else:
+                data.setdefault(key, default_val if not isinstance(default_val, list) else list(default_val))
         return data
     return dict(_DEFAULT_V3)
 
@@ -156,9 +161,19 @@ def update(question, theme=None, pattern=None, open_loop=None,
 # -- read (sorted top items) -----------------------------------------------
 
 def read(user_id: str = 'default', store: StateStore | None = None):
-    """Return continuity with top-5 sorted slices per bucket."""
+    """Return continuity with top-5 sorted slices per bucket.
+
+    Refreshes the summary cache if continuity data is newer.
+    """
     store = store or get_default_store()
     data = store.get_json(user_id, KEY_CONTINUITY)
+    summary = store.get_json(user_id, KEY_CONTINUITY_SUMMARY)
+    data_ts = data.get('last_updated', '')
+    summary_ts = summary.get('last_updated', '')
+    if data_ts and data_ts > summary_ts:
+        return summarize(user_id=user_id, store=store)
+    if summary and summary.get('top_themes') is not None:
+        return summary
     return {
         'top_themes': _sort_items(data.get('recurring_themes', []))[:5],
         'top_patterns': _sort_items(data.get('user_patterns', []))[:5],

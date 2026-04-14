@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Quote pipeline: extract, normalize, and load quotes into the knowledge base."""
+import hashlib
 import re
 
 from library.config import (
-    DB_PATH, QUOTES_CANDIDATES, QUOTES_NORMALIZED,
+    QUOTES_CANDIDATES, QUOTES_NORMALIZED,
     MANUAL_QUOTES, MANUAL_QUOTES_BEYOND, MANUAL_QUOTES_MAPS,
+    COMMON_STOP_SNIPPETS,
 )
 from library.db import connect
 from library.utils import load_json, save_json
@@ -35,20 +37,11 @@ QUOTE_PATTERNS = [
 
 # ── normalization filters ────────────────────────────────────────────────────
 
-BAD_SNIPPETS = [
+BAD_SNIPPETS = COMMON_STOP_SNIPPETS + [
     'правило 9',
     'правило 10',
-    'оглавление',
-    'table of contents',
-    'copyright',
-    'isbn',
-    'random house',
     'toronto:',
     'london:',
-    'footnote',
-    'see also',
-    'удк',
-    'ббк',
 ]
 
 
@@ -78,21 +71,25 @@ def _classify_quote(text):
 
 
 def _keep_quote(item):
+    from library.utils import get_threshold
     text = _clean(item.get('quote_text', ''))
     lowered = text.lower()
-    if len(text) < 60:
+    if len(text) < get_threshold('quote_min_length', 60):
         return False
     if any(b in lowered for b in BAD_SNIPPETS):
         return False
     if 'не позволяйте детям' in lowered and 'наведите идеальный порядок у себя дома' in lowered:
         return False
-    if sum(ch.isdigit() for ch in text) > 18:
+    if sum(ch.isdigit() for ch in text) > get_threshold('quote_max_digit_count', 18):
         return False
-    if sum(1 for ch in text if ch.isupper()) > max(25, len(text) * 0.35):
+    max_upper_abs = get_threshold('quote_max_uppercase_abs', 25)
+    max_upper_pct = get_threshold('quote_max_uppercase_pct', 0.35)
+    if sum(1 for ch in text if ch.isupper()) > max(max_upper_abs, len(text) * max_upper_pct):
         return False
-    if text.count(':') >= 3:
+    if text.count(':') >= get_threshold('quote_max_colons', 3):
         return False
-    if text.count('.') <= 0 and len(text) > 180:
+    min_periods_len = get_threshold('quote_min_periods_for_long', 180)
+    if text.count('.') <= 0 and len(text) > min_periods_len:
         return False
     if any(x in lowered for x in ['rule i', 'rule ii', 'rule iii', 'rule iv', 'rule v', 'rule vi', 'rule vii', 'rule viii', 'rule ix', 'rule x', 'rule xi', 'rule xii']):
         return False
@@ -107,28 +104,48 @@ def _keep_quote(item):
 
 # ── public pipeline functions ────────────────────────────────────────────────
 
+def _spans_overlap(a_start, a_end, b_start, b_end, threshold=0.5):
+    """Return True if two spans overlap by more than *threshold* of the smaller."""
+    overlap = max(0, min(a_end, b_end) - max(a_start, b_start))
+    smaller = min(a_end - a_start, b_end - b_start) or 1
+    return overlap / smaller > threshold
+
+
 def extract_quotes():
     """Extract quote candidates from document chunks. Returns result dict."""
-    with connect() as conn:
-        cur = conn.cursor()
-        rows = cur.execute('SELECT id, document_id, content FROM document_chunks').fetchall()
     out = []
-    for chunk_id, document_id, content in rows:
-        text = re.sub(r'\s+', ' ', content).strip()
-        lowered = text.lower()
-        for pat in QUOTE_PATTERNS:
-            m = re.search(pat, lowered)
-            if m:
-                start = max(0, m.start() - 80)
-                end = min(len(text), m.end() + 220)
-                snippet = text[start:end].strip()
-                out.append({
-                    'document_id': document_id,
-                    'chunk_id': chunk_id,
-                    'quote_text': snippet,
-                    'note': f'matched pattern: {pat}',
-                })
+    batch_size = 500
+    offset = 0
+    with connect() as conn:
+        while True:
+            rows = conn.cursor().execute(
+                'SELECT id, document_id, content '
+                'FROM document_chunks ORDER BY id LIMIT ? OFFSET ?',
+                (batch_size, offset),
+            ).fetchall()
+            if not rows:
                 break
+            offset += len(rows)
+            for chunk_id, document_id, content in rows:
+                if not content:
+                    continue
+                text = re.sub(r'\s+', ' ', content).strip()
+                used_spans: list[tuple[int, int]] = []
+                for priority, pat in enumerate(QUOTE_PATTERNS):
+                    for m in re.finditer(pat, text, re.IGNORECASE):
+                        start = max(0, m.start() - 80)
+                        end = min(len(text), m.end() + 220)
+                        if any(_spans_overlap(start, end, s, e) for s, e in used_spans):
+                            continue
+                        snippet = text[start:end].strip()
+                        used_spans.append((start, end))
+                        out.append({
+                            'document_id': document_id,
+                            'chunk_id': chunk_id,
+                            'quote_text': snippet,
+                            'note': f'matched pattern: {pat}',
+                            'pattern_priority': priority,
+                        })
     save_json(QUOTES_CANDIDATES, out)
     return {'quote_candidates': len(out)}
 
@@ -142,7 +159,7 @@ def normalize_quotes():
         if not _keep_quote(item):
             continue
         quote = _clean(item['quote_text'])
-        key = quote[:160].lower()
+        key = hashlib.sha256(quote.lower().encode()).hexdigest()
         if key in seen:
             continue
         seen.add(key)
@@ -158,7 +175,10 @@ def normalize_quotes():
 
 
 def load_quotes():
-    """Load normalized + manual quotes into the DB. Returns result dict."""
+    """Load normalized + manual quotes into the DB atomically. Returns result dict."""
+    import logging
+    _log = logging.getLogger('jordan')
+
     data = load_json(QUOTES_NORMALIZED, default=[])
     manual = load_json(MANUAL_QUOTES, default=[])
     if manual:
@@ -170,23 +190,52 @@ def load_quotes():
     if manual_maps:
         data.extend(manual_maps)
 
+    required_keys = ('document_id', 'chunk_id', 'quote_text', 'note')
+    valid: list[dict] = []
+    skipped = 0
+    for item in data:
+        if all(k in item for k in required_keys):
+            valid.append(item)
+        else:
+            skipped += 1
+    if skipped:
+        _log.warning('load_quotes: skipped %d items with missing keys', skipped)
+
     with connect() as conn:
         cur = conn.cursor()
-        cur.execute('DELETE FROM quotes')
-        for item in data:
-            cur.execute(
-                'INSERT INTO quotes (document_id, chunk_id, quote_text, note, quote_type, theme_name, principle_name, pattern_name) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                (
-                    item['document_id'],
-                    item['chunk_id'],
-                    item['quote_text'],
-                    item['note'],
-                    item.get('quote_type'),
-                    item.get('theme_name'),
-                    item.get('principle_name'),
-                    item.get('pattern_name'),
-                ),
-            )
+        cur.execute('BEGIN IMMEDIATE')
+        try:
+            cur.execute('DELETE FROM quotes')
+            fk_skipped = 0
+            for item in valid:
+                doc_id = item['document_id']
+                chunk_id = item['chunk_id']
+                exists = cur.execute(
+                    'SELECT 1 FROM document_chunks WHERE id = ? AND document_id = ?',
+                    (chunk_id, doc_id),
+                ).fetchone()
+                if not exists:
+                    fk_skipped += 1
+                    continue
+                cur.execute(
+                    'INSERT INTO quotes (document_id, chunk_id, quote_text, note, quote_type, theme_name, principle_name, pattern_name) '
+                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    (
+                        doc_id,
+                        chunk_id,
+                        item['quote_text'],
+                        item['note'],
+                        item.get('quote_type'),
+                        item.get('theme_name'),
+                        item.get('principle_name'),
+                        item.get('pattern_name'),
+                    ),
+                )
+            conn.commit()
+            if fk_skipped:
+                _log.warning('load_quotes: skipped %d items with invalid document_id/chunk_id', fk_skipped)
+        except Exception:
+            conn.rollback()
+            raise
         count = cur.execute('SELECT COUNT(*) FROM quotes').fetchone()[0]
     return {'quotes': count}

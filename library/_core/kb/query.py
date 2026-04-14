@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Query the knowledge base: full-text search, quote lookup, evidence ranking."""
-from library.config import DB_PATH
-from library.db import connect, row_to_dict, list_table, search_chunks_with_source
+from library.db import connect, row_to_dict, list_table
 
 
 def search_chunks(conn_or_cur, query, limit=8):
-    """Full-text search over document_chunks_fts with source_pdf."""
+    """Full-text search over document_chunks_fts with BM25 ranking."""
     if hasattr(conn_or_cur, 'cursor'):
         cur = conn_or_cur.cursor()
     else:
@@ -13,11 +12,13 @@ def search_chunks(conn_or_cur, query, limit=8):
     cur.execute(
         """
         SELECT dc.id, d.source_pdf, dc.chunk_index,
-               snippet(document_chunks_fts, 0, '[', ']', ' … ', 12) AS snippet
+               snippet(document_chunks_fts, 0, '[', ']', ' … ', 12) AS snippet,
+               bm25(document_chunks_fts) AS rank
         FROM document_chunks_fts fts
         JOIN document_chunks dc ON dc.id = fts.rowid
         JOIN documents d ON d.id = dc.document_id
         WHERE document_chunks_fts MATCH ?
+        ORDER BY bm25(document_chunks_fts)
         LIMIT ?
         """,
         (query, limit),

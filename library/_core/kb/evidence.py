@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Write KB evidence rows from normalized candidates into SQLite."""
-from library.config import DB_PATH, KB_CANDIDATES_NORM
+from library.config import KB_CANDIDATES_NORM
 from library.db import connect, get_id
 from library.utils import load_json
 
@@ -18,24 +18,30 @@ def write_evidence():
             theme_id = get_id(cur, 'themes', 'theme_name', item['theme_name'])
             if theme_id:
                 cur.execute(
-                    'INSERT INTO theme_evidence (theme_id, chunk_id, note) VALUES (?, ?, ?)',
-                    (theme_id, item['chunk_id'], ', '.join(item.get('matched_terms', []))),
+                    'INSERT INTO theme_evidence (theme_id, chunk_id, note, weight) VALUES (?, ?, ?, ?)',
+                    (theme_id, item['chunk_id'],
+                     ', '.join(item.get('matched_terms', [])),
+                     item.get('weight', 1.0)),
                 )
 
         for item in data.get('principles', []):
             pid = get_id(cur, 'principles', 'principle_name', item['principle_name'])
             if pid:
                 cur.execute(
-                    'INSERT INTO principle_evidence (principle_id, chunk_id, note) VALUES (?, ?, ?)',
-                    (pid, item['chunk_id'], ', '.join(item.get('matched_terms', []))),
+                    'INSERT INTO principle_evidence (principle_id, chunk_id, note, weight) VALUES (?, ?, ?, ?)',
+                    (pid, item['chunk_id'],
+                     ', '.join(item.get('matched_terms', [])),
+                     item.get('weight', 1.0)),
                 )
 
         for item in data.get('patterns', []):
             pid = get_id(cur, 'patterns', 'pattern_name', item['pattern_name'])
             if pid:
                 cur.execute(
-                    'INSERT INTO pattern_evidence (pattern_id, chunk_id, note) VALUES (?, ?, ?)',
-                    (pid, item['chunk_id'], ', '.join(item.get('matched_terms', []))),
+                    'INSERT INTO pattern_evidence (pattern_id, chunk_id, note, weight) VALUES (?, ?, ?, ?)',
+                    (pid, item['chunk_id'],
+                     ', '.join(item.get('matched_terms', [])),
+                     item.get('weight', 1.0)),
                 )
 
         counts = {

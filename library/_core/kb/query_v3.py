@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """V3 runtime query: bridge-to-action, next steps, quote packs, confidence."""
-from library.config import DB_PATH
 from library.db import connect
 
 
@@ -44,13 +43,22 @@ def query_v3(theme='', pattern='', archetype=''):
 
         bridge = None
         if theme or pattern:
-            candidates = cur.execute('''
+            where_parts = []
+            params = []
+            if theme:
+                where_parts.append('b.used_for_theme = ?')
+                params.append(theme)
+            if pattern:
+                where_parts.append('b.used_for_pattern = ?')
+                params.append(pattern)
+            where_clause = ' AND '.join(where_parts) if where_parts else '1=1'
+            candidates = cur.execute(f'''
                 SELECT b.template_name, b.diagnosis_stub, b.responsibility_stub, b.next_step_stub, b.long_term_stub, b.tone_profile,
                        ct.confidence_level, ct.curation_level
                 FROM bridge_to_action_templates b
                 LEFT JOIN confidence_tags ct ON ct.entity_type='bridge' AND ct.entity_id=b.id
-                WHERE (b.used_for_theme = ? OR ? = '') AND (b.used_for_pattern = ? OR ? = '')
-            ''', (theme, theme, pattern, pattern)).fetchall()
+                WHERE {where_clause}
+            ''', params).fetchall()
             if candidates:
                 candidates = sorted(
                     candidates,
@@ -60,13 +68,25 @@ def query_v3(theme='', pattern='', archetype=''):
 
         next_step = None
         if archetype or theme or pattern:
-            candidates = cur.execute('''
+            ns_parts = []
+            ns_params = []
+            if archetype:
+                ns_parts.append('n.used_for_archetype = ?')
+                ns_params.append(archetype)
+            if theme:
+                ns_parts.append('n.used_for_theme = ?')
+                ns_params.append(theme)
+            if pattern:
+                ns_parts.append('n.used_for_pattern = ?')
+                ns_params.append(pattern)
+            ns_where = ' OR '.join(ns_parts) if ns_parts else '1=0'
+            candidates = cur.execute(f'''
                 SELECT n.step_name, n.step_text, n.difficulty, n.time_horizon,
                        ct.confidence_level, ct.curation_level
                 FROM next_step_library n
                 LEFT JOIN confidence_tags ct ON ct.entity_type='next_step' AND ct.entity_id=n.id
-                WHERE (n.used_for_archetype = ? OR ? = '') OR (n.used_for_theme = ? OR ? = '') OR (n.used_for_pattern = ? OR ? = '')
-            ''', (archetype, archetype, theme, theme, pattern, pattern)).fetchall()
+                WHERE {ns_where}
+            ''', ns_params).fetchall()
             if candidates:
                 candidates = sorted(
                     candidates,
@@ -99,7 +119,14 @@ def query_v3(theme='', pattern='', archetype=''):
                 (archetype,),
             ).fetchall()
             case_links = cur.execute(
-                'SELECT c.case_name FROM case_archetypes a JOIN cases c ON a.case_id = c.id WHERE a.archetype_name = ? LIMIT 3',
+                'SELECT c.case_name FROM case_archetypes a '
+                'JOIN cases c ON a.case_id = c.id '
+                'LEFT JOIN confidence_tags ct ON ct.entity_type = \'case\' AND ct.entity_id = c.id '
+                'WHERE a.archetype_name = ? '
+                'ORDER BY (ct.confidence_level IS NULL), '
+                'CASE ct.confidence_level '
+                "WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END DESC "
+                'LIMIT 3',
                 (archetype,),
             ).fetchall()
             intervention_links = cur.execute(
@@ -125,8 +152,29 @@ def query_v3(theme='', pattern='', archetype=''):
             symbolic_permission = True
 
         confidence = []
-        for row in cur.execute('SELECT entity_type, entity_id, confidence_level, curation_level FROM confidence_tags ORDER BY id LIMIT 20'):
-            confidence.append(row)
+        relevant_entity_ids = set()
+        if bridge:
+            brow = cur.execute(
+                'SELECT id FROM bridge_to_action_templates WHERE template_name=?',
+                (bridge[0],),
+            ).fetchone()
+            if brow:
+                relevant_entity_ids.add(('bridge', brow[0]))
+        if next_step:
+            srow = cur.execute(
+                'SELECT id FROM next_step_library WHERE step_name=?',
+                (next_step[0],),
+            ).fetchone()
+            if srow:
+                relevant_entity_ids.add(('next_step', srow[0]))
+        if relevant_entity_ids:
+            for etype, eid in relevant_entity_ids:
+                for row in cur.execute(
+                    'SELECT entity_type, entity_id, confidence_level, curation_level '
+                    'FROM confidence_tags WHERE entity_type=? AND entity_id=?',
+                    (etype, eid),
+                ):
+                    confidence.append(row)
 
         confidence_summary = {
             'bridge_confidence': None,

@@ -7,8 +7,10 @@ from __future__ import annotations
 
 from library._core.runtime.frame import select_frame
 from library._core.runtime.respond import respond
+from library._core.runtime.llm_prompt import build_prompt, build_fallback_response
+from library._core.runtime.retrieval_validator import validate_chunks, get_relevance_judge
 from library._core.runtime.voice import choose as choose_voice
-from library._core.session.continuity import read as read_continuity
+from library._core.session.continuity import read as read_continuity, load as load_continuity
 from library._core.session.state import build_user_profile, update_session
 from library._core.session.checkpoint import log as log_checkpoint
 from library._core.session.progress import estimate as estimate_progress
@@ -17,43 +19,153 @@ from library._core.session.effectiveness import update as update_effectiveness
 from library._core.session.context import assemble as assemble_context
 from library._core.state_store import StateStore
 from library.config import get_default_store
-from library.utils import timing_context
+import logging
+from library.utils import timing_context, get_threshold
+
+log = logging.getLogger('jordan')
+
+
+_PRACTICAL_TRIGGERS = ['что мне делать', 'что делать', 'next step',
+                       'практически', 'как мне', 'что дальше']
+_DEEP_TRIGGERS = ['почему', 'разбери', 'объясни', 'помоги понять',
+                  'что со мной происходит', 'в чём корень']
+
+from library._core.runtime.routes import ALL_KB_KEYWORDS as _KB_TRIGGERS  # noqa: E402
+
+_mode_classifier = None
+_kb_classifier = None
+
+
+def set_mode_classifier(fn):
+    """Register an LLM-based mode classifier: fn(question) -> 'deep'|'practical'|'quick'."""
+    global _mode_classifier
+    _mode_classifier = fn
+
+
+def set_kb_classifier(fn):
+    """Register an LLM-based KB router: fn(question) -> bool."""
+    global _kb_classifier
+    _kb_classifier = fn
 
 
 def detect_mode(question):
+    if _mode_classifier is not None:
+        try:
+            return _mode_classifier(question)
+        except Exception:
+            log.debug('LLM mode classifier failed, using heuristic')
     q = question.lower()
-    practical_triggers = ['что мне делать', 'что делать', 'next step',
-                          'практически', 'как мне', 'что дальше']
-    deep_triggers = ['почему', 'разбери', 'объясни', 'помоги понять',
-                     'что со мной происходит', 'в чём корень']
-    if any(x in q for x in deep_triggers):
+    if any(x in q for x in _DEEP_TRIGGERS):
         return 'deep'
-    if any(x in q for x in practical_triggers):
+    if any(x in q for x in _PRACTICAL_TRIGGERS):
         return 'practical'
-    if len(q) < 80:
+    if len(q) < get_threshold('detect_mode_short_length', 80):
         return 'practical'
     return 'deep'
 
 
 def should_use_kb(question):
+    if _kb_classifier is not None:
+        try:
+            return _kb_classifier(question)
+        except Exception:
+            log.debug('LLM KB classifier failed, using heuristic')
     q = question.lower()
-    triggers = [
-        'смысл', 'дисциплин', 'обид', 'стыд', 'отношен', 'конфликт',
-        'карьер', 'призвание', 'хаос', 'вру', 'самообман',
-        'туман', 'размыт', 'плыть по течению', 'нет жизни', 'нет структуры',
-        'отклады', 'прокраст', 'жестк', 'расписан', 'график',
-    ]
-    return any(t in q for t in triggers)
+    return any(t in q for t in _KB_TRIGGERS)
 
 
 def orchestrate(question, user_id: str = 'default',
                 store: StateStore | None = None):
+    question = question or ''
     store = store or get_default_store()
 
     with timing_context() as timings:
         result = _orchestrate_inner(question, user_id=user_id, store=store)
     result['_timings'] = timings
     return result
+
+
+def orchestrate_for_llm(question: str, user_id: str = 'default',
+                        store: StateStore | None = None) -> dict:
+    """Build an LLM-ready prompt bundle for OpenClaw.
+
+    Returns a dict with ``system``, ``user``, ``synthesis``, ``continuity``,
+    plus orchestration metadata (``mode``, ``use_kb``, ``action``).
+    When ``action`` is ``'answer-directly'``, OpenClaw should respond without
+    KB context.  When ``action`` is ``'respond-with-kb'``, the ``system`` field
+    contains the fully assembled prompt with retrieved evidence.
+    """
+    question = question or ''
+    store = store or get_default_store()
+
+    if not should_use_kb(question):
+        return {
+            'system': '',
+            'user': question,
+            'synthesis': None,
+            'continuity': load_continuity(user_id=user_id, store=store),
+            'mode': detect_mode(question),
+            'use_kb': False,
+            'action': 'answer-directly',
+        }
+
+    mode = detect_mode(question)
+
+    build_user_profile(user_id=user_id, store=store)
+    assemble_context(user_id=user_id, store=store)
+
+    try:
+        selected = select_frame(question, user_id=user_id, store=store)
+    except Exception as exc:
+        log.exception('select_frame failed in LLM path: %s', exc)
+        return {
+            'system': '',
+            'user': question,
+            'synthesis': None,
+            'continuity': load_continuity(user_id=user_id, store=store),
+            'mode': mode,
+            'use_kb': False,
+            'action': 'answer-directly',
+            'reason': f'KB retrieval error: {exc}',
+        }
+
+    confidence = selected.get('confidence', 'low')
+    progress = estimate_progress(question, user_id=user_id, store=store)
+
+    bundle = selected.get('bundle', {})
+    retrieved_chunks = bundle.get('relevant_chunks', [])
+    validation = validate_chunks(question, retrieved_chunks,
+                                 judge=get_relevance_judge())
+
+    if confidence == 'low' or (
+        not validation['valid'] and confidence != 'high'
+    ):
+        return {
+            'system': '',
+            'user': question,
+            'synthesis': None,
+            'continuity': load_continuity(user_id=user_id, store=store),
+            'mode': mode,
+            'use_kb': True,
+            'action': 'ask-clarifying-question',
+            'retrieval_validation': validation,
+        }
+
+    theme_name = (selected.get('selected_theme') or {}).get('name', '')
+    voice_mode = choose_voice(question, theme=theme_name,
+                              user_id=user_id, store=store) or 'default'
+    if progress.get('recommended_voice_override'):
+        voice_mode = progress['recommended_voice_override']
+
+    prompt = build_prompt(question, user_id=user_id, store=store,
+                          voice_mode=voice_mode, frame=selected,
+                          progress=progress)
+    prompt['mode'] = mode
+    prompt['use_kb'] = True
+    prompt['action'] = 'respond-with-kb'
+    prompt['voice_mode'] = voice_mode
+    prompt['retrieval_validation'] = validation
+    return prompt
 
 
 def _orchestrate_inner(question, user_id: str = 'default',
@@ -73,23 +185,46 @@ def _orchestrate_inner(question, user_id: str = 'default',
         }
 
     build_user_profile(user_id=user_id, store=store)
-    selected = select_frame(question, user_id=user_id, store=store)
+
+    try:
+        selected = select_frame(question, user_id=user_id, store=store)
+    except Exception as exc:
+        log.exception('select_frame failed: %s', exc)
+        return {
+            'question': question,
+            'mode': mode,
+            'use_kb': True,
+            'confidence': 'low',
+            'action': 'answer-directly',
+            'reason': f'KB retrieval error: {exc}',
+            'continuity': read_continuity(user_id=user_id, store=store),
+        }
     confidence = selected.get('confidence', 'low')
+    assemble_context(user_id=user_id, store=store)
     continuity = read_continuity(user_id=user_id, store=store)
     progress = estimate_progress(question, user_id=user_id, store=store)
     reaction = estimate_reaction(question, user_id=user_id, store=store)
 
-    if confidence == 'low':
+    bundle = selected.get('bundle', {})
+    retrieved_chunks = bundle.get('relevant_chunks', [])
+    validation = validate_chunks(question, retrieved_chunks,
+                                 judge=get_relevance_judge())
+
+    if confidence == 'low' or (
+        not validation['valid'] and confidence != 'high'
+    ):
         return {
             'question': question,
             'mode': mode,
             'use_kb': True,
             'confidence': confidence,
             'action': 'ask-clarifying-question',
-            'reason': ('KB route is weak; clarification preferred '
-                       'before forcing a frame.'),
+            'reason': ('KB route is weak or retrieval relevance is low '
+                       f'(avg={validation["avg_relevance"]:.2f}); '
+                       'clarification preferred before forcing a frame.'),
             'selection': selected,
             'continuity': continuity,
+            'retrieval_validation': validation,
         }
 
     theme_name = (selected.get('selected_theme') or {}).get('name') or ''
@@ -158,14 +293,14 @@ def _orchestrate_inner(question, user_id: str = 'default',
         outcome = 'resisted'
 
     if primary:
+        route_name = selected.get('route_name') or 'general'
         update_effectiveness(source=primary, outcome=outcome,
-                             route=theme_name, user_id=user_id, store=store)
-
-    assemble_context(user_id=user_id, store=store)
+                             route=route_name, user_id=user_id, store=store)
 
     effective_mode = mode if mode in {'quick', 'practical', 'deep'} else 'deep'
     response = respond(question, mode=effective_mode, voice=voice,
-                       user_id=user_id, store=store)
+                       user_id=user_id, store=store,
+                       frame=selected, progress=progress)
 
     return {
         'question': question,
@@ -178,4 +313,5 @@ def _orchestrate_inner(question, user_id: str = 'default',
         'progress': progress,
         'reaction': reaction,
         'response': response,
+        'retrieval_validation': validation,
     }

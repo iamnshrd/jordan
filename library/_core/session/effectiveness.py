@@ -76,4 +76,9 @@ def update(source='', intervention='', outcome='used', route='',
 
     data['updated_at'] = now_iso()
     store.put_json(user_id, KEY_EFFECTIVENESS, data)
+    try:
+        from library._core.runtime.retrieve import invalidate_route_strength_cache
+        invalidate_route_strength_cache()
+    except ImportError:
+        pass
     return data

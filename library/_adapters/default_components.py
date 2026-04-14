@@ -39,18 +39,10 @@ class DefaultRenderer:
         return render(data, continuity, mode=mode, voice_mode=voice)
 
 
-def create_default_runtime(user_id: str = 'default',
-                           store: StateStore | None = None):
-    """Assemble an ``AgentRuntime`` wired with production adapters."""
+def create_default_runtime(store: StateStore | None = None):
+    """Assemble an ``AgentRuntime`` wired with the default store."""
     from library.config import get_default_store
     from library._core.runtime.agent import AgentRuntime
-    from library._adapters.sqlite_retriever import SqliteRetriever
 
     store = store or get_default_store()
-    return AgentRuntime(
-        retriever=SqliteRetriever(store=store),
-        selector=DefaultFrameSelector(store=store),
-        synthesizer=DefaultSynthesizer(store=store),
-        renderer=DefaultRenderer(),
-        store=store,
-    )
+    return AgentRuntime(store=store)

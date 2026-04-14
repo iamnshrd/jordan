@@ -28,6 +28,21 @@ def cmd_run(args):
                      ensure_ascii=False, indent=2))
 
 
+def cmd_prompt(args):
+    from library._core.runtime.orchestrator import orchestrate_for_llm
+    result = orchestrate_for_llm(args.question, user_id=args.user_id)
+    if args.system_only:
+        print(result.get('system', ''))
+    else:
+        print(json.dumps({
+            'system': result.get('system', ''),
+            'user': result.get('user', ''),
+            'action': result.get('action', ''),
+            'mode': result.get('mode', ''),
+            'voice_mode': result.get('voice_mode', ''),
+        }, ensure_ascii=False, indent=2))
+
+
 def cmd_frame(args):
     from library._core.runtime.frame import select_frame
     print(json.dumps(select_frame(args.question), ensure_ascii=False, indent=2))
@@ -158,6 +173,12 @@ def build_parser():
     p_retrieve = sub.add_parser('retrieve', help='Build response bundle')
     p_retrieve.add_argument('question')
     p_retrieve.set_defaults(func=cmd_retrieve)
+
+    p_prompt = sub.add_parser('prompt', help='Build LLM prompt for OpenClaw')
+    p_prompt.add_argument('question')
+    p_prompt.add_argument('--system-only', dest='system_only', action='store_true',
+                          help='Print only the system prompt text')
+    p_prompt.set_defaults(func=cmd_prompt)
 
     p_kb = sub.add_parser('kb', help='Knowledge base operations')
     p_kb.add_argument('kb_action', choices=[

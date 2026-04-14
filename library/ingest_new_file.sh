@@ -7,7 +7,8 @@ if [ $# -lt 1 ]; then
 fi
 
 SRC="$1"
-DEST_DIR="/root/.openclaw/multi-agent/agents/jordan-peterson/library/incoming"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEST_DIR="$SCRIPT_DIR/incoming"
 mkdir -p "$DEST_DIR"
 cp "$SRC" "$DEST_DIR/"
-python3 /root/.openclaw/multi-agent/agents/jordan-peterson/library/ingest_auto.py
+python -m library ingest auto

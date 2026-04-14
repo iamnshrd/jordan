@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Knowledge-base builder: ingest manifest documents, chunk text, seed taxonomy."""
+import logging
 import re
 
-from library.config import DB_PATH, MANIFEST, TEXTS, ROOT
+from library.config import MANIFEST, ROOT
+
+log = logging.getLogger('jordan')
 from library.db import connect
 from library.utils import load_json, save_json
 
@@ -11,22 +14,110 @@ def load_manifest():
     return load_json(MANIFEST, default={'documents': []})
 
 
-def split_chunks(text, max_chars=2200):
+def _detect_heading(line: str) -> str | None:
+    """Return heading text if *line* looks like a section heading, else None."""
+    stripped = line.strip()
+    if not stripped:
+        return None
+    if stripped.startswith('#'):
+        return stripped.lstrip('#').strip() or None
+    if len(stripped) >= 5 and stripped == stripped.upper() and stripped[0].isalpha():
+        return stripped
+    return None
+
+
+def split_chunks(text, max_chars=None, overlap_chars=None):
+    """Split *text* into overlapping chunks respecting section boundaries.
+
+    Returns list of dicts: ``{'text': ..., 'section_title': ...}``.
+    """
+    from library.utils import get_threshold
+    if max_chars is None:
+        max_chars = get_threshold('chunk_max_chars', 2200)
+    if overlap_chars is None:
+        overlap_chars = get_threshold('chunk_overlap_chars', 250)
     text = re.sub(r'\r\n?', '\n', text)
     paras = [p.strip() for p in text.split('\n\n') if p.strip()]
-    chunks = []
-    current = []
+
+    chunks: list[dict] = []
+    current: list[str] = []
     cur_len = 0
+    current_section: str | None = None
+
+    def _flush():
+        nonlocal current, cur_len
+        if current:
+            chunks.append({
+                'text': '\n\n'.join(current),
+                'section_title': current_section,
+            })
+            current = []
+            cur_len = 0
+
+    def _overlap_paras() -> list[str]:
+        """Return trailing paragraphs from the last chunk for overlap."""
+        if not chunks:
+            return []
+        last_text = chunks[-1]['text']
+        tail = last_text[-overlap_chars:] if len(last_text) > overlap_chars else last_text
+        return [p.strip() for p in tail.split('\n\n') if p.strip()][-2:]
+
+    def _hard_split(text: str) -> list[str]:
+        """Last-resort split at word boundaries when no sentence delimiters."""
+        parts: list[str] = []
+        while len(text) > max_chars:
+            cut = text.rfind(' ', 0, max_chars)
+            if cut <= 0:
+                cut = max_chars
+            parts.append(text[:cut].rstrip())
+            text = text[cut:].lstrip()
+        if text:
+            parts.append(text)
+        return parts
+
+    def _split_long_para(para: str) -> list[str]:
+        """Break a paragraph longer than max_chars into sentence-boundary pieces."""
+        if len(para) <= max_chars:
+            return [para]
+        sentences = re.split(r'(?<=[.!?])\s+', para)
+        pieces: list[str] = []
+        buf: list[str] = []
+        buf_len = 0
+        for s in sentences:
+            if buf_len + len(s) + 1 > max_chars and buf:
+                pieces.append(' '.join(buf))
+                buf = []
+                buf_len = 0
+            if len(s) > max_chars:
+                if buf:
+                    pieces.append(' '.join(buf))
+                    buf = []
+                    buf_len = 0
+                pieces.extend(_hard_split(s))
+                continue
+            buf.append(s)
+            buf_len += len(s) + 1
+        if buf:
+            pieces.append(' '.join(buf))
+        return pieces or [para]
+
     for p in paras:
-        if cur_len + len(p) + 2 > max_chars and current:
-            chunks.append('\n\n'.join(current))
-            current = [p]
-            cur_len = len(p)
-        else:
-            current.append(p)
-            cur_len += len(p) + 2
-    if current:
-        chunks.append('\n\n'.join(current))
+        heading = _detect_heading(p.split('\n')[0])
+        if heading:
+            _flush()
+            current_section = heading
+
+        sub_paras = _split_long_para(p)
+        for sp in sub_paras:
+            if cur_len + len(sp) + 2 > max_chars and current:
+                _flush()
+                for op in _overlap_paras():
+                    current.append(op)
+                    cur_len += len(op) + 2
+            current.append(sp)
+            cur_len += len(sp) + 2
+
+    _flush()
     return chunks
 
 
@@ -49,17 +140,43 @@ def upsert_document(conn, source_pdf, text_path, status):
 
 
 def replace_chunks(conn, document_id, chunks):
+    """Replace all chunks for *document_id* atomically.
+
+    *chunks* may be a list of strings (legacy) or list of dicts with
+    ``text`` and ``section_title`` keys (new structured format).
+    """
     cur = conn.cursor()
-    cur.execute('DELETE FROM document_chunks WHERE document_id = ?', (document_id,))
-    conn.commit()
-    for idx, chunk in enumerate(chunks):
-        cur.execute(
-            'INSERT INTO document_chunks (document_id, chunk_index, content, char_count) VALUES (?, ?, ?, ?)',
-            (document_id, idx, chunk, len(chunk)),
-        )
-        rowid = cur.lastrowid
-        cur.execute('INSERT INTO document_chunks_fts(rowid, content) VALUES (?, ?)', (rowid, chunk))
-    conn.commit()
+    cur.execute('BEGIN IMMEDIATE')
+    try:
+        cur.execute('DELETE FROM document_chunks WHERE document_id = ?', (document_id,))
+        real_idx = 0
+        for idx, chunk in enumerate(chunks):
+            if isinstance(chunk, dict):
+                text = chunk.get('text')
+                if not text:
+                    log.warning('Chunk %d for doc %d has no text, skipping',
+                                idx, document_id)
+                    continue
+                section = chunk.get('section_title')
+            else:
+                if not isinstance(chunk, str):
+                    log.warning('Chunk %d for doc %d is not str/dict, skipping',
+                                idx, document_id)
+                    continue
+                text = chunk
+                section = None
+            cur.execute(
+                'INSERT INTO document_chunks (document_id, chunk_index, content, char_count, section_title) '
+                'VALUES (?, ?, ?, ?, ?)',
+                (document_id, real_idx, text, len(text), section),
+            )
+            real_idx += 1
+            rowid = cur.lastrowid
+            cur.execute('INSERT INTO document_chunks_fts(rowid, content) VALUES (?, ?)', (rowid, text))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def seed_taxonomy(conn):
@@ -134,22 +251,70 @@ def seed_taxonomy(conn):
     conn.commit()
 
 
-def build():
-    """Main build entry point. Returns counts dict."""
+def _doc_needs_rebuild(conn, doc_id, text_path) -> bool:
+    """Check if a document's chunks are stale by comparing text file mtime."""
+    import os
+    cur = conn.cursor()
+    row = cur.execute(
+        'SELECT COUNT(*) FROM document_chunks WHERE document_id = ?',
+        (doc_id,),
+    ).fetchone()
+    if not row or row[0] == 0:
+        return True
+    meta_row = cur.execute(
+        'SELECT text_mtime FROM documents WHERE id = ?', (doc_id,),
+    ).fetchone()
+    try:
+        file_mtime = os.path.getmtime(text_path)
+    except OSError:
+        return True
+    if meta_row and meta_row[0] is not None:
+        return file_mtime > meta_row[0]
+    return True
+
+
+def build(force: bool = False):
+    """Main build entry point.
+
+    When *force* is False (default), only documents whose text file is newer
+    than the last indexed mtime are re-chunked (incremental build).
+    """
+    import os
     manifest = load_manifest()
     with connect() as conn:
         init_db(conn)
         seed_taxonomy(conn)
         for doc in manifest.get('documents', []):
+            if not isinstance(doc, dict):
+                continue
             if doc.get('status') not in {'text_extracted', 'chunked'}:
+                continue
+            if not doc.get('text_path') or not doc.get('source_pdf'):
+                log.warning('Manifest entry missing text_path or source_pdf, skipping: %s', doc)
                 continue
             text_path = ROOT / doc['text_path']
             if not text_path.exists():
                 continue
-            text = text_path.read_text(errors='ignore')
-            chunks = split_chunks(text)
             doc_id = upsert_document(conn, doc['source_pdf'], doc['text_path'], 'chunked')
+            if not force and not _doc_needs_rebuild(conn, doc_id, text_path):
+                doc['status'] = 'chunked'
+                continue
+            try:
+                text = text_path.read_text(encoding='utf-8')
+            except UnicodeDecodeError:
+                log.warning('UTF-8 decode failed for %s, falling back to replace mode', text_path)
+                text = text_path.read_text(encoding='utf-8', errors='replace')
+            chunks = split_chunks(text)
             replace_chunks(conn, doc_id, chunks)
+            try:
+                mtime = os.path.getmtime(text_path)
+                conn.cursor().execute(
+                    'UPDATE documents SET text_mtime = ? WHERE id = ?',
+                    (mtime, doc_id),
+                )
+                conn.commit()
+            except OSError as exc:
+                log.warning('Could not record mtime for doc %s: %s', doc_id, exc)
             doc['status'] = 'chunked'
         save_json(MANIFEST, manifest)
         cur = conn.cursor()

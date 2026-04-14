@@ -9,6 +9,7 @@ Version 0 -> 1: base tables (documents, chunks, FTS, taxonomy, evidence, …)
 Version 1 -> 2: V3 schema (routes, bridges, steps, packs, tags, archetypes, …)
 Version 2 -> 3: V3.1 (quote_pack_items)
 Version 3 -> 4: quotes classification columns
+Version 4 -> 5: cases taxonomy columns + section_title on chunks + evidence weight
 """
 from __future__ import annotations
 
@@ -281,13 +282,67 @@ def _migrate_quotes_v2(conn):
     _add_col(cur, 'quotes', 'pattern_name', 'TEXT')
 
 
+def _migrate_v5_taxonomy_and_chunks(conn):
+    """V5: Add taxonomy columns to cases, section_title to chunks, weight to evidence."""
+    cur = conn.cursor()
+    _add_col(cur, 'cases', 'theme_name', 'TEXT')
+    _add_col(cur, 'cases', 'principle_name', 'TEXT')
+    _add_col(cur, 'cases', 'pattern_name', 'TEXT')
+    _add_col(cur, 'cases', 'source_document_id', 'INTEGER')
+    _add_col(cur, 'document_chunks', 'section_title', 'TEXT')
+    _add_col(cur, 'theme_evidence', 'weight', 'REAL DEFAULT 1.0')
+    _add_col(cur, 'principle_evidence', 'weight', 'REAL DEFAULT 1.0')
+    _add_col(cur, 'pattern_evidence', 'weight', 'REAL DEFAULT 1.0')
+
+
+_V6_EMBEDDINGS_SQL = '''
+CREATE TABLE IF NOT EXISTS chunk_embeddings (
+    chunk_id INTEGER PRIMARY KEY,
+    model_name TEXT NOT NULL,
+    embedding BLOB NOT NULL,
+    dimensions INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY(chunk_id) REFERENCES document_chunks(id)
+);
+CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_model ON chunk_embeddings(model_name);
+'''
+
+
+def _migrate_v6_embeddings(conn):
+    """V6: Add chunk_embeddings table for hybrid retrieval."""
+    conn.cursor().executescript(_V6_EMBEDDINGS_SQL)
+
+
+def _migrate_v7_doc_mtime(conn):
+    """Add text_mtime column to documents for incremental build detection."""
+    cur = conn.cursor()
+    cols = {row[1] for row in cur.execute('PRAGMA table_info(documents)').fetchall()}
+    if 'text_mtime' not in cols:
+        cur.execute('ALTER TABLE documents ADD COLUMN text_mtime REAL')
+    conn.commit()
+
+
 # -- ordered migration registry -------------------------------------------
+
+def _migrate_v8_intervention_taxonomy(conn):
+    """Add taxonomy columns to intervention_examples."""
+    cur = conn.cursor()
+    cols = {row[1] for row in cur.execute('PRAGMA table_info(intervention_examples)').fetchall()}
+    for col in ('theme_name', 'principle_name', 'pattern_name'):
+        if col not in cols:
+            cur.execute(f'ALTER TABLE intervention_examples ADD COLUMN {col} TEXT')
+    conn.commit()
+
 
 MIGRATIONS: list[tuple[int, callable]] = [
     (1, _migrate_base),
     (2, _migrate_v3),
     (3, _migrate_v31),
     (4, _migrate_quotes_v2),
+    (5, _migrate_v5_taxonomy_and_chunks),
+    (6, _migrate_v6_embeddings),
+    (7, _migrate_v7_doc_mtime),
+    (8, _migrate_v8_intervention_taxonomy),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0]
@@ -311,8 +366,6 @@ def migrate_up(conn=None):
     try:
         current = get_schema_version(conn)
         if current >= LATEST_VERSION:
-            if owned:
-                ctx.__exit__(None, None, None)
             return current, current
 
         for version, fn in MIGRATIONS:
@@ -325,7 +378,8 @@ def migrate_up(conn=None):
         return current, new
     except Exception:
         if owned:
-            ctx.__exit__(None, None, None)
+            import sys
+            ctx.__exit__(*sys.exc_info())
         raise
     else:
         if owned:

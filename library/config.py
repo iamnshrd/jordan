@@ -28,6 +28,8 @@ VOICE_MODES = ROOT / 'voice_modes.json'
 SOURCE_ARBITRATION = ROOT / 'source_arbitration_rules.json'
 QUESTION_ARCHETYPES = ROOT / 'question_archetypes.json'
 INTERVENTION_PATTERNS = ROOT / 'intervention_patterns.json'
+SOURCE_ROLE_PROFILES = ROOT / 'source_role_profiles.json'
+SOURCE_BLEND_EXAMPLES = ROOT / 'source_blend_examples.json'
 BEYOND_ORDER_CONCEPTS = ROOT / 'beyond_order_concepts.json'
 MAPS_OF_MEANING_CONCEPTS = ROOT / 'maps_of_meaning_concepts.json'
 TWELVE_RULES_CONCEPTS = ROOT / 'twelve_rules_concepts.json'
@@ -53,6 +55,9 @@ CONTEXT_GRAPH = WORKSPACE / 'context_graph.json'
 CONTINUITY_SUMMARY = WORKSPACE / 'continuity_summary.json'
 REACTION_ESTIMATE = WORKSPACE / 'user_reaction_estimate.json'
 
+# --- Runtime thresholds (tunable) ---
+THRESHOLDS = ROOT / 'thresholds.json'
+
 # --- Eval / regression artefacts ---
 EVAL_CASES = ROOT / 'eval_cases.json'
 EVAL_REPORT = ROOT / 'eval_report.json'
@@ -63,11 +68,42 @@ VOICE_REGRESSION_REPORT = ROOT / 'voice_regression_report.json'
 RUNTIME_AUDIT_REPORT = ROOT / 'runtime_audit_report.json'
 
 # --- Document source hints (document_id -> friendly name) ---
-DOC_SOURCE_HINTS = {
+_DOC_SOURCE_HINTS_STATIC = {
     1: '12-rules',
     2: 'maps-of-meaning',
     3: 'beyond-order',
 }
+_doc_source_hints_cache: dict | None = None
+
+
+def get_doc_source_hints() -> dict:
+    """Build source hints from DB with static fallback."""
+    global _doc_source_hints_cache
+    if _doc_source_hints_cache is not None:
+        return _doc_source_hints_cache
+    try:
+        from library.db import connect
+        hints = dict(_DOC_SOURCE_HINTS_STATIC)
+        with connect(auto_migrate=False) as conn:
+            cur = conn.cursor()
+            for row in cur.execute(
+                'SELECT id, source_pdf FROM documents'
+            ).fetchall():
+                doc_id, source_pdf = row
+                if doc_id not in hints and source_pdf:
+                    name = source_pdf.rsplit('.', 1)[0].rsplit('/', 1)[-1]
+                    hints[doc_id] = name
+        _doc_source_hints_cache = hints
+    except Exception:
+        _doc_source_hints_cache = dict(_DOC_SOURCE_HINTS_STATIC)
+    return _doc_source_hints_cache
+
+
+# --- Common stop snippets (shared by normalize + quotes pipelines) ---
+COMMON_STOP_SNIPPETS = [
+    'isbn', 'удк', 'ббк', 'оглавление', 'предисловие', 'вступление',
+    'table of contents', 'copyright', 'random house', 'footnote', 'see also',
+]
 
 
 # --- Multi-tenant store factory ---

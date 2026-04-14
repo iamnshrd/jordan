@@ -33,11 +33,13 @@ Materials should live under:
 This keeps the agent's personality separate from its source material and leaves room for later retrieval/indexing.
 
 ## KB-backed runtime
-This agent now has a local KB-backed reasoning path under `library/`:
-- `retrieve_for_prompt.py`
-- `select_frame.py`
-- `synthesize_response.py`
-- `render_response.py`
+All runtime logic lives under `library/_core/` and is accessed via the unified CLI:
+```
+python -m library run "<question>"         # full orchestrated response
+python -m library prompt "<question>"      # LLM prompt for OpenClaw
+python -m library kb build                 # rebuild knowledge base
+python -m library kb query --query "смысл" # query the KB
+```
 
 See also:
 - `library/README_KB.md`

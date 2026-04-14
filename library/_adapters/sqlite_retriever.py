@@ -25,7 +25,7 @@ class SqliteRetriever:
             RetrievalHit(
                 chunk_id=row['id'],
                 snippet=row.get('snippet', ''),
-                score=float(row.get('_score', 0)),
+                score=float(row.get('rank', 0)),
                 source=None,
                 meta=row,
             )

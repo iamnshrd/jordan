@@ -1,206 +1,36 @@
-"""AgentRuntime -- dependency-injected runtime that implements the full
-orchestration pipeline through protocol-based components.
+"""AgentRuntime -- thin wrapper that delegates to the unified orchestration pipeline.
 
-This is the primary entry point for production use.  The legacy
-``orchestrate()`` function in ``orchestrator.py`` delegates here.
+All reasoning goes through ``orchestrate()`` / ``orchestrate_for_llm()``
+to ensure consistent quality gates, validation, and caching.
 """
 from __future__ import annotations
 
-from library._core.protocols import Retriever, FrameSelector, Synthesizer, Renderer
 from library._core.state_store import StateStore
-from library._core.session.continuity import read as read_continuity
-from library._core.session.state import build_user_profile, update_session
-from library._core.session.checkpoint import log as log_checkpoint
-from library._core.session.progress import estimate as estimate_progress
-from library._core.session.reaction import estimate as estimate_reaction
-from library._core.session.effectiveness import update as update_effectiveness
-from library._core.session.context import assemble as assemble_context
-from library._core.runtime.voice import choose as choose_voice
+from library._core.runtime.orchestrator import (
+    orchestrate, orchestrate_for_llm,
+    detect_mode, should_use_kb,
+)
 
 
 class AgentRuntime:
-    """Composable runtime assembled from pluggable components."""
+    """Runtime assembled from a StateStore.
 
-    def __init__(
-        self,
-        retriever: Retriever,
-        selector: FrameSelector,
-        synthesizer: Synthesizer,
-        renderer: Renderer,
-        store: StateStore,
-    ):
-        self.retriever = retriever
-        self.selector = selector
-        self.synthesizer = synthesizer
-        self.renderer = renderer
+    ``handle()`` delegates to the shared orchestrator pipeline.
+    """
+
+    def __init__(self, store: StateStore):
         self.store = store
-
-    # -- mode / kb dispatch (still heuristic, isolated for future swap) ----
 
     @staticmethod
     def detect_mode(question: str) -> str:
-        q = question.lower()
-        practical_triggers = ['что мне делать', 'что делать', 'next step',
-                              'практически', 'как мне', 'что дальше']
-        deep_triggers = ['почему', 'разбери', 'объясни', 'помоги понять',
-                         'что со мной происходит', 'в чём корень']
-        if any(x in q for x in deep_triggers):
-            return 'deep'
-        if any(x in q for x in practical_triggers):
-            return 'practical'
-        if len(q) < 80:
-            return 'practical'
-        return 'deep'
+        return detect_mode(question)
 
     @staticmethod
     def should_use_kb(question: str) -> bool:
-        q = question.lower()
-        triggers = [
-            'смысл', 'дисциплин', 'обид', 'стыд', 'отношен', 'конфликт',
-            'карьер', 'призвание', 'хаос', 'вру', 'самообман',
-            'туман', 'размыт', 'плыть по течению', 'нет жизни', 'нет структуры',
-            'отклады', 'прокраст', 'жестк', 'расписан', 'график',
-        ]
-        return any(t in q for t in triggers)
-
-    # -- main entry point --------------------------------------------------
+        return should_use_kb(question)
 
     def handle(self, question: str, user_id: str = 'default') -> dict:
-        mode = self.detect_mode(question)
+        return orchestrate(question, user_id=user_id, store=self.store)
 
-        if not self.should_use_kb(question):
-            return {
-                'question': question,
-                'mode': mode,
-                'use_kb': False,
-                'confidence': 'low',
-                'action': 'answer-directly',
-                'reason': ('Question does not strongly match '
-                           'psychological/philosophical KB routes.'),
-                'continuity': read_continuity(user_id=user_id,
-                                              store=self.store),
-            }
-
-        build_user_profile(user_id=user_id, store=self.store)
-        selected = self.selector.select(question, user_id=user_id)
-        confidence = selected.get('confidence', 'low')
-        continuity = read_continuity(user_id=user_id, store=self.store)
-        progress = estimate_progress(question, user_id=user_id,
-                                     store=self.store)
-        reaction = estimate_reaction(question, user_id=user_id,
-                                     store=self.store)
-
-        if confidence == 'low':
-            return {
-                'question': question,
-                'mode': mode,
-                'use_kb': True,
-                'confidence': confidence,
-                'action': 'ask-clarifying-question',
-                'reason': ('KB route is weak; clarification preferred '
-                           'before forcing a frame.'),
-                'selection': selected,
-                'continuity': continuity,
-            }
-
-        theme_name = (selected.get('selected_theme') or {}).get('name') or ''
-        pattern_name = (selected.get('selected_pattern') or {}).get('name') or ''
-        principle_name = (selected.get('selected_principle') or {}).get('name') or ''
-        blend = selected.get('source_blend') or {}
-        source_blend_str = (f"{blend.get('primary', '')}"
-                            f"->{blend.get('secondary', '')}")
-
-        voice = choose_voice(question, theme=theme_name,
-                             user_id=user_id, store=self.store) or 'default'
-        if progress.get('recommended_voice_override'):
-            voice = progress['recommended_voice_override']
-
-        update_session(
-            question,
-            theme=theme_name,
-            pattern=pattern_name,
-            principle=principle_name,
-            source_blend=source_blend_str,
-            voice=voice,
-            goal=theme_name,
-            user_id=user_id,
-            store=self.store,
-        )
-
-        action_step = ('narrow-burden'
-                       if progress.get('recommended_response_mode') == 'narrow'
-                       else 'normal-step')
-
-        resolved_loop_summary = ''
-        if continuity.get('resolved_loops'):
-            first = continuity['resolved_loops'][0]
-            if isinstance(first, dict):
-                resolved_loop_summary = first.get('summary', '')
-            else:
-                resolved_loop_summary = str(first)
-
-        log_checkpoint({
-            'question': question,
-            'theme': theme_name,
-            'pattern': pattern_name,
-            'principle': principle_name,
-            'source_blend': source_blend_str,
-            'voice': voice,
-            'confidence': confidence,
-            'action_step': action_step,
-            'movement_estimate': progress.get('progress_state', 'unknown'),
-            'user_reaction_estimate': reaction.get('user_reaction_estimate',
-                                                   'unknown'),
-            'resolved_loop_if_any': resolved_loop_summary,
-            'session_goal': theme_name,
-            'recommended_next_mode': progress.get('recommended_response_mode',
-                                                  'normal'),
-        }, user_id=user_id, store=self.store)
-
-        primary = blend.get('primary', '')
-        progress_state = progress.get('progress_state')
-        reaction_est = reaction.get('user_reaction_estimate')
-
-        if progress_state == 'moving' and reaction_est == 'accepting':
-            outcome = 'helpful'
-        elif progress_state == 'fragile' or reaction_est == 'ambiguous':
-            outcome = 'neutral'
-        else:
-            outcome = 'resisted'
-
-        if primary:
-            update_effectiveness(source=primary, outcome=outcome,
-                                 route=theme_name, user_id=user_id,
-                                 store=self.store)
-
-        assemble_context(user_id=user_id, store=self.store)
-
-        data = self.synthesizer.synthesize(question, user_id=user_id)
-        sel = data.get('raw_selection', {})
-        theme = ((sel.get('selected_theme') or {}).get('name'))
-        pattern = ((sel.get('selected_pattern') or {}).get('name'))
-
-        from library._core.session.continuity import update as update_continuity
-        if data.get('confidence') in {'medium', 'high'}:
-            open_loop = data.get('core_problem', '')
-            update_continuity(question, theme=theme or '',
-                              pattern=pattern or '', open_loop=open_loop,
-                              user_id=user_id, store=self.store)
-
-        cont = read_continuity(user_id=user_id, store=self.store)
-        effective_mode = mode if mode in {'quick', 'practical', 'deep'} else 'deep'
-        response_text = self.renderer.render(data, cont, mode=effective_mode,
-                                             voice=voice)
-
-        return {
-            'question': question,
-            'mode': mode,
-            'use_kb': True,
-            'confidence': confidence,
-            'action': 'respond-with-kb',
-            'selection': selected,
-            'continuity': continuity,
-            'progress': progress,
-            'reaction': reaction,
-            'response': response_text,
-        }
+    def handle_for_llm(self, question: str, user_id: str = 'default') -> dict:
+        return orchestrate_for_llm(question, user_id=user_id, store=self.store)
