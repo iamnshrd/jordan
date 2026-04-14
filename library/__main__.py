@@ -19,10 +19,13 @@ import argparse
 import json
 import sys
 
+from library.logging_config import setup as setup_logging
+
 
 def cmd_run(args):
     from library._core.runtime.orchestrator import orchestrate
-    print(json.dumps(orchestrate(args.question), ensure_ascii=False, indent=2))
+    print(json.dumps(orchestrate(args.question, user_id=args.user_id),
+                     ensure_ascii=False, indent=2))
 
 
 def cmd_frame(args):
@@ -32,7 +35,8 @@ def cmd_frame(args):
 
 def cmd_respond(args):
     from library._core.runtime.respond import respond
-    print(respond(args.question, mode=args.mode, voice=args.voice))
+    print(respond(args.question, mode=args.mode, voice=args.voice,
+                  user_id=args.user_id))
 
 
 def cmd_retrieve(args):
@@ -103,7 +107,7 @@ def cmd_ingest(args):
     action = args.ingest_action
     if action == 'auto':
         from library._core.ingest.auto import ingest
-        print(json.dumps(ingest(), ensure_ascii=False, indent=2))
+        print(json.dumps(ingest(dry_run=args.dry_run), ensure_ascii=False, indent=2))
     elif action == 'book':
         from library._core.ingest.book import register
         print(json.dumps(register(args.pdf, args.text, args.status), ensure_ascii=False, indent=2))
@@ -133,6 +137,8 @@ def cmd_eval(args):
 
 def build_parser():
     parser = argparse.ArgumentParser(prog='python -m library', description='Jordan Peterson Agent CLI')
+    parser.add_argument('--user-id', dest='user_id', default='default',
+                        help='User ID for multi-tenant state isolation')
     sub = parser.add_subparsers(dest='command')
 
     p_run = sub.add_parser('run', help='Orchestrate a full response')
@@ -173,6 +179,8 @@ def build_parser():
     p_ingest.add_argument('--pdf', default='')
     p_ingest.add_argument('--text', default=None)
     p_ingest.add_argument('--status', default='pending_text_extraction')
+    p_ingest.add_argument('--dry-run', dest='dry_run', action='store_true',
+                          help='Scan files without processing')
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_eval = sub.add_parser('eval', help='Run evaluations')
@@ -183,6 +191,7 @@ def build_parser():
 
 
 def main():
+    setup_logging()
     parser = build_parser()
     args = parser.parse_args()
     if not args.command:

@@ -1,13 +1,16 @@
-"""Retrieval engine — build a response bundle from the knowledge base.
+"""Retrieval engine -- build a response bundle from the knowledge base.
 
 Restructured from: retrieve_for_prompt.py
 """
+from __future__ import annotations
+
 from library.config import (
     DB_PATH, SOURCE_ARBITRATION, QUESTION_ARCHETYPES,
-    USER_STATE, EFFECTIVENESS, DOC_SOURCE_HINTS,
+    DOC_SOURCE_HINTS, get_default_store,
 )
+from library._core.state_store import StateStore, KEY_USER_STATE, KEY_EFFECTIVENESS
 from library.db import connect, row_to_dict
-from library.utils import load_json, fts_query
+from library.utils import load_json, fts_query, timed
 
 
 THEME_KEYWORDS = {
@@ -98,7 +101,7 @@ PATTERN_KEYWORDS = {
 }
 
 
-# ── core helpers ──────────────────────────────────────────────────────
+# -- core helpers ----------------------------------------------------------
 
 def search_chunks(cur, query, limit=5):
     cur.execute(
@@ -150,11 +153,11 @@ def top_linked(cur, query, evidence_table, join_table, fk_col, name_col,
     return [row_to_dict(cur, row) for row in cur.fetchall()]
 
 
-# ── scoring & routing ─────────────────────────────────────────────────
+# -- scoring & routing -----------------------------------------------------
 
 def route_adjustments(question):
     q = question.lower()
-    adj = {'themes': {}, 'principles': {}, 'patterns': {}}
+    adj: dict = {'themes': {}, 'principles': {}, 'patterns': {}}
     for route in PROBLEM_ROUTES.values():
         if any(x in q for x in route['if_any']):
             for k, v in route.get('boost_themes', {}).items():
@@ -184,18 +187,22 @@ def score_named_rows(rows, keyword_map, question, adjustments=None):
     return scored
 
 
-# ── data loaders ──────────────────────────────────────────────────────
+# -- data loaders ----------------------------------------------------------
 
 def load_archetypes():
     return load_json(QUESTION_ARCHETYPES, default=[])
 
 
-def load_user_state():
-    return load_json(USER_STATE)
+def load_user_state(user_id: str = 'default',
+                    store: StateStore | None = None):
+    store = store or get_default_store()
+    return store.get_json(user_id, KEY_USER_STATE)
 
 
-def load_effectiveness():
-    return load_json(EFFECTIVENESS)
+def load_effectiveness_data(user_id: str = 'default',
+                            store: StateStore | None = None):
+    store = store or get_default_store()
+    return store.get_json(user_id, KEY_EFFECTIVENESS)
 
 
 def load_source_route_strength():
@@ -213,9 +220,10 @@ def load_arbitration_rules():
     return data.get('routes', []) if data else []
 
 
-# ── source preference ─────────────────────────────────────────────────
+# -- source preference -----------------------------------------------------
 
-def infer_preferred_sources(question):
+def infer_preferred_sources(question, user_id: str = 'default',
+                            store: StateStore | None = None):
     q = question.lower()
     for arch in load_archetypes():
         if any(x in q for x in arch.get('if_user_says', [])):
@@ -225,7 +233,7 @@ def infer_preferred_sources(question):
         if any(x in q for x in route.get('if_any', [])):
             return route.get('prefer',
                              ['12-rules', 'beyond-order', 'maps-of-meaning'])
-    state = load_user_state()
+    state = load_user_state(user_id=user_id, store=store)
     if state.get('dominant_theme') == 'suffering':
         return ['12-rules', 'maps-of-meaning', 'beyond-order']
     if state.get('dominant_theme') == 'meaning':
@@ -233,8 +241,10 @@ def infer_preferred_sources(question):
     return ['12-rules', 'beyond-order', 'maps-of-meaning']
 
 
-def apply_source_preference(rows, preferred_sources, question=''):
-    effect = load_effectiveness()
+def apply_source_preference(rows, preferred_sources, question='',
+                            user_id: str = 'default',
+                            store: StateStore | None = None):
+    effect = load_effectiveness_data(user_id=user_id, store=store)
     strength_map = load_source_route_strength()
     order = {name: idx for idx, name in enumerate(preferred_sources)}
     q = question.lower()
@@ -279,7 +289,7 @@ def apply_source_preference(rows, preferred_sources, question=''):
     return rows
 
 
-# ── keyword-based quote search ────────────────────────────────────────
+# -- keyword-based quote search --------------------------------------------
 
 def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
                               limit=4):
@@ -343,7 +353,7 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
     rows = [row_to_dict(cur, row) for row in cur.fetchall()]
 
     pack_preferred_sources = []
-    pack_quote_ids = set()
+    pack_quote_ids: set = set()
     for arch in load_archetypes():
         if any(x in q for x in arch.get('if_user_says', [])):
             pack_preferred_sources = arch.get('preferred_sources', [])
@@ -447,9 +457,12 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
     return rows[:limit]
 
 
-# ── main bundle builder ───────────────────────────────────────────────
+# -- main bundle builder ---------------------------------------------------
 
-def build_response_bundle(question):
+@timed('retrieve')
+def build_response_bundle(question, user_id: str = 'default',
+                          store: StateStore | None = None):
+    store = store or get_default_store()
     with connect() as conn:
         cur = conn.cursor()
 
@@ -473,7 +486,9 @@ def build_response_bundle(question):
         )
 
         adj = route_adjustments(question)
-        preferred_sources = infer_preferred_sources(question)
+        preferred_sources = infer_preferred_sources(
+            question, user_id=user_id, store=store,
+        )
 
         top_themes = score_named_rows(
             raw_themes, THEME_KEYWORDS, question, adj['themes'],

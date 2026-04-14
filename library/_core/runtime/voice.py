@@ -2,14 +2,18 @@
 
 Restructured from: choose_voice_mode.py
 """
-from library.config import USER_STATE, SESSION_STATE
-from library.utils import load_json
+from __future__ import annotations
+
+from library.config import get_default_store
+from library._core.state_store import StateStore, KEY_USER_STATE, KEY_SESSION_STATE
 
 
-def choose(question='', theme=''):
+def choose(question='', theme='', user_id: str = 'default',
+           store: StateStore | None = None):
     """Return the appropriate voice mode name for the current context."""
-    user = load_json(USER_STATE)
-    session = load_json(SESSION_STATE)
+    store = store or get_default_store()
+    user = store.get_json(user_id, KEY_USER_STATE)
+    session = store.get_json(user_id, KEY_SESSION_STATE)
     q = question.lower()
     theme = theme or session.get('working_theme', '')
 

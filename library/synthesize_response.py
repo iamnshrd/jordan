@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-import sys, os, json, argparse
+import sys, os, json, argparse, warnings
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from library._core.runtime.synthesize import synthesize
+
+warnings.warn(
+    'synthesize_response.py is deprecated. Use: python -m library respond "question"',
+    DeprecationWarning, stacklevel=2,
+)
 
 def main():
     ap = argparse.ArgumentParser()

@@ -1,12 +1,16 @@
-"""Response synthesis — combine frame, V3 query, and progress into a response bundle.
+"""Response synthesis -- combine frame, V3 query, and progress into a response bundle.
 
 Restructured from: synthesize_response.py
 Dead-code removal: first assignments to practical / longer_term that were
 immediately overwritten by db_driven_* calls have been removed.
 """
+from __future__ import annotations
+
 from library._core.runtime.frame import select_frame
 from library._core.kb.query_v3 import query_v3
 from library._core.session.progress import estimate as estimate_progress
+from library._core.state_store import StateStore
+from library.utils import timed
 
 
 # ── text maps ─────────────────────────────────────────────────────────
@@ -369,10 +373,12 @@ def unify_selection_policy(selected, bridge, next_step_v3, question):
     return policy
 
 
-def synthesize(question):
-    selected = select_frame(question)
+@timed('synthesize')
+def synthesize(question, user_id: str = 'default',
+               store: StateStore | None = None):
+    selected = select_frame(question, user_id=user_id, store=store)
     bundle = selected.get('bundle', {})
-    progress = estimate_progress(question)
+    progress = estimate_progress(question, user_id=user_id, store=store)
 
     theme_name = (selected.get('selected_theme') or {}).get('name')
     principle_name = (selected.get('selected_principle') or {}).get('name')

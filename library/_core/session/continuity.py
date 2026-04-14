@@ -1,10 +1,15 @@
-"""Continuity state — load, update, summarize, migrate.
+"""Continuity state -- load, update, summarize, migrate.
 
 Merged from: read_continuity, update_continuity, continuity_summary,
              migrate_continuity_v2.
 """
-from library.config import CONTINUITY, CONTINUITY_SUMMARY
-from library.utils import now_iso, load_json, save_json
+from __future__ import annotations
+
+from library.config import get_default_store
+from library._core.state_store import (
+    StateStore, KEY_CONTINUITY, KEY_CONTINUITY_SUMMARY,
+)
+from library.utils import now_iso
 
 
 def _sort_items(items, key='salience'):
@@ -18,33 +23,38 @@ def _sort_items(items, key='salience'):
     )
 
 
-# ── persistence ──────────────────────────────────────────────────────
+_DEFAULT_V3: dict = {
+    'version': 3,
+    'user_patterns': [],
+    'recurring_themes': [],
+    'open_loops': [],
+    'resolved_loops': [],
+    'identity_conflicts': [],
+    'relationship_loops': [],
+    'discipline_loops': [],
+    'last_updated': None,
+}
 
-def load():
-    """Load continuity.json, returning v3-structure defaults when missing."""
-    data = load_json(CONTINUITY)
+
+# -- persistence -----------------------------------------------------------
+
+def load(user_id: str = 'default', store: StateStore | None = None):
+    """Load continuity, returning v3-structure defaults when missing."""
+    store = store or get_default_store()
+    data = store.get_json(user_id, KEY_CONTINUITY)
     if data:
         return data
-    return {
-        'version': 3,
-        'user_patterns': [],
-        'recurring_themes': [],
-        'open_loops': [],
-        'resolved_loops': [],
-        'identity_conflicts': [],
-        'relationship_loops': [],
-        'discipline_loops': [],
-        'last_updated': None,
-    }
+    return dict(_DEFAULT_V3)
 
 
-def save(data):
+def save(data, user_id: str = 'default', store: StateStore | None = None):
     """Persist continuity with a refreshed last_updated timestamp."""
+    store = store or get_default_store()
     data['last_updated'] = now_iso()
-    save_json(CONTINUITY, data)
+    store.put_json(user_id, KEY_CONTINUITY, data)
 
 
-# ── item helpers ─────────────────────────────────────────────────────
+# -- item helpers ----------------------------------------------------------
 
 def bump_named(items, name, salience=1):
     """Increment or create a named item (theme / pattern)."""
@@ -123,12 +133,13 @@ def resolve_loop(data, summary):
             return
 
 
-# ── main update ──────────────────────────────────────────────────────
+# -- main update -----------------------------------------------------------
 
 def update(question, theme=None, pattern=None, open_loop=None,
-           resolved_loop=None):
-    """Full continuity update cycle — returns the updated data dict."""
-    data = load()
+           resolved_loop=None, user_id: str = 'default',
+           store: StateStore | None = None):
+    """Full continuity update cycle -- returns the updated data dict."""
+    data = load(user_id=user_id, store=store)
     if data.get('version') != 3:
         data['version'] = 3
         data.setdefault('resolved_loops', [])
@@ -138,15 +149,16 @@ def update(question, theme=None, pattern=None, open_loop=None,
     if resolved_loop:
         resolve_loop(data, resolved_loop)
     route_bucket(data, theme, pattern, open_loop)
-    save(data)
+    save(data, user_id=user_id, store=store)
     return data
 
 
-# ── read (sorted top items) ─────────────────────────────────────────
+# -- read (sorted top items) -----------------------------------------------
 
-def read():
+def read(user_id: str = 'default', store: StateStore | None = None):
     """Return continuity with top-5 sorted slices per bucket."""
-    data = load_json(CONTINUITY)
+    store = store or get_default_store()
+    data = store.get_json(user_id, KEY_CONTINUITY)
     return {
         'top_themes': _sort_items(data.get('recurring_themes', []))[:5],
         'top_patterns': _sort_items(data.get('user_patterns', []))[:5],
@@ -164,11 +176,12 @@ def read():
     }
 
 
-# ── summarize ────────────────────────────────────────────────────────
+# -- summarize -------------------------------------------------------------
 
-def summarize():
-    """Write continuity_summary.json and return the summary dict."""
-    data = load_json(CONTINUITY)
+def summarize(user_id: str = 'default', store: StateStore | None = None):
+    """Write continuity_summary and return the summary dict."""
+    store = store or get_default_store()
+    data = store.get_json(user_id, KEY_CONTINUITY)
     summary = {
         'top_themes': _sort_items(data.get('recurring_themes', []))[:5],
         'top_patterns': _sort_items(data.get('user_patterns', []))[:5],
@@ -185,11 +198,11 @@ def summarize():
         )[:5],
         'last_updated': data.get('last_updated'),
     }
-    save_json(CONTINUITY_SUMMARY, summary)
+    store.put_json(user_id, KEY_CONTINUITY_SUMMARY, summary)
     return summary
 
 
-# ── migrate v1 → v2 ─────────────────────────────────────────────────
+# -- migrate v1 -> v2 -----------------------------------------------------
 
 def _wrap_name_list(values):
     out = []
@@ -218,12 +231,13 @@ def _wrap_open_loops(values):
     return out
 
 
-def migrate_v2():
+def migrate_v2(user_id: str = 'default', store: StateStore | None = None):
     """Migrate continuity from v1 (plain strings) to v2 (rich objects).
 
     Returns the migrated data or ``'already_v2'`` if nothing to do.
     """
-    old = load_json(CONTINUITY, default={
+    store = store or get_default_store()
+    old = store.get_json(user_id, KEY_CONTINUITY, default={
         'user_patterns': [],
         'recurring_themes': [],
         'open_loops': [],
@@ -241,5 +255,5 @@ def migrate_v2():
         'discipline_loops': [],
         'last_updated': old.get('last_updated') or now_iso(),
     }
-    save_json(CONTINUITY, new)
+    store.put_json(user_id, KEY_CONTINUITY, new)
     return new

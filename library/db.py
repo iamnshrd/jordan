@@ -2,8 +2,10 @@
 """SQLite helpers shared across the project.
 
 Provides a context-managed connection factory, safe table listing,
-and common row-conversion utilities.
+common row-conversion utilities, and automatic schema migration on connect.
 """
+from __future__ import annotations
+
 import sqlite3
 from contextlib import contextmanager
 
@@ -25,11 +27,24 @@ ALLOWED_TABLES = frozenset({
 })
 
 
+def ensure_schema(conn):
+    """Run pending migrations if the DB is behind the latest version."""
+    from library._core.kb.migrate import LATEST_VERSION, get_schema_version, migrate_up
+    if get_schema_version(conn) < LATEST_VERSION:
+        migrate_up(conn)
+
+
 @contextmanager
-def connect(db_path=None):
-    """Yield a sqlite3 connection, committing on success."""
+def connect(db_path=None, auto_migrate: bool = True):
+    """Yield a sqlite3 connection, committing on success.
+
+    When *auto_migrate* is True (default), ``ensure_schema`` is called once
+    after opening the connection to bring the DB up to the latest version.
+    """
     conn = sqlite3.connect(db_path or DB_PATH)
     try:
+        if auto_migrate:
+            ensure_schema(conn)
         yield conn
         conn.commit()
     except Exception:

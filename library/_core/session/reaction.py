@@ -2,16 +2,22 @@
 
 Refactored from: estimate_user_reaction.
 """
-from library.config import CHECKPOINTS, REACTION_ESTIMATE
-from library.utils import load_checkpoints, save_json
+from __future__ import annotations
+
+from library.config import get_default_store
+from library._core.state_store import (
+    StateStore, KEY_CHECKPOINTS, KEY_REACTION_ESTIMATE,
+)
 
 
-def estimate(question=''):
+def estimate(question='', user_id: str = 'default',
+             store: StateStore | None = None):
     """Estimate user reaction from recent checkpoints.
 
-    Writes user_reaction_estimate.json and returns the result dict.
+    Writes user_reaction_estimate and returns the result dict.
     """
-    rows = load_checkpoints(CHECKPOINTS)
+    store = store or get_default_store()
+    rows = store.read_jsonl(user_id, KEY_CHECKPOINTS)
 
     if question:
         recent = [r for r in rows if r.get('question') == question][-3:]
@@ -29,5 +35,5 @@ def estimate(question=''):
             reaction = 'ambiguous'
         result = {'question': question, 'user_reaction_estimate': reaction}
 
-    save_json(REACTION_ESTIMATE, result)
+    store.put_json(user_id, KEY_REACTION_ESTIMATE, result)
     return result

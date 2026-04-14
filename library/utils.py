@@ -1,11 +1,64 @@
 #!/usr/bin/env python3
 """Shared utility functions used across multiple modules."""
+from __future__ import annotations
+
 import json
 import logging
+import time
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 
 log = logging.getLogger('jordan')
+
+
+# -- timing / observability ------------------------------------------------
+
+_timing_ctx: threading.local = threading.local()
+
+
+@contextmanager
+def timing_context():
+    """Context manager that collects ``@timed`` measurements.
+
+    Usage::
+
+        with timing_context() as timings:
+            result = orchestrate(question)
+        print(timings)   # {'retrieve': 12.3, 'synthesize': 8.1, ...}
+    """
+    prev = getattr(_timing_ctx, 'timings', None)
+    _timing_ctx.timings = {}
+    try:
+        yield _timing_ctx.timings
+    finally:
+        _timing_ctx.timings = prev
+
+
+def _record_timing(stage: str, elapsed_ms: float):
+    timings = getattr(_timing_ctx, 'timings', None)
+    if timings is not None:
+        timings[stage] = round(elapsed_ms, 2)
+
+
+def timed(stage: str):
+    """Decorator that logs and records execution time for *stage*."""
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            t0 = time.monotonic()
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                elapsed_ms = (time.monotonic() - t0) * 1000
+                _record_timing(stage, elapsed_ms)
+                log.debug('%s completed in %.1f ms', stage,
+                          elapsed_ms,
+                          extra={'stage': stage, 'elapsed_ms': round(elapsed_ms, 2)})
+        return wrapper
+    return decorator
 
 
 def now_iso():

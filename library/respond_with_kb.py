@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-import sys, os, argparse
+import sys, os, argparse, warnings
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from library._core.runtime.respond import respond
+
+warnings.warn(
+    'respond_with_kb.py is deprecated. Use: python -m library respond "question"',
+    DeprecationWarning, stacklevel=2,
+)
 
 def main():
     ap = argparse.ArgumentParser()

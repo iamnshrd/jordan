@@ -1,8 +1,12 @@
-"""Frame selection — choose theme, principle, pattern for a question.
+"""Frame selection -- choose theme, principle, pattern for a question.
 
 Restructured from: select_frame.py
 """
+from __future__ import annotations
+
 from library._core.runtime.retrieve import build_response_bundle
+from library._core.state_store import StateStore
+from library.utils import timed
 
 
 def infer_route_name(question):
@@ -140,8 +144,10 @@ def choose_pattern(bundle, question):
     return (rows[0], 'top-score fallback') if rows else (None, 'no pattern')
 
 
-def select_frame(question):
-    bundle = build_response_bundle(question)
+@timed('frame')
+def select_frame(question, user_id: str = 'default',
+                 store: StateStore | None = None):
+    bundle = build_response_bundle(question, user_id=user_id, store=store)
     theme, theme_reason = choose_theme(bundle, question)
     principle, principle_reason = choose_principle(bundle, question)
     pattern, pattern_reason = choose_pattern(bundle, question)

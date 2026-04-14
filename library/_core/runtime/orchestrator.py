@@ -1,8 +1,10 @@
-"""Runtime orchestrator — coordinate all runtime modules via direct imports.
+"""Runtime orchestrator -- coordinate all runtime modules via direct imports.
 
 Restructured from: runtime_orchestrator.py
 All subprocess calls replaced with direct Python imports.
 """
+from __future__ import annotations
+
 from library._core.runtime.frame import select_frame
 from library._core.runtime.respond import respond
 from library._core.runtime.voice import choose as choose_voice
@@ -13,6 +15,9 @@ from library._core.session.progress import estimate as estimate_progress
 from library._core.session.reaction import estimate as estimate_reaction
 from library._core.session.effectiveness import update as update_effectiveness
 from library._core.session.context import assemble as assemble_context
+from library._core.state_store import StateStore
+from library.config import get_default_store
+from library.utils import timing_context
 
 
 def detect_mode(question):
@@ -41,7 +46,18 @@ def should_use_kb(question):
     return any(t in q for t in triggers)
 
 
-def orchestrate(question):
+def orchestrate(question, user_id: str = 'default',
+                store: StateStore | None = None):
+    store = store or get_default_store()
+
+    with timing_context() as timings:
+        result = _orchestrate_inner(question, user_id=user_id, store=store)
+    result['_timings'] = timings
+    return result
+
+
+def _orchestrate_inner(question, user_id: str = 'default',
+                       store: StateStore | None = None):
     mode = detect_mode(question)
 
     if not should_use_kb(question):
@@ -53,15 +69,15 @@ def orchestrate(question):
             'action': 'answer-directly',
             'reason': ('Question does not strongly match '
                        'psychological/philosophical KB routes.'),
-            'continuity': read_continuity(),
+            'continuity': read_continuity(user_id=user_id, store=store),
         }
 
-    build_user_profile()
-    selected = select_frame(question)
+    build_user_profile(user_id=user_id, store=store)
+    selected = select_frame(question, user_id=user_id, store=store)
     confidence = selected.get('confidence', 'low')
-    continuity = read_continuity()
-    progress = estimate_progress(question)
-    reaction = estimate_reaction(question)
+    continuity = read_continuity(user_id=user_id, store=store)
+    progress = estimate_progress(question, user_id=user_id, store=store)
+    reaction = estimate_reaction(question, user_id=user_id, store=store)
 
     if confidence == 'low':
         return {
@@ -83,7 +99,8 @@ def orchestrate(question):
     source_blend_str = (f"{blend.get('primary', '')}"
                         f"->{blend.get('secondary', '')}")
 
-    voice = choose_voice(question, theme=theme_name) or 'default'
+    voice = choose_voice(question, theme=theme_name,
+                         user_id=user_id, store=store) or 'default'
     if progress.get('recommended_voice_override'):
         voice = progress['recommended_voice_override']
 
@@ -95,6 +112,8 @@ def orchestrate(question):
         source_blend=source_blend_str,
         voice=voice,
         goal=theme_name,
+        user_id=user_id,
+        store=store,
     )
 
     action_step = ('narrow-burden'
@@ -125,7 +144,7 @@ def orchestrate(question):
         'session_goal': theme_name,
         'recommended_next_mode': progress.get('recommended_response_mode',
                                               'normal'),
-    })
+    }, user_id=user_id, store=store)
 
     primary = blend.get('primary', '')
     progress_state = progress.get('progress_state')
@@ -140,12 +159,13 @@ def orchestrate(question):
 
     if primary:
         update_effectiveness(source=primary, outcome=outcome,
-                             route=theme_name)
+                             route=theme_name, user_id=user_id, store=store)
 
-    assemble_context()
+    assemble_context(user_id=user_id, store=store)
 
     effective_mode = mode if mode in {'quick', 'practical', 'deep'} else 'deep'
-    response = respond(question, mode=effective_mode, voice=voice)
+    response = respond(question, mode=effective_mode, voice=voice,
+                       user_id=user_id, store=store)
 
     return {
         'question': question,

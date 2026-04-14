@@ -2,16 +2,24 @@
 
 Merged from: update_session_state, user_state_profile.
 """
-from library.config import SESSION_STATE, USER_STATE, CONTINUITY
-from library.utils import now_iso, load_json, save_json
+from __future__ import annotations
+
+from library.config import get_default_store
+from library._core.state_store import (
+    StateStore, KEY_SESSION_STATE, KEY_USER_STATE, KEY_CONTINUITY,
+)
+from library.utils import now_iso
 
 
 def update_session(question, theme='', pattern='', principle='',
-                   source_blend='', voice='default', goal=''):
-    """Write session_state.json with the current turn context.
+                   source_blend='', voice='default', goal='',
+                   user_id: str = 'default',
+                   store: StateStore | None = None):
+    """Write session_state with the current turn context.
 
     Returns the data dict written to disk.
     """
+    store = store or get_default_store()
     data = {
         'question': question,
         'working_theme': theme,
@@ -22,7 +30,7 @@ def update_session(question, theme='', pattern='', principle='',
         'session_goal': goal,
         'updated_at': now_iso(),
     }
-    save_json(SESSION_STATE, data)
+    store.put_json(user_id, KEY_SESSION_STATE, data)
     return data
 
 
@@ -36,9 +44,11 @@ def _top_name(items):
     return items[0].get('name') or items[0].get('summary')
 
 
-def build_user_profile():
-    """Derive user_state.json from continuity.  Returns the profile dict."""
-    data = load_json(CONTINUITY)
+def build_user_profile(user_id: str = 'default',
+                       store: StateStore | None = None):
+    """Derive user_state from continuity.  Returns the profile dict."""
+    store = store or get_default_store()
+    data = store.get_json(user_id, KEY_CONTINUITY)
     open_loops = data.get('open_loops', [])
     resolved = data.get('resolved_loops', [])
     profile = {
@@ -59,5 +69,5 @@ def build_user_profile():
             else 'default'
         ),
     }
-    save_json(USER_STATE, profile)
+    store.put_json(user_id, KEY_USER_STATE, profile)
     return profile

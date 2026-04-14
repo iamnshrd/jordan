@@ -2,17 +2,23 @@
 
 Refactored from: estimate_progress_state.
 """
-from library.config import CHECKPOINTS, CONTINUITY_SUMMARY, PROGRESS_STATE
-from library.utils import load_json, save_json, load_checkpoints
+from __future__ import annotations
+
+from library.config import get_default_store
+from library._core.state_store import (
+    StateStore, KEY_CHECKPOINTS, KEY_CONTINUITY_SUMMARY, KEY_PROGRESS_STATE,
+)
 
 
-def estimate(question=''):
+def estimate(question='', user_id: str = 'default',
+             store: StateStore | None = None):
     """Compute progress state from checkpoints + continuity summary.
 
-    Writes progress_state.json and returns the result dict.
+    Writes progress_state and returns the result dict.
     """
-    checkpoints = load_checkpoints(CHECKPOINTS)
-    cont = load_json(CONTINUITY_SUMMARY)
+    store = store or get_default_store()
+    checkpoints = store.read_jsonl(user_id, KEY_CHECKPOINTS)
+    cont = store.get_json(user_id, KEY_CONTINUITY_SUMMARY)
 
     if question:
         same = [c for c in checkpoints if c.get('question') == question]
@@ -52,5 +58,5 @@ def estimate(question=''):
         'recommended_voice_override': recommended,
         'recommended_response_mode': 'narrow' if state == 'stuck' else 'normal',
     }
-    save_json(PROGRESS_STATE, out)
+    store.put_json(user_id, KEY_PROGRESS_STATE, out)
     return out
