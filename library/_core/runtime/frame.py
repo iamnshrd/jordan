@@ -33,11 +33,11 @@ def choose_theme(bundle, question):
 
     if any(x in q for x in ['отношен', 'партнер', 'конфликт', 'жена', 'муж',
                              'ребен', 'дет', 'воспит', 'родител', 'тирана']):
-        if any(x in q for x in ['обид', 'скрытая обида', 'невысказан']):
-            for preferred in ['responsibility', 'resentment', 'truth']:
+        if any(x in q for x in ['обид', 'скрытая обида', 'невысказан', 'цепляем друг друга', 'цепляем']):
+            for preferred in ['responsibility', 'truth', 'resentment']:
                 for row in rows:
                     if row['name'] == preferred:
-                        return row, 'relationship tie-break'
+                        return row, 'relationship resentment tie-break'
         if any(x in q for x in ['ребен', 'дет', 'воспит', 'родител',
                                  'тирана']):
             for preferred in ['responsibility', 'order-and-chaos', 'truth']:
@@ -49,8 +49,8 @@ def choose_theme(bundle, question):
                 if row['name'] == preferred:
                     return row, 'relationship tie-break'
 
-    if any(x in q for x in ['стыд', 'позор', 'отвращение к себе', 'никчем']):
-        for preferred in ['suffering', 'truth', 'responsibility']:
+    if any(x in q for x in ['стыд', 'позор', 'отвращение к себе', 'никчем', 'ненавижу себя', 'ненависть к себе', 'self-contempt']):
+        for preferred in ['suffering', 'responsibility', 'truth']:
             for row in rows:
                 if row['name'] == preferred:
                     return row, 'shame tie-break'
@@ -93,9 +93,9 @@ def choose_principle(bundle, question):
                 if row['name'] == preferred:
                     return row, 'relationship tie-break'
 
-    if any(x in q for x in ['стыд', 'позор', 'отвращение к себе', 'никчем']):
-        for preferred in ['tell-the-truth-or-at-least-dont-lie',
-                          'take-responsibility-before-blame']:
+    if any(x in q for x in ['стыд', 'позор', 'отвращение к себе', 'никчем', 'ненавижу себя', 'ненависть к себе', 'self-contempt']):
+        for preferred in ['take-responsibility-before-blame',
+                          'tell-the-truth-or-at-least-dont-lie']:
             for row in rows:
                 if row['name'] == preferred:
                     return row, 'shame tie-break'
@@ -125,6 +125,12 @@ def choose_pattern(bundle, question):
             for row in rows:
                 if row['name'] == preferred:
                     return row, 'avoidance tie-break'
+
+    if any(x in q for x in ['отношен', 'партнер', 'конфликт', 'жена', 'муж']) and any(x in q for x in ['обид', 'гореч', 'невысказан', 'цепляем']):
+        for preferred in ['resentment-loop', 'avoidance-loop']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'relationship resentment tie-break'
 
     if any(x in q for x in ['обид', 'гореч', 'злость']):
         for preferred in ['resentment-loop']:

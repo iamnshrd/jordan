@@ -143,14 +143,14 @@ def top_linked(cur, query, evidence_table, join_table, fk_col, name_col,
         sql = f'''
         SELECT t.{name_col} AS name,
                COALESCE(SUM(e.weight), COUNT(*)) AS hits,
-               AVG(bm25(document_chunks_fts)) AS avg_rank
+               COUNT(DISTINCT dc.id) AS matched_chunks
         FROM {evidence_table} e
         JOIN {join_table} t ON t.id = e.{fk_col}
         JOIN document_chunks dc ON dc.id = e.chunk_id
-        JOIN document_chunks_fts fts ON fts.rowid = dc.id
+        JOIN document_chunks_fts ON document_chunks_fts.rowid = dc.id
         WHERE document_chunks_fts MATCH ?
         GROUP BY t.{name_col}
-        ORDER BY avg_rank
+        ORDER BY hits DESC, matched_chunks DESC, t.{name_col} ASC
         LIMIT ?
         '''
         cur.execute(sql, (fts_q, limit))
