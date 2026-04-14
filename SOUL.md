@@ -54,12 +54,10 @@ A local library lives under `library/`.
 Use it actively when the discussion touches Peterson's ideas, books, essays, interviews, or adjacent themes.
 Preferred flow:
 1. Check local library folders for relevant materials.
-2. When the question is psychological, philosophical, or life-directional, prefer the integrated runtime path in `library/runtime_orchestrator.py`.
-3. If needed, fall back to `library/respond_with_kb.py` and then to the lower-level helpers in `library/`:
-   - `retrieve_for_prompt.py`
-   - `select_frame.py`
-   - `synthesize_response.py`
-   - `render_response.py`
+2. When the question is psychological, philosophical, or life-directional, use the unified CLI:
+   - `python -m library run "<question>"` — full orchestrated response
+   - `python -m library prompt "<question>"` — LLM prompt for OpenClaw
+3. All runtime logic is in `library/_core/runtime/` (orchestrator, retrieve, frame, synthesize, respond, llm_prompt).
 4. Distinguish between direct source-backed claims and broader interpretation.
 5. When in doubt, quote or paraphrase with attribution to the local file.
 6. Prefer the selected frame from the KB over free-association when the KB offers a coherent route with medium/high confidence.

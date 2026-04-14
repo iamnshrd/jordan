@@ -1,23 +1,18 @@
-"""Frame selection — choose theme, principle, pattern for a question.
+"""Frame selection -- choose theme, principle, pattern for a question.
 
 Restructured from: select_frame.py
 """
+from __future__ import annotations
+
 from library._core.runtime.retrieve import build_response_bundle
+from library._core.state_store import StateStore
+from library.utils import timed
 
 
 def infer_route_name(question):
-    q = question.lower()
-    if any(x in q for x in ['стыд', 'позор', 'отвращение к себе', 'никчем']):
-        return 'shame-self-contempt'
-    if any(x in q for x in ['отношен', 'партнер', 'конфликт', 'жена', 'муж', 'брак']):
-        return 'relationship-conflict'
-    if any(x in q for x in ['карьер', 'призвание', 'путь', 'работ', 'туман', 'размыт', 'плыть по течению', 'нет жизни', 'нет структуры']):
-        return 'career-vocation'
-    if any(x in q for x in ['отклады', 'прокраст', 'не могу начать', 'жестк', 'расписан', 'график']):
-        return 'avoidance-paralysis'
-    if any(x in q for x in ['обид', 'гореч', 'злость', 'несправед']):
-        return 'resentment'
-    return 'general'
+    """Delegate to canonical route registry."""
+    from library._core.runtime.routes import infer_route
+    return infer_route(question)
 
 
 def choose_theme(bundle, question):
@@ -140,17 +135,24 @@ def choose_pattern(bundle, question):
     return (rows[0], 'top-score fallback') if rows else (None, 'no pattern')
 
 
-def select_frame(question):
-    bundle = build_response_bundle(question)
+@timed('frame')
+def select_frame(question, user_id: str = 'default',
+                 store: StateStore | None = None):
+    bundle = build_response_bundle(question, user_id=user_id, store=store)
     theme, theme_reason = choose_theme(bundle, question)
     principle, principle_reason = choose_principle(bundle, question)
     pattern, pattern_reason = choose_pattern(bundle, question)
 
-    confidence = 'medium'
-    if (theme_reason != 'top-score fallback'
-            and principle_reason != 'top-score fallback'
-            and pattern_reason != 'top-score fallback'):
+    has_empty = any(r.startswith('no ') for r in
+                     (theme_reason, principle_reason, pattern_reason))
+    all_specific = all(r != 'top-score fallback' for r in
+                       (theme_reason, principle_reason, pattern_reason))
+    if has_empty:
+        confidence = 'low'
+    elif all_specific:
         confidence = 'high'
+    else:
+        confidence = 'medium'
 
     preferred_sources = bundle.get('preferred_sources')
     source_blend = None

@@ -1,24 +1,38 @@
-"""Respond with KB — synthesize, render, and update continuity.
+"""Respond with KB -- synthesize, render, and update continuity.
 
 Restructured from: respond_with_kb.py
 """
+from __future__ import annotations
+
 from library._core.runtime.synthesize import synthesize
 from library._core.session.continuity import update as update_continuity, load as load_continuity
+from library._core.state_store import StateStore
 from library.config import VOICE_MODES
-from library.utils import load_json
+from library.utils import load_json, timed
+
+
+_voice_modes_cache: dict | None = None
+
+_VOICE_FALLBACK = {
+    'opening': 'Сначала нужно точно назвать, что здесь ломается.',
+    'pattern': 'Под этим, похоже, работает следующий паттерн.',
+    'responsibility': 'А значит, избегаемая ответственность выглядит примерно так.',
+    'step': 'Следующий практический шаг такой.',
+    'longer': 'А более глубокая коррекция выглядит так.',
+}
 
 
 def load_voice(mode_name='default'):
-    data = load_json(VOICE_MODES)
-    if data:
-        return data.get(mode_name) or data.get('default')
-    return {
-        'opening': 'Сначала нужно точно назвать, что здесь ломается.',
-        'pattern': 'Под этим, похоже, работает следующий паттерн.',
-        'responsibility': 'А значит, избегаемая ответственность выглядит примерно так.',
-        'step': 'Следующий практический шаг такой.',
-        'longer': 'А более глубокая коррекция выглядит так.',
-    }
+    global _voice_modes_cache
+    if _voice_modes_cache is None:
+        raw = load_json(VOICE_MODES) or {}
+        _voice_modes_cache = raw if isinstance(raw, dict) else {}
+    if _voice_modes_cache:
+        entry = _voice_modes_cache.get(mode_name) or _voice_modes_cache.get('default')
+        if isinstance(entry, dict):
+            return {**_VOICE_FALLBACK, **entry}
+        return _VOICE_FALLBACK
+    return _VOICE_FALLBACK
 
 
 def render_quick(data):
@@ -45,9 +59,9 @@ def render_practical(data):
 
 def render_continuity_block(continuity):
     lines = []
-    patterns = continuity.get('user_patterns', [])
-    themes = continuity.get('recurring_themes', [])
-    resolved = continuity.get('resolved_loops', [])
+    patterns = continuity.get('user_patterns') or []
+    themes = continuity.get('recurring_themes') or []
+    resolved = continuity.get('resolved_loops') or []
     if patterns or themes or resolved:
         lines.append('')
         lines.append('Контекст continuity:')
@@ -114,12 +128,16 @@ def render(data, continuity, mode='deep', voice_mode='default'):
     return render_deep(data, continuity, voice_mode=voice_mode)
 
 
-def respond(question, mode='deep', voice='default'):
-    """Main entry point — synthesize, update continuity, render.
+@timed('respond')
+def respond(question, mode='deep', voice='default',
+            user_id: str = 'default', store: StateStore | None = None,
+            frame: dict | None = None, progress: dict | None = None):
+    """Main entry point -- synthesize, update continuity, render.
 
     Returns the rendered text string.
     """
-    data = synthesize(question)
+    data = synthesize(question, user_id=user_id, store=store,
+                      frame=frame, progress=progress)
     selected = data.get('raw_selection', {})
     theme = ((selected.get('selected_theme') or {}).get('name'))
     pattern = ((selected.get('selected_pattern') or {}).get('name'))
@@ -127,7 +145,7 @@ def respond(question, mode='deep', voice='default'):
     if data.get('confidence') in {'medium', 'high'}:
         open_loop = data.get('core_problem', '')
         update_continuity(question, theme=theme or '', pattern=pattern or '',
-                          open_loop=open_loop)
+                          open_loop=open_loop, user_id=user_id, store=store)
 
-    continuity = load_continuity()
+    continuity = load_continuity(user_id=user_id, store=store)
     return render(data, continuity, mode=mode, voice_mode=voice)

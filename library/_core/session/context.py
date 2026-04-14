@@ -2,20 +2,26 @@
 
 Refactored from: assemble_context_graph.
 """
-from library.config import CONTINUITY, SESSION_STATE, EFFECTIVENESS, CONTEXT_GRAPH
-from library.utils import load_json, save_json
+from __future__ import annotations
+
+from library.config import get_default_store
+from library._core.state_store import (
+    StateStore, KEY_CONTINUITY, KEY_SESSION_STATE,
+    KEY_EFFECTIVENESS, KEY_CONTEXT_GRAPH,
+)
 
 
-def assemble():
+def assemble(user_id: str = 'default', store: StateStore | None = None):
     """Build context graph from continuity, session state, and effectiveness.
 
-    Writes context_graph.json and returns the graph dict.
+    Writes context_graph and returns the graph dict.
     """
-    cont = load_json(CONTINUITY)
-    session = load_json(SESSION_STATE)
-    effect = load_json(EFFECTIVENESS)
+    store = store or get_default_store()
+    cont = store.get_json(user_id, KEY_CONTINUITY)
+    session = store.get_json(user_id, KEY_SESSION_STATE)
+    effect = store.get_json(user_id, KEY_EFFECTIVENESS)
 
-    graph = {
+    graph: dict = {
         'theme_links': [],
         'pattern_links': [],
         'source_links': [],
@@ -24,12 +30,12 @@ def assemble():
 
     themes = [
         x.get('name')
-        for x in cont.get('recurring_themes', [])[:5]
+        for x in (cont.get('recurring_themes') or [])[:5]
         if isinstance(x, dict)
     ]
     patterns = [
         x.get('name')
-        for x in cont.get('user_patterns', [])[:5]
+        for x in (cont.get('user_patterns') or [])[:5]
         if isinstance(x, dict)
     ]
 
@@ -51,5 +57,5 @@ def assemble():
                 ),
             })
 
-    save_json(CONTEXT_GRAPH, graph)
+    store.put_json(user_id, KEY_CONTEXT_GRAPH, graph)
     return graph

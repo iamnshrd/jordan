@@ -2,20 +2,19 @@
 
 Use this to maintain personal continuity for the Jordan Peterson–style agent.
 
-## File
-- `../workspace/continuity.json`
+## Storage
+Continuity data is managed via `StateStore` and persisted in `workspace/continuity.json`.
 
 ## Track
 - recurring themes
 - recurring user patterns
 - open loops / unresolved burdens
 
-## Update helper
-```bash
-python3 update_continuity.py "<question>" --theme <theme> --pattern <pattern> --open-loop "<summary>"
-```
+## Usage
+Continuity is automatically updated by the orchestrator during `python -m library run`.
+The relevant logic lives in `library/_core/session/continuity.py`.
 
-## When to update
+## When continuity updates
 - when the same issue appears again
 - when the user reveals a recurring burden
 - when a theme/pattern becomes stable across multiple conversations

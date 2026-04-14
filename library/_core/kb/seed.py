@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Seed data for the V3 knowledge base: routes, bridges, steps, motifs, quality, packs."""
-from library.config import DB_PATH
 from library.db import connect, get_id
 
 # ── seed_v3 data ─────────────────────────────────────────────────────────────
@@ -18,6 +17,10 @@ BRIDGES = [
     ('career-bridge', 'meaning', 'aimlessness', 'Проблема не только в тумане, а в отсутствии выбранного бремени.', 'Ты избегаешь ответственности за выбор направления.', 'Выбери одно серьёзное обязательство на ближайший цикл.', 'Дальше нужно строить идентичность вокруг добровольно принятой ответственности.', 'hard', 'manual v3 seed'),
     ('shame-bridge', 'suffering', 'avoidance-loop', 'Здесь есть не просто боль, а саморазрушительное отождествление себя с провалом.', 'Ты избегаешь точного признания поступка, заменяя его тотальным осуждением себя.', 'Назови один конкретный проступок и один конкретный ремонтный шаг.', 'Долгосрочно нужно отделить вину от самоаннигиляции.', 'reflective', 'manual v3 seed'),
     ('relationship-bridge', 'responsibility', 'resentment-loop', 'Здесь копится не только конфликт, но и невысказанная обида.', 'Ты избегаешь прямого разговора и ясной границы.', 'Сформулируй один упрёк и одну границу без театрализованной вражды.', 'Дальше отношения держатся только на правде, переговорах и дисциплине.', 'default', 'manual v3 seed'),
+    ('addiction-bridge', 'order-and-chaos', 'avoidance-loop', 'Здесь хаос не снаружи — он внутри, и зависимость стала единственным регулятором.', 'Ты перестал выстраивать внутренний порядок и отдал контроль суррогатному успокоению.', 'Восстанови одну рутину, которая не зависит от вещества или привычки.', 'Долгосрочно нужно заново строить структуру дня вокруг добровольной дисциплины, а не вокруг утоления.', 'hard', 'manual v3 bridge expansion'),
+    ('parenting-bridge', 'responsibility', 'avoidance-loop', 'Здесь есть не просто конфликт с ребёнком, а уклонение от границ из страха стать тираном.', 'Ты подменяешь ответственность за структуру тревогой за отношения.', 'Назови одну границу, которую ты не обозначаешь, и обозначь её сегодня без объяснений на три абзаца.', 'Долгосрочно ребёнку нужна не мягкость, а предсказуемый порядок с ясными правилами.', 'default', 'manual v3 bridge expansion'),
+    ('avoidance-bridge', 'order-and-chaos', 'avoidance-loop', 'Проблема не в мотивации, а в том, что структура распалась и каждый шаг кажется одинаково бессмысленным.', 'Ты ждёшь вдохновения вместо дисциплины и путаешь бездействие с обдумыванием.', 'Составь список из трёх дел, которые ты откладываешь, и сделай первое, не дожидаясь настроения.', 'Долгосрочно нужно приучить себя к тому, что действие предшествует мотивации, а не наоборот.', 'hard', 'manual v3 bridge expansion'),
+    ('self-deception-bridge', 'truth', 'avoidance-loop', 'Проблема не в незнании, а в том, что ты уже знаешь правду, но отказываешься её назвать.', 'Ты защищаешь версию реальности, которая удобна, но разрушительна.', 'Запиши одну вещь, которую ты точно знаешь, но не называешь вслух.', 'Долгосрочно нужно перестроить отношение к правде: не как к оружию, а как к фундаменту.', 'reflective', 'manual v3 bridge expansion'),
 ]
 
 NEXT_STEPS = [
@@ -36,6 +39,10 @@ ARCHETYPE_INTERVENTIONS = [
     ('career-vocation', 'narrow-burden', 'manual v3 seed'),
     ('shame-self-contempt', 'separate-guilt-from-identity', 'manual v3 seed'),
     ('relationship-maintenance', 'truthful-negotiation', 'manual v3 seed'),
+    ('addiction-chaos', 'narrow-burden', 'manual v3 bridge expansion'),
+    ('parenting-overprotection', 'truthful-negotiation', 'manual v3 bridge expansion'),
+    ('avoidance-paralysis', 'narrow-burden', 'manual v3 bridge expansion'),
+    ('self-deception', 'separate-guilt-from-identity', 'manual v3 bridge expansion'),
 ]
 
 THEME_STEP_LINKS = [
@@ -73,6 +80,10 @@ CONFIDENCE_ROWS = [
     ('bridge', 'career-bridge', 'high', 'manual-curated', 2, 1, 'manual v3 confidence'),
     ('bridge', 'shame-bridge', 'high', 'manual-curated', 2, 1, 'manual v3 confidence'),
     ('bridge', 'relationship-bridge', 'high', 'manual-curated', 2, 1, 'manual v3 confidence'),
+    ('bridge', 'addiction-bridge', 'medium', 'manual-curated', 1, 1, 'manual v3 bridge expansion'),
+    ('bridge', 'parenting-bridge', 'medium', 'manual-curated', 1, 1, 'manual v3 bridge expansion'),
+    ('bridge', 'avoidance-bridge', 'medium', 'manual-curated', 1, 1, 'manual v3 bridge expansion'),
+    ('bridge', 'self-deception-bridge', 'medium', 'manual-curated', 1, 1, 'manual v3 bridge expansion'),
 ]
 
 # ── seed_v3_motifs data ──────────────────────────────────────────────────────
@@ -81,6 +92,10 @@ ANTI_PATTERN_ROWS_MOTIFS = [
     ('career-vocation', 'abstract-inflation', 'manual v3 seed'),
     ('shame-self-contempt', 'identity-annihilation', 'manual v3 seed'),
     ('relationship-maintenance', 'silent-resentment-spiral', 'manual v3 seed'),
+    ('addiction-chaos', 'willpower-fantasy', 'manual v3 bridge expansion'),
+    ('parenting-overprotection', 'guilt-driven-capitulation', 'manual v3 bridge expansion'),
+    ('avoidance-paralysis', 'analysis-paralysis', 'manual v3 bridge expansion'),
+    ('self-deception', 'comfortable-fog', 'manual v3 bridge expansion'),
 ]
 
 MOTIF_LINKS = [
@@ -143,6 +158,15 @@ NEW_STEPS = [
     ('state-the-resentment-directly', 'resentment', 'resentment-loop', 'relationship-maintenance', 'Назови один невысказанный упрёк прямо и без накопленной ядовитой риторики.', 'high', 'today', '', 'manual v3 step seed'),
     ('restore-local-order', 'order-and-chaos', 'avoidance-loop', 'basic-discipline', 'Наведи локальный порядок в одной зоне, чтобы вернуть себе ощущение агентности через действие.', 'low', 'today', '', 'manual v3 step seed'),
     ('name-the-lie', 'truth', 'avoidance-loop', 'shame-self-contempt', 'Сформулируй одну ложь или полуправду, на которой сейчас держится твоя проблема.', 'medium', 'today', '', 'manual v3 step seed'),
+    ('replace-substance-with-routine', 'order-and-chaos', 'avoidance-loop', 'addiction-chaos', 'Выбери один момент дня, когда ты тянешься к привычке, и замени его одним физическим действием: прогулка, душ, уборка.', 'medium', 'today', '', 'manual v3 step expansion'),
+    ('set-one-boundary-today', 'responsibility', 'avoidance-loop', 'parenting-overprotection', 'Обозначь ребёнку одну границу сегодня — кратко, без оправданий, и удержи её до конца дня.', 'medium', 'today', '', 'manual v3 step expansion'),
+    ('do-the-first-thing', 'order-and-chaos', 'avoidance-loop', 'avoidance-paralysis', 'Открой список дел и сделай первое, даже если оно кажется ничтожным. Действие предшествует мотивации.', 'low', 'today', '', 'manual v3 step expansion'),
+    ('write-the-truth-down', 'truth', 'avoidance-loop', 'self-deception', 'Запиши то, что ты знаешь, но не называешь вслух. Не для кого-то — для себя.', 'medium', 'today', '', 'manual v3 step expansion'),
+    ('define-anti-ideal', 'meaning', 'aimlessness', 'career-vocation', 'Опиши подробно, кем ты точно не хочешь быть через 5 лет. Анти-идеал часто показывает направление яснее, чем позитивная мечта.', 'low', 'today', '', 'manual v3 step expansion'),
+    ('specify-goal-and-failure', 'meaning', 'aimlessness', 'career-vocation', 'Сформулируй одну конкретную цель и одно реалистичное описание провала, если ты ничего не сделаешь.', 'medium', 'today', '', 'manual v3 step expansion'),
+    ('audit-life-domains', 'meaning', 'aimlessness', '', 'Оцени по шкале 1-10 шесть областей жизни: карьера, здоровье, отношения, финансы, учёба, досуг. Выбери худшую и начни с неё.', 'low', 'today', '', 'manual v3 step expansion'),
+    ('negotiate-work-reward', 'order-and-chaos', 'avoidance-loop', '', 'Договорись с собой: 90 минут работы — потом награда. Не наоборот.', 'low', 'today', '', 'manual v3 step expansion'),
+    ('design-tomorrow-you-want', 'order-and-chaos', 'avoidance-loop', '', 'Каждый вечер письменно планируй завтрашний день так, чтобы ты хотел его прожить.', 'low', 'today', '', 'manual v3 step expansion'),
 ]
 
 STEP_THEME_LINKS = [
@@ -150,6 +174,15 @@ STEP_THEME_LINKS = [
     ('resentment', 'state-the-resentment-directly'),
     ('order-and-chaos', 'restore-local-order'),
     ('truth', 'name-the-lie'),
+    ('order-and-chaos', 'replace-substance-with-routine'),
+    ('responsibility', 'set-one-boundary-today'),
+    ('order-and-chaos', 'do-the-first-thing'),
+    ('truth', 'write-the-truth-down'),
+    ('meaning', 'define-anti-ideal'),
+    ('meaning', 'specify-goal-and-failure'),
+    ('meaning', 'audit-life-domains'),
+    ('order-and-chaos', 'negotiate-work-reward'),
+    ('order-and-chaos', 'design-tomorrow-you-want'),
 ]
 
 STEP_PATTERN_LINKS = [
@@ -157,6 +190,15 @@ STEP_PATTERN_LINKS = [
     ('resentment-loop', 'state-the-resentment-directly'),
     ('avoidance-loop', 'restore-local-order'),
     ('avoidance-loop', 'name-the-lie'),
+    ('avoidance-loop', 'replace-substance-with-routine'),
+    ('avoidance-loop', 'set-one-boundary-today'),
+    ('avoidance-loop', 'do-the-first-thing'),
+    ('avoidance-loop', 'write-the-truth-down'),
+    ('aimlessness', 'define-anti-ideal'),
+    ('aimlessness', 'specify-goal-and-failure'),
+    ('aimlessness', 'audit-life-domains'),
+    ('avoidance-loop', 'negotiate-work-reward'),
+    ('avoidance-loop', 'design-tomorrow-you-want'),
 ]
 
 # ── seed_quote_pack_items data ───────────────────────────────────────────────
@@ -225,15 +267,18 @@ def seed_v3():
             SOURCE_ROUTE_ROWS,
         )
         cur.executemany(
-            'INSERT OR REPLACE INTO bridge_to_action_templates (template_name, used_for_theme, used_for_pattern, diagnosis_stub, responsibility_stub, next_step_stub, long_term_stub, tone_profile, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO bridge_to_action_templates (template_name, used_for_theme, used_for_pattern, diagnosis_stub, responsibility_stub, next_step_stub, long_term_stub, tone_profile, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
+            'ON CONFLICT(template_name) DO UPDATE SET used_for_theme=excluded.used_for_theme, used_for_pattern=excluded.used_for_pattern, diagnosis_stub=excluded.diagnosis_stub, responsibility_stub=excluded.responsibility_stub, next_step_stub=excluded.next_step_stub, long_term_stub=excluded.long_term_stub, tone_profile=excluded.tone_profile, note=excluded.note',
             BRIDGES,
         )
         cur.executemany(
-            'INSERT OR REPLACE INTO next_step_library (step_name, used_for_theme, used_for_pattern, used_for_archetype, step_text, difficulty, time_horizon, contraindications, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO next_step_library (step_name, used_for_theme, used_for_pattern, used_for_archetype, step_text, difficulty, time_horizon, contraindications, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
+            'ON CONFLICT(step_name) DO UPDATE SET used_for_theme=excluded.used_for_theme, used_for_pattern=excluded.used_for_pattern, used_for_archetype=excluded.used_for_archetype, step_text=excluded.step_text, difficulty=excluded.difficulty, time_horizon=excluded.time_horizon, contraindications=excluded.contraindications, note=excluded.note',
             NEXT_STEPS,
         )
         cur.executemany(
-            'INSERT OR REPLACE INTO route_quote_packs (pack_name, route_name, preferred_sources, preferred_quote_types, note) VALUES (?, ?, ?, ?, ?)',
+            'INSERT INTO route_quote_packs (pack_name, route_name, preferred_sources, preferred_quote_types, note) VALUES (?, ?, ?, ?, ?) '
+            'ON CONFLICT(pack_name) DO UPDATE SET route_name=excluded.route_name, preferred_sources=excluded.preferred_sources, preferred_quote_types=excluded.preferred_quote_types, note=excluded.note',
             QUOTE_PACKS,
         )
         cur.executemany(
@@ -243,15 +288,18 @@ def seed_v3():
 
         for theme_name, step_name in THEME_STEP_LINKS:
             step_id = get_id(cur, 'next_step_library', 'step_name', step_name)
-            cur.execute('INSERT OR REPLACE INTO theme_next_steps (theme_name, step_id, note) VALUES (?, ?, ?)', (theme_name, step_id, 'manual v3 seed'))
+            if step_id is not None:
+                cur.execute('INSERT OR REPLACE INTO theme_next_steps (theme_name, step_id, note) VALUES (?, ?, ?)', (theme_name, step_id, 'manual v3 seed'))
 
         for pattern_name, step_name in PATTERN_STEP_LINKS:
             step_id = get_id(cur, 'next_step_library', 'step_name', step_name)
-            cur.execute('INSERT OR REPLACE INTO pattern_next_steps (pattern_name, step_id, note) VALUES (?, ?, ?)', (pattern_name, step_id, 'manual v3 seed'))
+            if step_id is not None:
+                cur.execute('INSERT OR REPLACE INTO pattern_next_steps (pattern_name, step_id, note) VALUES (?, ?, ?)', (pattern_name, step_id, 'manual v3 seed'))
 
         for archetype_name, pack_name in ARCHETYPE_PACKS:
             pack_id = get_id(cur, 'route_quote_packs', 'pack_name', pack_name)
-            cur.execute('INSERT OR REPLACE INTO archetype_quote_packs (archetype_name, pack_id, note) VALUES (?, ?, ?)', (archetype_name, pack_id, 'manual v3 seed'))
+            if pack_id is not None:
+                cur.execute('INSERT OR REPLACE INTO archetype_quote_packs (archetype_name, pack_id, note) VALUES (?, ?, ?)', (archetype_name, pack_id, 'manual v3 seed'))
 
     return 'seeded_v3'
 
@@ -296,7 +344,6 @@ def seed_v3_motifs():
             case_id = _get_case_id(cur, case_name)
             if motif_id and case_id:
                 cur.execute('INSERT OR REPLACE INTO motif_cases (motif_id, case_id, note) VALUES (?, ?, ?)', (motif_id, case_id, 'manual v3 seed'))
-            if motif_id:
                 cur.execute('INSERT OR REPLACE INTO motif_interventions (motif_id, intervention_pattern_name, note) VALUES (?, ?, ?)', (motif_id, intervention_name, 'manual v3 seed'))
 
     return 'seeded_v3_motifs'
@@ -352,7 +399,8 @@ def seed_v3_steps():
         cur = conn.cursor()
 
         cur.executemany(
-            'INSERT OR REPLACE INTO next_step_library (step_name, used_for_theme, used_for_pattern, used_for_archetype, step_text, difficulty, time_horizon, contraindications, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO next_step_library (step_name, used_for_theme, used_for_pattern, used_for_archetype, step_text, difficulty, time_horizon, contraindications, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) '
+            'ON CONFLICT(step_name) DO UPDATE SET used_for_theme=excluded.used_for_theme, used_for_pattern=excluded.used_for_pattern, used_for_archetype=excluded.used_for_archetype, step_text=excluded.step_text, difficulty=excluded.difficulty, time_horizon=excluded.time_horizon, contraindications=excluded.contraindications, note=excluded.note',
             NEW_STEPS,
         )
 
@@ -371,15 +419,24 @@ def seed_v3_steps():
 
 def seed_quote_pack_items():
     """Seed quote→pack membership. Returns status."""
+    import logging
+    _log = logging.getLogger('jordan')
+    linked = 0
+    not_found = 0
     with connect() as conn:
         cur = conn.cursor()
         for pack_name, quotes in PACKS.items():
             pack_id = _get_pack_id(cur, pack_name)
             if not pack_id:
+                _log.warning('seed_quote_pack_items: pack %r not found, skipping', pack_name)
                 continue
             for qt in quotes:
                 qid = _get_quote_id(cur, qt)
                 if qid:
                     cur.execute('INSERT OR REPLACE INTO quote_pack_items (pack_id, quote_id, note) VALUES (?, ?, ?)', (pack_id, qid, 'manual pack seed'))
-
-    return 'seeded_quote_pack_items'
+                    linked += 1
+                else:
+                    not_found += 1
+    if not_found:
+        _log.warning('seed_quote_pack_items: %d quotes not found in DB', not_found)
+    return f'seeded_quote_pack_items: linked={linked}, not_found={not_found}'

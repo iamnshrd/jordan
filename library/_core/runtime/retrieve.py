@@ -1,13 +1,26 @@
-"""Retrieval engine — build a response bundle from the knowledge base.
+"""Retrieval engine -- build a response bundle from the knowledge base.
 
 Restructured from: retrieve_for_prompt.py
 """
+from __future__ import annotations
+
 from library.config import (
-    DB_PATH, SOURCE_ARBITRATION, QUESTION_ARCHETYPES,
-    USER_STATE, EFFECTIVENESS, DOC_SOURCE_HINTS,
+    SOURCE_ARBITRATION, QUESTION_ARCHETYPES,
+    SOURCE_ROLE_PROFILES, get_default_store, get_doc_source_hints,
 )
+from library._core.state_store import StateStore, KEY_USER_STATE, KEY_EFFECTIVENESS
 from library.db import connect, row_to_dict
-from library.utils import load_json, fts_query
+from library.utils import load_json, fts_query, timed
+
+
+_source_role_profiles_cache: dict | None = None
+
+
+def _get_source_role_profiles() -> dict:
+    global _source_role_profiles_cache
+    if _source_role_profiles_cache is None:
+        _source_role_profiles_cache = load_json(SOURCE_ROLE_PROFILES, default={})
+    return _source_role_profiles_cache
 
 
 THEME_KEYWORDS = {
@@ -20,64 +33,49 @@ THEME_KEYWORDS = {
 }
 
 PROBLEM_ROUTES = {
-    'meaning-loss': {
-        'if_any': ['смысл', 'направление', 'цель', 'direction', 'purpose', 'дисциплин'],
-        'boost_themes': {'meaning': 180, 'order-and-chaos': 120, 'responsibility': 80},
-        'boost_principles': {'clean-up-what-is-in-front-of-you': 120, 'take-responsibility-before-blame': 90},
-        'boost_patterns': {'aimlessness': 180, 'avoidance-loop': 60},
-        'downweight_themes': {'truth': 120},
-    },
     'self-deception': {
-        'if_any': ['вру', 'лож', 'самообман', 'честн', 'truth'],
         'boost_themes': {'truth': 180},
         'boost_principles': {'tell-the-truth-or-at-least-dont-lie': 180},
         'boost_patterns': {'avoidance-loop': 60},
         'downweight_themes': {},
     },
     'resentment': {
-        'if_any': ['обид', 'гореч', 'несправед', 'resentment', 'злость'],
         'boost_themes': {'resentment': 220, 'responsibility': 60},
         'boost_principles': {'take-responsibility-before-blame': 120},
         'boost_patterns': {'resentment-loop': 200, 'avoidance-loop': 40},
         'downweight_themes': {},
     },
     'shame-self-contempt': {
-        'if_any': ['стыд', 'никчем', 'омерзен', 'ненавижу себя', 'self-contempt', 'отвращение к себе'],
         'boost_themes': {'suffering': 220, 'truth': 30, 'responsibility': 40},
         'boost_principles': {'tell-the-truth-or-at-least-dont-lie': 150, 'take-responsibility-before-blame': 40},
         'boost_patterns': {'avoidance-loop': 130},
         'downweight_themes': {'resentment': 40, 'truth': 40},
     },
-    'relationship-conflict': {
-        'if_any': ['отношен', 'партнер', 'жена', 'муж', 'ссор', 'конфликт', 'брак'],
+    'relationship-maintenance': {
         'boost_themes': {'responsibility': 260, 'truth': 110, 'resentment': 10},
         'boost_principles': {'tell-the-truth-or-at-least-dont-lie': 190, 'take-responsibility-before-blame': 50},
         'boost_patterns': {'resentment-loop': 160},
         'downweight_themes': {'resentment': 80},
     },
     'avoidance-paralysis': {
-        'if_any': ['не могу начать', 'паралич', 'избегаю', 'откладываю', 'прокраст', 'avoid'],
         'boost_themes': {'order-and-chaos': 110, 'responsibility': 90},
         'boost_principles': {'clean-up-what-is-in-front-of-you': 140, 'take-responsibility-before-blame': 90},
         'boost_patterns': {'avoidance-loop': 220, 'aimlessness': 60},
         'downweight_themes': {'truth': 40},
     },
     'career-vocation': {
-        'if_any': ['работ', 'карьер', 'призвание', 'vocation', 'путь', 'профес'],
-        'boost_themes': {'meaning': 220, 'responsibility': 140},
-        'boost_principles': {'take-responsibility-before-blame': 110, 'clean-up-what-is-in-front-of-you': 70},
-        'boost_patterns': {'aimlessness': 180},
+        'boost_themes': {'meaning': 220, 'order-and-chaos': 120, 'responsibility': 140},
+        'boost_principles': {'take-responsibility-before-blame': 110, 'clean-up-what-is-in-front-of-you': 120},
+        'boost_patterns': {'aimlessness': 180, 'avoidance-loop': 60},
         'downweight_themes': {'truth': 140},
     },
     'parenting-overprotection': {
-        'if_any': ['ребен', 'дет', 'воспит', 'родител', 'parenting', 'тирана'],
         'boost_themes': {'responsibility': 220, 'order-and-chaos': 90},
         'boost_principles': {'clean-up-what-is-in-front-of-you': 100, 'tell-the-truth-or-at-least-dont-lie': 40},
         'boost_patterns': {'avoidance-loop': 80},
         'downweight_themes': {'truth': 140},
     },
     'addiction-chaos': {
-        'if_any': ['зависим', 'алкогол', 'наркот', 'хаос', 'спиваюсь', 'addiction'],
         'boost_themes': {'order-and-chaos': 180, 'suffering': 120, 'responsibility': 70},
         'boost_principles': {'clean-up-what-is-in-front-of-you': 120, 'take-responsibility-before-blame': 80},
         'boost_patterns': {'avoidance-loop': 150},
@@ -98,16 +96,26 @@ PATTERN_KEYWORDS = {
 }
 
 
-# ── core helpers ──────────────────────────────────────────────────────
+def _escape_like(s: str) -> str:
+    """Escape special LIKE characters for SQLite."""
+    return s.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
 
-def search_chunks(cur, query, limit=5):
+
+# -- core helpers ----------------------------------------------------------
+
+def search_chunks(cur, query, limit=None):
+    if limit is None:
+        from library.utils import get_threshold
+        limit = get_threshold('retrieve_chunk_limit', 5)
     cur.execute(
         """
         SELECT dc.id, dc.chunk_index,
-               snippet(document_chunks_fts, 0, '[', ']', ' … ', 16) AS snippet
+               snippet(document_chunks_fts, 0, '[', ']', ' … ', 16) AS snippet,
+               bm25(document_chunks_fts) AS rank
         FROM document_chunks_fts fts
         JOIN document_chunks dc ON dc.id = fts.rowid
         WHERE document_chunks_fts MATCH ?
+        ORDER BY bm25(document_chunks_fts)
         LIMIT ?
         """,
         (fts_query(query), limit),
@@ -115,10 +123,13 @@ def search_chunks(cur, query, limit=5):
     return [row_to_dict(cur, row) for row in cur.fetchall()]
 
 
-def search_quotes(cur, query, limit=4):
+def search_quotes(cur, query, limit=None):
+    if limit is None:
+        from library.utils import get_threshold
+        limit = get_threshold('retrieve_quote_limit', 4)
     cur.execute(
-        'SELECT id, quote_text FROM quotes WHERE quote_text LIKE ? LIMIT ?',
-        (f'%{query}%', limit),
+        "SELECT id, quote_text FROM quotes WHERE quote_text LIKE ? ESCAPE '\\' LIMIT ?",
+        (f'%{_escape_like(query)}%', limit),
     )
     return [row_to_dict(cur, row) for row in cur.fetchall()]
 
@@ -126,8 +137,27 @@ def search_quotes(cur, query, limit=4):
 def top_linked(cur, query, evidence_table, join_table, fk_col, name_col,
                content_join=False, limit=5):
     if content_join:
+        fts_q = fts_query(query)
+        if not fts_q:
+            return []
         sql = f'''
-        SELECT t.{name_col} AS name, COUNT(*) AS hits
+        SELECT t.{name_col} AS name,
+               COALESCE(SUM(e.weight), COUNT(*)) AS hits,
+               AVG(bm25(document_chunks_fts)) AS avg_rank
+        FROM {evidence_table} e
+        JOIN {join_table} t ON t.id = e.{fk_col}
+        JOIN document_chunks dc ON dc.id = e.chunk_id
+        JOIN document_chunks_fts fts ON fts.rowid = dc.id
+        WHERE document_chunks_fts MATCH ?
+        GROUP BY t.{name_col}
+        ORDER BY avg_rank
+        LIMIT ?
+        '''
+        cur.execute(sql, (fts_q, limit))
+    else:
+        sql = f'''
+        SELECT t.{name_col} AS name,
+               COALESCE(SUM(e.weight), COUNT(*)) AS hits
         FROM {evidence_table} e
         JOIN {join_table} t ON t.id = e.{fk_col}
         JOIN document_chunks dc ON dc.id = e.chunk_id
@@ -136,35 +166,30 @@ def top_linked(cur, query, evidence_table, join_table, fk_col, name_col,
         ORDER BY hits DESC
         LIMIT ?
         '''
-        cur.execute(sql, (f'%{query}%', limit))
-    else:
-        sql = f'''
-        SELECT t.{name_col} AS name, COUNT(*) AS hits
-        FROM {evidence_table} e
-        JOIN {join_table} t ON t.id = e.{fk_col}
-        GROUP BY t.{name_col}
-        ORDER BY hits DESC
-        LIMIT ?
-        '''
-        cur.execute(sql, (limit,))
+        q_words = [_escape_like(w) for w in query.lower().split() if len(w) >= 3]
+        if not q_words:
+            return []
+        like_pattern = '%' + '%'.join(q_words[:3]) + '%'
+        cur.execute(sql.replace('LIKE ?', "LIKE ? ESCAPE '\\'"), (like_pattern, limit))
     return [row_to_dict(cur, row) for row in cur.fetchall()]
 
 
-# ── scoring & routing ─────────────────────────────────────────────────
+# -- scoring & routing -----------------------------------------------------
 
 def route_adjustments(question):
-    q = question.lower()
-    adj = {'themes': {}, 'principles': {}, 'patterns': {}}
-    for route in PROBLEM_ROUTES.values():
-        if any(x in q for x in route['if_any']):
-            for k, v in route.get('boost_themes', {}).items():
-                adj['themes'][k] = adj['themes'].get(k, 0) + v
-            for k, v in route.get('boost_principles', {}).items():
-                adj['principles'][k] = adj['principles'].get(k, 0) + v
-            for k, v in route.get('boost_patterns', {}).items():
-                adj['patterns'][k] = adj['patterns'].get(k, 0) + v
-            for k, v in route.get('downweight_themes', {}).items():
-                adj['themes'][k] = adj['themes'].get(k, 0) - v
+    from library._core.runtime.routes import infer_route
+    route_name = infer_route(question)
+    adj: dict = {'themes': {}, 'principles': {}, 'patterns': {}}
+    route = PROBLEM_ROUTES.get(route_name)
+    if route:
+        for k, v in route.get('boost_themes', {}).items():
+            adj['themes'][k] = adj['themes'].get(k, 0) + v
+        for k, v in route.get('boost_principles', {}).items():
+            adj['principles'][k] = adj['principles'].get(k, 0) + v
+        for k, v in route.get('boost_patterns', {}).items():
+            adj['patterns'][k] = adj['patterns'].get(k, 0) + v
+        for k, v in route.get('downweight_themes', {}).items():
+            adj['themes'][k] = adj['themes'].get(k, 0) - v
     return adj
 
 
@@ -184,38 +209,93 @@ def score_named_rows(rows, keyword_map, question, adjustments=None):
     return scored
 
 
-# ── data loaders ──────────────────────────────────────────────────────
+# -- data loaders ----------------------------------------------------------
+
+_archetypes_cache: list | None = None
+
 
 def load_archetypes():
-    return load_json(QUESTION_ARCHETYPES, default=[])
+    global _archetypes_cache
+    if _archetypes_cache is None:
+        _archetypes_cache = load_json(QUESTION_ARCHETYPES, default=[])
+    return _archetypes_cache
 
 
-def load_user_state():
-    return load_json(USER_STATE)
+def load_user_state(user_id: str = 'default',
+                    store: StateStore | None = None):
+    store = store or get_default_store()
+    return store.get_json(user_id, KEY_USER_STATE)
 
 
-def load_effectiveness():
-    return load_json(EFFECTIVENESS)
+def load_effectiveness_data(user_id: str = 'default',
+                            store: StateStore | None = None):
+    store = store or get_default_store()
+    return store.get_json(user_id, KEY_EFFECTIVENESS)
+
+
+_route_strength_cache: dict | None = None
 
 
 def load_source_route_strength():
+    global _route_strength_cache
+    if _route_strength_cache is not None:
+        return _route_strength_cache
     with connect() as conn:
         cur = conn.cursor()
         rows = cur.execute(
             'SELECT source_name, route_name, strength '
             'FROM source_route_strength'
         ).fetchall()
-    return {(s, r): strength for s, r, strength in rows}
+    _route_strength_cache = {(s, r): strength for s, r, strength in rows}
+    return _route_strength_cache
+
+
+def invalidate_route_strength_cache():
+    """Clear the cached route strength data (call after DB updates)."""
+    global _route_strength_cache
+    _route_strength_cache = None
+
+
+_arbitration_rules_cache: list | None = None
 
 
 def load_arbitration_rules():
-    data = load_json(SOURCE_ARBITRATION)
-    return data.get('routes', []) if data else []
+    global _arbitration_rules_cache
+    if _arbitration_rules_cache is None:
+        data = load_json(SOURCE_ARBITRATION)
+        if isinstance(data, dict):
+            routes = data.get('routes')
+            _arbitration_rules_cache = routes if isinstance(routes, list) else []
+        else:
+            _arbitration_rules_cache = []
+    return _arbitration_rules_cache
 
 
-# ── source preference ─────────────────────────────────────────────────
+# -- source preference -----------------------------------------------------
 
-def infer_preferred_sources(question):
+def _rank_sources_by_profile(route_guess: str) -> list[str]:
+    """Rank sources by their suitability for the guessed route using role profiles."""
+    profiles = _get_source_role_profiles()
+    if not profiles or not route_guess:
+        return ['12-rules', 'beyond-order', 'maps-of-meaning']
+    scored: list[tuple[str, int]] = []
+    for source_name, profile in profiles.items():
+        score = 0
+        if route_guess in profile.get('best_for', []):
+            score += 3
+        if route_guess in profile.get('primary_routes', []):
+            score += 2
+        if route_guess in profile.get('secondary_routes', []):
+            score += 1
+        if route_guess in profile.get('worst_for', []):
+            score -= 2
+        scored.append((source_name, score))
+    scored.sort(key=lambda x: -x[1])
+    return [s[0] for s in scored]
+
+
+def infer_preferred_sources(question, user_id: str = 'default',
+                            store: StateStore | None = None):
     q = question.lower()
     for arch in load_archetypes():
         if any(x in q for x in arch.get('if_user_says', [])):
@@ -225,7 +305,15 @@ def infer_preferred_sources(question):
         if any(x in q for x in route.get('if_any', [])):
             return route.get('prefer',
                              ['12-rules', 'beyond-order', 'maps-of-meaning'])
-    state = load_user_state()
+
+    from library._core.runtime.routes import infer_route
+    route_guess = infer_route(question)
+    if route_guess != 'general':
+        profile_ranked = _rank_sources_by_profile(route_guess)
+        if profile_ranked:
+            return profile_ranked
+
+    state = load_user_state(user_id=user_id, store=store)
     if state.get('dominant_theme') == 'suffering':
         return ['12-rules', 'maps-of-meaning', 'beyond-order']
     if state.get('dominant_theme') == 'meaning':
@@ -233,25 +321,20 @@ def infer_preferred_sources(question):
     return ['12-rules', 'beyond-order', 'maps-of-meaning']
 
 
-def apply_source_preference(rows, preferred_sources, question=''):
-    effect = load_effectiveness()
+def apply_source_preference(rows, preferred_sources, question='',
+                            user_id: str = 'default',
+                            store: StateStore | None = None):
+    effect = load_effectiveness_data(user_id=user_id, store=store)
     strength_map = load_source_route_strength()
     order = {name: idx for idx, name in enumerate(preferred_sources)}
-    q = question.lower()
 
-    if any(x in q for x in ['карьер', 'призвание', 'смысл']):
-        route_guess = 'meaning'
-    elif any(x in q for x in ['стыд', 'позор']):
-        route_guess = 'suffering'
-    elif any(x in q for x in ['обид', 'гореч', 'конфликт']):
-        route_guess = 'resentment'
-    elif 'хаос' in q:
-        route_guess = 'order-and-chaos'
-    else:
+    from library._core.runtime.frame import infer_route_name
+    route_guess = infer_route_name(question)
+    if route_guess == 'general':
         route_guess = ''
 
     for row in rows:
-        source_name = DOC_SOURCE_HINTS.get(row.get('document_id'))
+        source_name = get_doc_source_hints().get(row.get('document_id'))
         route_key = (
             f'{source_name}::{route_guess}'
             if source_name and route_guess else ''
@@ -266,7 +349,11 @@ def apply_source_preference(rows, preferred_sources, question=''):
             strength_map.get((source_name, route_guess), 0)
             if source_name and route_guess else 0
         )
-        row['_effect_score'] = helpful * 20 - resisted * 15 + strength * 3
+        from library.utils import get_threshold
+        w_help = get_threshold('effect_helpful_weight', 20)
+        w_resist = get_threshold('effect_resisted_weight', 15)
+        w_str = get_threshold('effect_strength_weight', 3)
+        row['_effect_score'] = helpful * w_help - resisted * w_resist + strength * w_str
         row['_source_preference'] = order.get(source_name, 999)
 
     rows.sort(key=lambda x: (
@@ -279,10 +366,11 @@ def apply_source_preference(rows, preferred_sources, question=''):
     return rows
 
 
-# ── keyword-based quote search ────────────────────────────────────────
+# -- keyword-based quote search --------------------------------------------
 
 def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
-                              limit=4):
+                              limit=4, user_id: str = 'default',
+                              store: StateStore | None = None):
     q = question.lower()
 
     course_quote_shortlist = []
@@ -343,7 +431,7 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
     rows = [row_to_dict(cur, row) for row in cur.fetchall()]
 
     pack_preferred_sources = []
-    pack_quote_ids = set()
+    pack_quote_ids: set = set()
     for arch in load_archetypes():
         if any(x in q for x in arch.get('if_user_says', [])):
             pack_preferred_sources = arch.get('preferred_sources', [])
@@ -392,7 +480,7 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
                 score += 320
         if row.get('quote_type') == route_quote_types[0]:
             score += 120
-        source_name = DOC_SOURCE_HINTS.get(row.get('document_id'))
+        source_name = get_doc_source_hints().get(row.get('document_id'))
         if row.get('id') in pack_quote_ids:
             score += 160
         if pack_preferred_sources and source_name in pack_preferred_sources:
@@ -426,8 +514,10 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
             score -= 30
         row['_score'] = score
 
-    preferred_sources = infer_preferred_sources(question)
-    rows = apply_source_preference(rows, preferred_sources, question)
+    preferred_sources = infer_preferred_sources(question, user_id=user_id,
+                                                store=store)
+    rows = apply_source_preference(rows, preferred_sources, question,
+                                   user_id=user_id, store=store)
 
     if route_quote_types and route_quote_types[0] == 'discipline-quote':
         manual = [r for r in rows
@@ -447,43 +537,57 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
     return rows[:limit]
 
 
-# ── main bundle builder ───────────────────────────────────────────────
+# -- main bundle builder ---------------------------------------------------
 
-def build_response_bundle(question):
+@timed('retrieve')
+def build_response_bundle(question, user_id: str = 'default',
+                          store: StateStore | None = None,
+                          query_embedding: list[float] | None = None):
+    """Build a response bundle with optional hybrid (FTS + embedding) retrieval.
+
+    When *query_embedding* is provided, chunks are retrieved via hybrid search
+    (FTS BM25 + cosine similarity re-ranking).  Otherwise, pure FTS is used.
+    """
+    from library.utils import get_threshold
+    store = store or get_default_store()
+    top_limit = get_threshold('retrieve_top_limit', 8)
     with connect() as conn:
         cur = conn.cursor()
 
         raw_themes = (
             top_linked(cur, question, 'theme_evidence', 'themes',
-                       'theme_id', 'theme_name', True, 8)
+                       'theme_id', 'theme_name', True, top_limit)
             or top_linked(cur, question, 'theme_evidence', 'themes',
-                          'theme_id', 'theme_name', False, 8)
+                          'theme_id', 'theme_name', False, top_limit)
         )
         raw_principles = (
             top_linked(cur, question, 'principle_evidence', 'principles',
-                       'principle_id', 'principle_name', True, 8)
+                       'principle_id', 'principle_name', True, top_limit)
             or top_linked(cur, question, 'principle_evidence', 'principles',
-                          'principle_id', 'principle_name', False, 8)
+                          'principle_id', 'principle_name', False, top_limit)
         )
         raw_patterns = (
             top_linked(cur, question, 'pattern_evidence', 'patterns',
-                       'pattern_id', 'pattern_name', True, 8)
+                       'pattern_id', 'pattern_name', True, top_limit)
             or top_linked(cur, question, 'pattern_evidence', 'patterns',
-                          'pattern_id', 'pattern_name', False, 8)
+                          'pattern_id', 'pattern_name', False, top_limit)
         )
 
         adj = route_adjustments(question)
-        preferred_sources = infer_preferred_sources(question)
+        preferred_sources = infer_preferred_sources(
+            question, user_id=user_id, store=store,
+        )
 
+        scored_top = get_threshold('retrieve_scored_top', 5)
         top_themes = score_named_rows(
             raw_themes, THEME_KEYWORDS, question, adj['themes'],
-        )[:5]
+        )[:scored_top]
         top_principles = score_named_rows(
             raw_principles, PRINCIPLE_KEYWORDS, question, adj['principles'],
-        )[:5]
+        )[:scored_top]
         top_patterns = score_named_rows(
             raw_patterns, PATTERN_KEYWORDS, question, adj['patterns'],
-        )[:5]
+        )[:scored_top]
 
         selected_names = [
             x['name']
@@ -491,14 +595,29 @@ def build_response_bundle(question):
         ]
         selected_texts = selected_names
 
+        quote_limit = get_threshold('retrieve_quote_limit', 4)
         quotes = search_quotes_by_keywords(
-            cur, question, selected_names, selected_texts, 4,
+            cur, question, selected_names, selected_texts, quote_limit,
+            user_id=user_id, store=store,
         )
+
+        if query_embedding is not None:
+            from library._core.kb.embeddings import hybrid_search
+            h_fts = get_threshold('hybrid_fts_limit', 20)
+            h_final = get_threshold('hybrid_final_limit', 5)
+            h_alpha = get_threshold('hybrid_alpha', 0.4)
+            relevant_chunks = hybrid_search(
+                question, query_embedding,
+                fts_limit=h_fts, final_limit=h_final, alpha=h_alpha,
+            )
+        else:
+            chunk_limit = get_threshold('retrieve_chunk_limit', 5)
+            relevant_chunks = search_chunks(cur, question, chunk_limit)
 
         bundle = {
             'question': question,
             'preferred_sources': preferred_sources,
-            'relevant_chunks': search_chunks(cur, question, 5),
+            'relevant_chunks': relevant_chunks,
             'relevant_quotes': quotes or search_quotes(cur, question, 4),
             'top_themes': top_themes,
             'top_principles': top_principles,

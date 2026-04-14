@@ -1,12 +1,54 @@
-"""Response synthesis — combine frame, V3 query, and progress into a response bundle.
+"""Response synthesis -- combine frame, V3 query, and progress into a response bundle.
 
 Restructured from: synthesize_response.py
 Dead-code removal: first assignments to practical / longer_term that were
 immediately overwritten by db_driven_* calls have been removed.
 """
+from __future__ import annotations
+
 from library._core.runtime.frame import select_frame
 from library._core.kb.query_v3 import query_v3
 from library._core.session.progress import estimate as estimate_progress
+from library._core.state_store import StateStore
+from library.config import INTERVENTION_PATTERNS, SOURCE_BLEND_EXAMPLES
+from library.utils import load_json, timed
+
+
+# ── intervention patterns & source blend data ─────────────────────────
+
+_intervention_patterns_cache: list | None = None
+_source_blend_cache: list | None = None
+
+
+def _get_intervention_patterns() -> list:
+    global _intervention_patterns_cache
+    if _intervention_patterns_cache is None:
+        _intervention_patterns_cache = load_json(INTERVENTION_PATTERNS, default=[])
+    return _intervention_patterns_cache
+
+
+def _get_source_blend_examples() -> list:
+    global _source_blend_cache
+    if _source_blend_cache is None:
+        _source_blend_cache = load_json(SOURCE_BLEND_EXAMPLES, default=[])
+    return _source_blend_cache
+
+
+def match_intervention_pattern(route_name: str, pattern_name: str) -> dict | None:
+    """Find the best matching intervention pattern for the given route/pattern."""
+    for ip in _get_intervention_patterns():
+        when = ip.get('when_to_use', [])
+        if route_name in when or pattern_name in when:
+            return ip
+    return None
+
+
+def match_source_blend(route_name: str) -> dict | None:
+    """Find source blend guidance for the given route."""
+    for blend in _get_source_blend_examples():
+        if blend.get('route') == route_name:
+            return blend
+    return None
 
 
 # ── text maps ─────────────────────────────────────────────────────────
@@ -58,25 +100,28 @@ PATTERN_DESC_MAP = {
 def db_driven_theme_text(theme_name, selected):
     desc = ((selected.get('selected_theme') or {}).get('description') or '').strip()
     if desc:
-        return THEME_DESC_MAP.get(theme_name, desc)
-    return THEME_MAP.get(theme_name,
-                         'Нужно точнее определить, в чём ядро проблемы.')
+        return desc
+    return THEME_DESC_MAP.get(theme_name,
+           THEME_MAP.get(theme_name,
+                         'Нужно точнее определить, в чём ядро проблемы.'))
 
 
 def db_driven_principle_text(principle_name, selected):
     desc = ((selected.get('selected_principle') or {}).get('description') or '').strip()
     if desc:
-        return PRINCIPLE_DESC_MAP.get(principle_name, desc)
-    return PRINCIPLE_MAP.get(principle_name,
-                             'Нужен принцип, который вернёт структуру и направление.')
+        return desc
+    return PRINCIPLE_DESC_MAP.get(principle_name,
+           PRINCIPLE_MAP.get(principle_name,
+                             'Нужен принцип, который вернёт структуру и направление.'))
 
 
 def db_driven_pattern_text(pattern_name, selected):
     desc = ((selected.get('selected_pattern') or {}).get('description') or '').strip()
     if desc:
-        return PATTERN_DESC_MAP.get(pattern_name, desc)
-    return PATTERN_MAP.get(pattern_name,
-                           'Здесь есть повторяющийся разрушительный паттерн, который стоит назвать точнее.')
+        return desc
+    return PATTERN_DESC_MAP.get(pattern_name,
+           PATTERN_MAP.get(pattern_name,
+                           'Здесь есть повторяющийся разрушительный паттерн, который стоит назвать точнее.'))
 
 
 def db_driven_responsibility_text(selected, bridge, question):
@@ -163,13 +208,15 @@ def select_supporting_quote(bundle, selected):
                            'discipline-quote']
         for row in rows:
             if (row.get('quote_type') == 'relationship-quote'
-                    and (row.get('note') or '').startswith('manual')):
+                    and (row.get('note') or '').startswith('manual')
+                    and row.get('quote_text')):
                 return normalize_quote_text(row['quote_text'])
     elif any(x in q for x in ['карьер', 'призвание', 'vocation', 'профес',
                                'путь']):
         for row in rows:
             if (row.get('quote_type') == 'discipline-quote'
-                    and (row.get('note') or '').startswith('manual')):
+                    and (row.get('note') or '').startswith('manual')
+                    and row.get('quote_text')):
                 return normalize_quote_text(row['quote_text'])
         preferred_types = ['discipline-quote', 'principle-quote']
     elif principle == 'clean-up-what-is-in-front-of-you':
@@ -191,22 +238,19 @@ def select_supporting_quote(bundle, selected):
 
     for ptype in preferred_types:
         for row in rows:
-            if row.get('quote_type') == ptype:
+            if row.get('quote_type') == ptype and row.get('quote_text'):
                 return normalize_quote_text(row['quote_text'])
-    return normalize_quote_text(rows[0]['quote_text'])
+    first_text = rows[0].get('quote_text') or ''
+    return normalize_quote_text(first_text) if first_text else ''
 
 
 # ── archetype inference ───────────────────────────────────────────────
 
 def infer_archetype(question):
-    q = question.lower()
-    if any(x in q for x in ['карьер', 'призвание', 'путь', 'работа']):
-        return 'career-vocation'
-    if any(x in q for x in ['стыд', 'позор', 'отвращение к себе', 'никчем']):
-        return 'shame-self-contempt'
-    if any(x in q for x in ['отношен', 'жена', 'муж', 'брак', 'конфликт']):
-        return 'relationship-maintenance'
-    return ''
+    """Delegate to the canonical route classifier in frame.py."""
+    from library._core.runtime.frame import infer_route_name
+    route = infer_route_name(question)
+    return '' if route == 'general' else route
 
 
 # ── text assembly helpers ─────────────────────────────────────────────
@@ -369,10 +413,15 @@ def unify_selection_policy(selected, bridge, next_step_v3, question):
     return policy
 
 
-def synthesize(question):
-    selected = select_frame(question)
+@timed('synthesize')
+def synthesize(question, user_id: str = 'default',
+               store: StateStore | None = None,
+               frame: dict | None = None,
+               progress: dict | None = None):
+    selected = frame or select_frame(question, user_id=user_id, store=store)
     bundle = selected.get('bundle', {})
-    progress = estimate_progress(question)
+    if progress is None:
+        progress = estimate_progress(question, user_id=user_id, store=store)
 
     theme_name = (selected.get('selected_theme') or {}).get('name')
     principle_name = (selected.get('selected_principle') or {}).get('name')
@@ -384,39 +433,50 @@ def synthesize(question):
     pattern_text = db_driven_pattern_text(pattern_name, selected)
     principle_text = db_driven_principle_text(principle_name, selected)
 
-    practical = db_driven_practical_text(selected, {}, question)
-    longer_term = db_driven_longer_term_text(selected, {}, question)
-    responsibility_avoided = ('Есть ощущение, что часть ответственности была '
-                              'отложена, а вместе с ней распалась и опора.')
+    bridge = v3.get('bridge') or {}
+    next_step_v3 = v3.get('next_step') or {}
+    policy = unify_selection_policy(selected, bridge, next_step_v3, question)
+
+    route_name = selected.get('route_name') or 'general'
+    intervention = match_intervention_pattern(route_name, pattern_name or '')
+    blend_guidance = match_source_blend(route_name)
+
+    if bridge.get('diagnosis_stub'):
+        core_problem = bridge['diagnosis_stub']
+    elif intervention and intervention.get('opening_move'):
+        core_problem = append_sentence(core_problem, intervention['opening_move'])
+
+    responsibility_avoided = db_driven_responsibility_text(
+        selected, bridge, question,
+    )
+    if intervention and intervention.get('core_move') and not bridge.get('responsibility_stub'):
+        responsibility_avoided = append_sentence(
+            responsibility_avoided, intervention['core_move'],
+        )
+
+    longer_term = db_driven_longer_term_text(selected, bridge, question)
+    practical = db_driven_practical_text(selected, next_step_v3, question)
+    if intervention and intervention.get('followup_move') and not next_step_v3.get('step_text'):
+        practical = append_sentence(practical, intervention['followup_move'])
 
     progress_extra = None
-    if progress.get('progress_state') == 'stuck':
+    progress_state = progress.get('progress_state')
+    if progress_state == 'stuck':
         practical = ('Следующий шаг — перестать расширять проблему и выбрать '
                      'одну конкретную обязанность или один разговор, который '
                      'ты откладываешь, и сделать только его.')
         longer_term = ('Сейчас тебе меньше всего нужен новый красивый '
                        'анализ. Тебе нужна повторяемая дисциплина в одной '
                        'точке, пока не появится реальное движение.')
-    elif progress.get('progress_state') == 'moving':
+    elif progress_state == 'moving':
         progress_extra = 'Не меняй рамку снова: дожми уже выбранное действие.'
-    elif progress.get('progress_state') == 'fragile':
+    elif progress_state == 'fragile':
         practical = ('Следующий шаг — не ломать себя об глобальные выводы, '
                      'а сделать один маленький, но честный шаг без '
                      'самоунижения.')
         longer_term = ('Долгосрочно тебе нужна не жестокость к себе, а более '
                        'устойчивая форма честности, в которой правда не '
                        'превращается в самоуничтожение.')
-
-    bridge = v3.get('bridge') or {}
-    next_step_v3 = v3.get('next_step') or {}
-    policy = unify_selection_policy(selected, bridge, next_step_v3, question)
-    if bridge.get('diagnosis_stub'):
-        core_problem = bridge['diagnosis_stub']
-    responsibility_avoided = db_driven_responsibility_text(
-        selected, bridge, question,
-    )
-    longer_term = db_driven_longer_term_text(selected, bridge, question)
-    practical = db_driven_practical_text(selected, next_step_v3, question)
 
     anti_patterns = v3.get('anti_patterns') or []
     case_links = v3.get('case_links') or []
@@ -454,6 +514,18 @@ def synthesize(question):
         longer_term, best_case, anti_patterns, v3,
     )
 
+    source_blend = selected.get('source_blend') or {}
+    if blend_guidance and not source_blend:
+        source_blend = {
+            'primary': blend_guidance.get('primary_source'),
+            'secondary': blend_guidance.get('secondary_source'),
+            'rationale': blend_guidance.get('why'),
+        }
+
+    tone_hint = None
+    if intervention:
+        tone_hint = intervention.get('tone_profile')
+
     return {
         'question': question,
         'selection_policy': policy,
@@ -469,8 +541,11 @@ def synthesize(question):
         'selected_principle_reason': selected.get('selected_principle_reason'),
         'selected_pattern_reason': selected.get('selected_pattern_reason'),
         'preferred_sources': selected.get('preferred_sources'),
-        'source_blend': selected.get('source_blend'),
+        'source_blend': source_blend,
+        'source_blend_rationale': (blend_guidance or {}).get('why'),
         'confidence': selected.get('confidence'),
+        'tone_hint': tone_hint,
+        'intervention_pattern': intervention.get('pattern_name') if intervention else None,
         'progress': progress,
         'v3_runtime': v3,
         'quote_pack': v3.get('quote_pack'),

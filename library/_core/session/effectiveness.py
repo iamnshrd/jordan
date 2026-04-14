@@ -2,12 +2,15 @@
 
 Refactored from: update_effectiveness_memory.
 """
-from library.config import EFFECTIVENESS
-from library.utils import now_iso, load_json, save_json
+from __future__ import annotations
+
+from library.config import get_default_store
+from library._core.state_store import StateStore, KEY_EFFECTIVENESS
+from library.utils import now_iso
 
 
-def _bump(store, key, outcome='used', route=''):
-    row = store.get(key, {})
+def _bump(store_dict, key, outcome='used', route=''):
+    row = store_dict.get(key, {})
     row.setdefault('times_used', 0)
     row.setdefault('times_helpful', 0)
     row.setdefault('times_neutral', 0)
@@ -37,15 +40,17 @@ def _bump(store, key, outcome='used', route=''):
             and route not in row['best_routes']
         ):
             row['best_routes'].append(route)
-    store[key] = row
+    store_dict[key] = row
 
 
-def update(source='', intervention='', outcome='used', route=''):
+def update(source='', intervention='', outcome='used', route='',
+           user_id: str = 'default', store: StateStore | None = None):
     """Bump effectiveness counters for a source and/or intervention.
 
     Returns the full effectiveness data dict.
     """
-    data = load_json(EFFECTIVENESS, default={
+    store = store or get_default_store()
+    data = store.get_json(user_id, KEY_EFFECTIVENESS, default={
         'sources': {},
         'interventions': {},
         'source_routes': {},
@@ -70,5 +75,10 @@ def update(source='', intervention='', outcome='used', route=''):
             )
 
     data['updated_at'] = now_iso()
-    save_json(EFFECTIVENESS, data)
+    store.put_json(user_id, KEY_EFFECTIVENESS, data)
+    try:
+        from library._core.runtime.retrieve import invalidate_route_strength_cache
+        invalidate_route_strength_cache()
+    except ImportError:
+        pass
     return data
