@@ -14,6 +14,7 @@ from library.config import (
     save_tracked_mentor_users,
     canonical_user_id,
 )
+from library.mentor_targets_admin import normalize_targets
 
 
 SESSIONS_PATH = Path('/root/.openclaw-jordan-peterson/agents/main/sessions/sessions.json')
@@ -24,7 +25,7 @@ def _bootstrap_legacy_user() -> dict:
     data = load_tracked_mentor_users()
     users = data.get('users') or []
     if users:
-        return data
+        return normalize_targets()
     data = {
         'users': [
             {
@@ -32,11 +33,12 @@ def _bootstrap_legacy_user() -> dict:
                 'channel': 'telegram',
                 'target': '77571089',
                 'enabled': True,
+                'auto_onboard': 'manual-review',
             }
         ]
     }
     save_tracked_mentor_users(data)
-    return data
+    return normalize_targets()
 
 
 def _read_sessions() -> dict:
@@ -54,7 +56,7 @@ def _autoregister_from_sessions(data: dict) -> dict:
     users = data.get('users') or []
     known = {canonical_user_id(x.get('user_id') or x.get('target') or '') for x in users}
     changed = False
-    for session_key, payload in sessions.items():
+    for _, payload in sessions.items():
         origin = payload.get('origin') or {}
         delivery = payload.get('deliveryContext') or {}
         if origin.get('provider') != 'telegram' or origin.get('chatType') != 'direct':
@@ -71,6 +73,7 @@ def _autoregister_from_sessions(data: dict) -> dict:
             'channel': 'telegram',
             'target': target,
             'enabled': False,
+            'auto_onboard': 'manual-review',
             'source': 'auto-registered-from-sessions',
         })
         known.add(user_id)
@@ -78,7 +81,7 @@ def _autoregister_from_sessions(data: dict) -> dict:
     if changed:
         data['users'] = users
         save_tracked_mentor_users(data)
-    return data
+    return normalize_targets()
 
 
 def main() -> None:

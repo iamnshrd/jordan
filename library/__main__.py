@@ -162,6 +162,27 @@ def cmd_mentor(args):
         state = load_state(user_id=args.user_id)
         state['mode'] = args.mode
         print(json.dumps(save_state(state, user_id=args.user_id), ensure_ascii=False, indent=2))
+    elif action == 'targets-list':
+        from library.mentor_targets_admin import list_targets
+        print(json.dumps(list_targets(), ensure_ascii=False, indent=2))
+    elif action == 'targets-enable':
+        from library.mentor_targets_admin import set_enabled
+        print(json.dumps(set_enabled(args.target_user, True), ensure_ascii=False, indent=2))
+    elif action == 'targets-disable':
+        from library.mentor_targets_admin import set_enabled
+        print(json.dumps(set_enabled(args.target_user, False), ensure_ascii=False, indent=2))
+    elif action == 'targets-add':
+        from library.mentor_targets_admin import upsert_target
+        print(json.dumps(upsert_target(args.target_user, channel=args.target_channel, target=args.target or '', enabled=args.target_enabled), ensure_ascii=False, indent=2))
+    elif action == 'targets-remove':
+        from library.mentor_targets_admin import remove_target
+        print(json.dumps(remove_target(args.target_user), ensure_ascii=False, indent=2))
+    elif action == 'targets-report':
+        from library.mentor_targets_admin import onboarding_report
+        print(json.dumps(onboarding_report(), ensure_ascii=False, indent=2))
+    elif action == 'legacy-report':
+        from library.mentor_targets_admin import legacy_default_report
+        print(json.dumps(legacy_default_report(), ensure_ascii=False, indent=2))
     else:
         print(f'Unknown mentor action: {action}', file=sys.stderr)
         sys.exit(1)
@@ -245,7 +266,7 @@ def build_parser():
     p_eval.set_defaults(func=cmd_eval)
 
     p_mentor = sub.add_parser('mentor', help='Mentor follow-up triggers')
-    p_mentor.add_argument('mentor_action', choices=['check', 'tick', 'sent', 'reply', 'set-mode'])
+    p_mentor.add_argument('mentor_action', choices=['check', 'tick', 'sent', 'reply', 'set-mode', 'targets-list', 'targets-enable', 'targets-disable', 'targets-add', 'targets-remove', 'targets-report', 'legacy-report'])
     p_mentor.add_argument('--question', default='')
     p_mentor.add_argument('--render', action='store_true', help='Render only the selected follow-up message')
     p_mentor.add_argument('--send', action='store_true', help='Record the selected mentor event as sent')
@@ -254,6 +275,10 @@ def build_parser():
     p_mentor.add_argument('--summary', default='')
     p_mentor.add_argument('--prompt', default='')
     p_mentor.add_argument('--mode', choices=['gentle', 'standard', 'hard', 'silent'], default='standard')
+    p_mentor.add_argument('--target-user', dest='target_user', default='')
+    p_mentor.add_argument('--target-channel', dest='target_channel', default='telegram')
+    p_mentor.add_argument('--target', default='')
+    p_mentor.add_argument('--target-enabled', dest='target_enabled', action='store_true')
     p_mentor.set_defaults(func=cmd_mentor)
 
     return parser
