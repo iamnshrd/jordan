@@ -20,7 +20,7 @@ from library._core.session.context import assemble as assemble_context
 from library._core.state_store import StateStore
 from library._core.mentor.checkins import record_reply
 from library._core.mentor.commitments import record_commitment, maybe_resolve_from_reply
-from library.config import get_default_store
+from library.config import get_default_store, canonical_user_id
 import logging
 from library.utils import timing_context, get_threshold
 
@@ -79,6 +79,7 @@ def should_use_kb(question):
 def orchestrate(question, user_id: str = 'default',
                 store: StateStore | None = None):
     question = question or ''
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     if question.strip():
         record_reply(question, user_id=user_id, store=store)
@@ -101,6 +102,7 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
     contains the fully assembled prompt with retrieved evidence.
     """
     question = question or ''
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
 
     if question.strip():
@@ -179,6 +181,7 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
 
 def _orchestrate_inner(question, user_id: str = 'default',
                        store: StateStore | None = None):
+    user_id = canonical_user_id(user_id)
     mode = detect_mode(question)
 
     if not should_use_kb(question):

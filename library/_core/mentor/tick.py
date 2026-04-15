@@ -9,10 +9,12 @@ from __future__ import annotations
 from library._core.mentor.checkins import evaluate, record_sent
 from library._core.mentor.render import render_event
 from library._core.state_store import StateStore
+from library.config import canonical_user_id
 
 
 def tick(question: str = '', *, user_id: str = 'default', send: bool = False,
          store: StateStore | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     result = evaluate(question, user_id=user_id, store=store)
     event = result.get('selected_event')
     rendered = render_event(event or {}) if event and not result.get('skip') else ''

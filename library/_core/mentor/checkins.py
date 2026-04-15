@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from library.config import get_default_store
+from library.config import canonical_user_id, get_default_store
 from library._core.state_store import (
     StateStore,
     KEY_MENTOR_STATE,
@@ -160,6 +160,7 @@ def _selection_audit_summary(events: list[dict]) -> dict:
 
 
 def load_state(user_id: str = 'default', store: StateStore | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     state = store.get_json(user_id, KEY_MENTOR_STATE, default={}) or {}
     state.setdefault('mode', 'standard')
@@ -179,6 +180,7 @@ def load_state(user_id: str = 'default', store: StateStore | None = None) -> dic
 
 
 def save_state(state: dict, user_id: str = 'default', store: StateStore | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     state['updated_at'] = now_iso()
     store.put_json(user_id, KEY_MENTOR_STATE, state)
@@ -844,6 +846,7 @@ def _infer_background_question(continuity: dict, progress: dict) -> str:
 
 
 def evaluate(question: str = '', user_id: str = 'default', store: StateStore | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     build_user_profile(user_id=user_id, store=store)
     continuity = read_continuity(user_id=user_id, store=store)
@@ -921,6 +924,7 @@ def evaluate(question: str = '', user_id: str = 'default', store: StateStore | N
 
 
 def record_sent(event: dict, user_id: str = 'default', store: StateStore | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     state = load_state(user_id=user_id, store=store)
     prev_unanswered = int(state.get('unanswered_checkins', 0) or 0)
@@ -1001,6 +1005,7 @@ def record_sent(event: dict, user_id: str = 'default', store: StateStore | None 
 
 
 def record_reply(question: str = '', user_id: str = 'default', store: StateStore | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     state = load_state(user_id=user_id, store=store)
     state['unanswered_checkins'] = 0

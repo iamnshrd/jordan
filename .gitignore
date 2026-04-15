@@ -26,3 +26,5 @@ library/books/
 workspace/mentor_state.json
 workspace/mentor_events.jsonl
 workspace/mentor_delays.json
+workspace/mentor_targets.json
+workspace/telegram:*/

@@ -4,7 +4,7 @@ Refactored from: update_effectiveness_memory.
 """
 from __future__ import annotations
 
-from library.config import get_default_store
+from library.config import canonical_user_id, get_default_store
 from library._core.state_store import StateStore, KEY_EFFECTIVENESS
 from library.utils import now_iso
 
@@ -49,6 +49,7 @@ def update(source='', intervention='', outcome='used', route='',
 
     Returns the full effectiveness data dict.
     """
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     data = store.get_json(user_id, KEY_EFFECTIVENESS, default={
         'sources': {},

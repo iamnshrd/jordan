@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from library.config import get_default_store
+from library.config import canonical_user_id, get_default_store
 from library._core.state_store import StateStore, KEY_MENTOR_STATE, KEY_MENTOR_DELAYS
 
 
 def summarize(user_id: str = 'default', store: StateStore | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     state = store.get_json(user_id, KEY_MENTOR_STATE, default={}) or {}
     outcomes = state.get('event_outcomes') or {}

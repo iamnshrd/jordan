@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from library.config import get_default_store
+from library.config import canonical_user_id, get_default_store
 from library._core.state_store import StateStore, KEY_MENTOR_STATE
 from library.utils import now_iso
 
@@ -14,6 +14,7 @@ def _append_plan_trace(state: dict, entry: dict) -> None:
 
 
 def current_plan(user_id: str = 'default', store: StateStore | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     state = store.get_json(user_id, KEY_MENTOR_STATE, default={}) or {}
     return state.get('active_plan') or {}
@@ -131,6 +132,7 @@ def build_plan(route: str, user_id: str = 'default', store: StateStore | None = 
 
 
 def ensure_plan(route: str, user_id: str = 'default', store: StateStore | None = None, mentor_profile: dict | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     state = store.get_json(user_id, KEY_MENTOR_STATE, default={}) or {}
     plan = state.get('active_plan') or {}
@@ -184,6 +186,7 @@ def step_bonus(route: str, event_type: str, user_id: str = 'default', store: Sta
 
 
 def advance_plan(event_type: str, route: str, user_id: str = 'default', store: StateStore | None = None, mentor_profile: dict | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     state = store.get_json(user_id, KEY_MENTOR_STATE, default={}) or {}
     plan = ensure_plan(route, user_id=user_id, store=store, mentor_profile=mentor_profile)
@@ -209,6 +212,7 @@ def advance_plan(event_type: str, route: str, user_id: str = 'default', store: S
 
 
 def branch_plan_on_outcome(rich_outcome: str, route: str, user_id: str = 'default', store: StateStore | None = None, mentor_profile: dict | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     state = store.get_json(user_id, KEY_MENTOR_STATE, default={}) or {}
     plan = ensure_plan(route, user_id=user_id, store=store, mentor_profile=mentor_profile)

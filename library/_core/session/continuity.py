@@ -5,7 +5,7 @@ Merged from: read_continuity, update_continuity, continuity_summary,
 """
 from __future__ import annotations
 
-from library.config import get_default_store
+from library.config import canonical_user_id, get_default_store
 from library._core.state_store import (
     StateStore, KEY_CONTINUITY, KEY_CONTINUITY_SUMMARY,
 )
@@ -40,6 +40,7 @@ _DEFAULT_V3: dict = {
 
 def load(user_id: str = 'default', store: StateStore | None = None):
     """Load continuity, returning v3-structure defaults when missing."""
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     data = store.get_json(user_id, KEY_CONTINUITY)
     if data:
@@ -54,6 +55,7 @@ def load(user_id: str = 'default', store: StateStore | None = None):
 
 def save(data, user_id: str = 'default', store: StateStore | None = None):
     """Persist continuity with a refreshed last_updated timestamp."""
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     data['last_updated'] = now_iso()
     store.put_json(user_id, KEY_CONTINUITY, data)
@@ -165,6 +167,7 @@ def read(user_id: str = 'default', store: StateStore | None = None):
 
     Refreshes the summary cache if continuity data is newer.
     """
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     data = store.get_json(user_id, KEY_CONTINUITY)
     summary = store.get_json(user_id, KEY_CONTINUITY_SUMMARY)
@@ -195,6 +198,7 @@ def read(user_id: str = 'default', store: StateStore | None = None):
 
 def summarize(user_id: str = 'default', store: StateStore | None = None):
     """Write continuity_summary and return the summary dict."""
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     data = store.get_json(user_id, KEY_CONTINUITY)
     summary = {
@@ -251,6 +255,7 @@ def migrate_v2(user_id: str = 'default', store: StateStore | None = None):
 
     Returns the migrated data or ``'already_v2'`` if nothing to do.
     """
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     old = store.get_json(user_id, KEY_CONTINUITY, default={
         'user_patterns': [],

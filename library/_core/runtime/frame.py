@@ -7,6 +7,7 @@ from __future__ import annotations
 from library._core.runtime.retrieve import build_response_bundle
 from library._core.state_store import StateStore
 from library.utils import timed
+from library.config import canonical_user_id
 
 
 def infer_route_name(question):
@@ -144,6 +145,7 @@ def choose_pattern(bundle, question):
 @timed('frame')
 def select_frame(question, user_id: str = 'default',
                  store: StateStore | None = None):
+    user_id = canonical_user_id(user_id)
     bundle = build_response_bundle(question, user_id=user_id, store=store)
     theme, theme_reason = choose_theme(bundle, question)
     principle, principle_reason = choose_principle(bundle, question)

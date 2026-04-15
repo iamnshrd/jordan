@@ -7,7 +7,7 @@ from __future__ import annotations
 from library._core.runtime.synthesize import synthesize
 from library._core.session.continuity import update as update_continuity, load as load_continuity
 from library._core.state_store import StateStore
-from library.config import VOICE_MODES
+from library.config import canonical_user_id, VOICE_MODES
 from library.utils import load_json, timed
 
 
@@ -136,6 +136,7 @@ def respond(question, mode='deep', voice='default',
 
     Returns the rendered text string.
     """
+    user_id = canonical_user_id(user_id)
     data = synthesize(question, user_id=user_id, store=store,
                       frame=frame, progress=progress)
     selected = data.get('raw_selection', {})

@@ -4,7 +4,7 @@ Refactored from: estimate_progress_state.
 """
 from __future__ import annotations
 
-from library.config import get_default_store
+from library.config import canonical_user_id, get_default_store
 from library._core.state_store import (
     StateStore, KEY_CHECKPOINTS, KEY_CONTINUITY_SUMMARY, KEY_PROGRESS_STATE,
 )
@@ -16,6 +16,7 @@ def estimate(question='', user_id: str = 'default',
 
     Writes progress_state and returns the result dict.
     """
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     checkpoints = store.read_jsonl(user_id, KEY_CHECKPOINTS)
     cont = store.get_json(user_id, KEY_CONTINUITY_SUMMARY)

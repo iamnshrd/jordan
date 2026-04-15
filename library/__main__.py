@@ -20,6 +20,7 @@ import json
 import sys
 
 from library.logging_config import setup as setup_logging
+from library.config import canonical_user_id
 
 
 def cmd_run(args):

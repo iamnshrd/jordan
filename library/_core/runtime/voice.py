@@ -4,7 +4,7 @@ Restructured from: choose_voice_mode.py
 """
 from __future__ import annotations
 
-from library.config import QUESTION_ARCHETYPES, get_default_store
+from library.config import canonical_user_id, QUESTION_ARCHETYPES, get_default_store
 from library._core.state_store import StateStore, KEY_USER_STATE, KEY_SESSION_STATE
 from library.utils import load_json
 
@@ -30,6 +30,7 @@ def choose(question='', theme=None, user_id: str = 'default',
     5. User profile recommendation (``recommended_voice``)
     6. Default
     """
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     user = store.get_json(user_id, KEY_USER_STATE)
     session = store.get_json(user_id, KEY_SESSION_STATE)

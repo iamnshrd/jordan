@@ -8,6 +8,7 @@ regardless of where it is deployed.
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 ROOT = Path(__file__).resolve().parent            # library/
 PROJECT = ROOT.parent                             # jordan/
@@ -118,3 +119,42 @@ def get_default_store():
         from library._adapters.fs_store import FileSystemStore
         _default_store = FileSystemStore(WORKSPACE)
     return _default_store
+
+
+def canonical_user_id(raw: str | None = None, *, channel: str = 'telegram') -> str:
+    value = (raw or '').strip()
+    if not value or value == 'default':
+        return 'default'
+    if value.startswith('agent:main:telegram:direct:'):
+        return f"telegram:{value.rsplit(':', 1)[-1]}"
+    if value.startswith('telegram:'):
+        return value
+    if value.isdigit():
+        return f'{channel}:{value}'
+    return value
+
+
+def tracked_mentor_users_path() -> Path:
+    return WORKSPACE / 'mentor_targets.json'
+
+
+def load_tracked_mentor_users() -> dict:
+    path = tracked_mentor_users_path()
+    if not path.exists():
+        return {'users': []}
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except Exception:
+        return {'users': []}
+    if not isinstance(data, dict):
+        return {'users': []}
+    users = data.get('users')
+    if not isinstance(users, list):
+        data['users'] = []
+    return data
+
+
+def save_tracked_mentor_users(data: dict) -> None:
+    path = tracked_mentor_users_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')

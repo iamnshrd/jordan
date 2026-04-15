@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from library.config import get_default_store
+from library.config import canonical_user_id, get_default_store
 from library._core.state_store import StateStore, KEY_COMMITMENTS
 from library._core.runtime.routes import infer_route
 from library.utils import now_iso
@@ -38,6 +38,7 @@ SOFT_COMMITMENT_MARKERS = [
 
 
 def load_commitments(user_id: str = 'default', store: StateStore | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     data = store.get_json(user_id, KEY_COMMITMENTS, default={}) or {}
     data.setdefault('items', [])
@@ -45,6 +46,7 @@ def load_commitments(user_id: str = 'default', store: StateStore | None = None) 
 
 
 def save_commitments(data: dict, user_id: str = 'default', store: StateStore | None = None) -> dict:
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     store.put_json(user_id, KEY_COMMITMENTS, data)
     return data

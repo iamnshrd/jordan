@@ -4,7 +4,7 @@ Refactored from: assemble_context_graph.
 """
 from __future__ import annotations
 
-from library.config import get_default_store
+from library.config import canonical_user_id, get_default_store
 from library._core.state_store import (
     StateStore, KEY_CONTINUITY, KEY_SESSION_STATE,
     KEY_EFFECTIVENESS, KEY_CONTEXT_GRAPH,
@@ -16,6 +16,7 @@ def assemble(user_id: str = 'default', store: StateStore | None = None):
 
     Writes context_graph and returns the graph dict.
     """
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     cont = store.get_json(user_id, KEY_CONTINUITY)
     session = store.get_json(user_id, KEY_SESSION_STATE)

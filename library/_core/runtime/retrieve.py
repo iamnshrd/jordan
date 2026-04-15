@@ -4,7 +4,7 @@ Restructured from: retrieve_for_prompt.py
 """
 from __future__ import annotations
 
-from library.config import (
+from library.config import canonical_user_id, (
     SOURCE_ARBITRATION, QUESTION_ARCHETYPES,
     SOURCE_ROLE_PROFILES, get_default_store, get_doc_source_hints,
 )
@@ -223,12 +223,14 @@ def load_archetypes():
 
 def load_user_state(user_id: str = 'default',
                     store: StateStore | None = None):
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     return store.get_json(user_id, KEY_USER_STATE)
 
 
 def load_effectiveness_data(user_id: str = 'default',
                             store: StateStore | None = None):
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     return store.get_json(user_id, KEY_EFFECTIVENESS)
 
@@ -549,6 +551,7 @@ def build_response_bundle(question, user_id: str = 'default',
     (FTS BM25 + cosine similarity re-ranking).  Otherwise, pure FTS is used.
     """
     from library.utils import get_threshold
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     top_limit = get_threshold('retrieve_top_limit', 8)
     with connect() as conn:

@@ -4,7 +4,7 @@ Refactored from: estimate_user_reaction.
 """
 from __future__ import annotations
 
-from library.config import get_default_store
+from library.config import canonical_user_id, get_default_store
 from library._core.state_store import (
     StateStore, KEY_CHECKPOINTS, KEY_REACTION_ESTIMATE,
 )
@@ -16,6 +16,7 @@ def estimate(question='', user_id: str = 'default',
 
     Writes user_reaction_estimate and returns the result dict.
     """
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     rows = store.read_jsonl(user_id, KEY_CHECKPOINTS)
 

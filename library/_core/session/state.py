@@ -4,7 +4,7 @@ Merged from: update_session_state, user_state_profile.
 """
 from __future__ import annotations
 
-from library.config import get_default_store
+from library.config import canonical_user_id, get_default_store
 from library._core.state_store import (
     StateStore, KEY_SESSION_STATE, KEY_USER_STATE, KEY_CONTINUITY,
 )
@@ -19,6 +19,7 @@ def update_session(question, theme='', pattern='', principle='',
 
     Returns the data dict written to disk.
     """
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     data = {
         'question': question,
@@ -48,6 +49,7 @@ def _top_name(items):
 def build_user_profile(user_id: str = 'default',
                        store: StateStore | None = None):
     """Derive user_state from continuity.  Returns the profile dict."""
+    user_id = canonical_user_id(user_id)
     store = store or get_default_store()
     data = store.get_json(user_id, KEY_CONTINUITY)
     open_loops = data.get('open_loops') or []
