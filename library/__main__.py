@@ -131,6 +131,41 @@ def cmd_ingest(args):
         sys.exit(1)
 
 
+def cmd_mentor(args):
+    action = args.mentor_action
+    if action == 'check':
+        from library._core.mentor.checkins import evaluate
+        from library._core.mentor.render import render_event
+        result = evaluate(args.question or '', user_id=args.user_id)
+        if args.render:
+            rendered = render_event(result.get('selected_event') or {})
+            print(rendered)
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif action == 'tick':
+        from library._core.mentor.tick import tick
+        result = tick(args.question or '', user_id=args.user_id, send=args.send)
+        if args.render:
+            print(result.get('rendered_message', ''))
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif action == 'sent':
+        from library._core.mentor.checkins import record_sent
+        event = {'type': args.event_type, 'route': args.route, 'summary': args.summary, 'prompt': args.prompt}
+        print(json.dumps(record_sent(event, user_id=args.user_id), ensure_ascii=False, indent=2))
+    elif action == 'reply':
+        from library._core.mentor.checkins import record_reply
+        print(json.dumps(record_reply(user_id=args.user_id), ensure_ascii=False, indent=2))
+    elif action == 'set-mode':
+        from library._core.mentor.checkins import load_state, save_state
+        state = load_state(user_id=args.user_id)
+        state['mode'] = args.mode
+        print(json.dumps(save_state(state, user_id=args.user_id), ensure_ascii=False, indent=2))
+    else:
+        print(f'Unknown mentor action: {action}', file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_eval(args):
     action = args.eval_action
     if action == 'audit':
@@ -207,6 +242,18 @@ def build_parser():
     p_eval = sub.add_parser('eval', help='Run evaluations')
     p_eval.add_argument('eval_action', choices=['audit', 'regression', 'voice-regression', 'full'])
     p_eval.set_defaults(func=cmd_eval)
+
+    p_mentor = sub.add_parser('mentor', help='Mentor follow-up triggers')
+    p_mentor.add_argument('mentor_action', choices=['check', 'tick', 'sent', 'reply', 'set-mode'])
+    p_mentor.add_argument('--question', default='')
+    p_mentor.add_argument('--render', action='store_true', help='Render only the selected follow-up message')
+    p_mentor.add_argument('--send', action='store_true', help='Record the selected mentor event as sent')
+    p_mentor.add_argument('--event-type', default='manual-checkin')
+    p_mentor.add_argument('--route', default='general')
+    p_mentor.add_argument('--summary', default='')
+    p_mentor.add_argument('--prompt', default='')
+    p_mentor.add_argument('--mode', choices=['gentle', 'standard', 'hard', 'silent'], default='standard')
+    p_mentor.set_defaults(func=cmd_mentor)
 
     return parser
 

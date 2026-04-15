@@ -1,0 +1,706 @@
+[
+  {
+    "name": "career_background_prefers_fog_loop",
+    "question": "Проблема не только в тумане, а в отсутствии выбранного бремени.",
+    "expect_route": "career-vocation",
+    "expect_event_types_any": ["open-loop-followup", "micro-step-prompt", "direction-check"]
+  },
+  {
+    "name": "silent_mode_skips",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {"mode": "silent"},
+    "expect_skip": true,
+    "expect_skip_reason": "silent-mode"
+  },
+  {
+    "name": "hard_resistance_softens_to_standard",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {"mode": "hard"},
+    "reaction_override": "resisting",
+    "expect_effective_mode": "standard"
+  },
+  {
+    "name": "relationship_route_has_repair_check",
+    "question": "У нас копится недосказанность и обида в отношениях",
+    "expect_route": "relationship-maintenance",
+    "expect_event_types_any": ["repair-check", "open-loop-followup"]
+  },
+  {
+    "name": "commitment_loop_surfaces_commitment_check",
+    "question": "Я завтра напишу ему и закрою этот разговор",
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "Я завтра напишу ему и закрою этот разговор",
+          "action_core": "напишу ему и закрою этот разговор",
+          "route": "relationship-maintenance",
+          "status": "open",
+          "count": 1,
+          "strength": "standard",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "завтра",
+          "due_at": "2026-04-15T20:00:00+00:00"
+        }
+      ]
+    },
+    "expect_event_types_any": ["commitment-check"]
+  },
+  {
+    "name": "mentor_summary_available_when_multiple_commitments_open",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "завтра точно напишу ему и закрою этот разговор",
+          "action_core": "точно напишу ему и закрою этот разговор",
+          "route": "relationship-maintenance",
+          "status": "open",
+          "count": 1,
+          "strength": "hard",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "завтра",
+          "due_at": "2026-04-15T20:00:00+00:00"
+        },
+        {
+          "summary": "может быть на этой неделе разберу этот вопрос",
+          "action_core": "разберу этот вопрос",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 1,
+          "strength": "soft",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "на этой неделе",
+          "due_at": "2026-04-19T20:00:00+00:00"
+        }
+      ]
+    },
+    "expect_event_types_any": ["mentor-summary"]
+  },
+  {
+    "name": "broken_promise_check_for_overdue_hard_commitment",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "сегодня точно напишу ему и закрою этот разговор",
+          "action_core": "точно напишу ему и закрою этот разговор",
+          "route": "relationship-maintenance",
+          "status": "open",
+          "count": 2,
+          "strength": "hard",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "сегодня",
+          "due_at": "2026-04-14T01:00:00+00:00"
+        }
+      ]
+    },
+    "expect_event_types_any": ["broken-promise-check"],
+    "expect_event_prompt_contains": "закроешь сегодня"
+  },
+  {
+    "name": "vagueness_challenge_for_multiple_soft_commitments",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "может быть на этой неделе разберу этот вопрос",
+          "action_core": "разберу этот вопрос",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 1,
+          "strength": "soft",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "на этой неделе",
+          "due_at": "2026-04-19T20:00:00+00:00"
+        },
+        {
+          "summary": "постараюсь на этой неделе выбрать направление",
+          "action_core": "выбрать направление",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 1,
+          "strength": "soft",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "на этой неделе",
+          "due_at": "2026-04-19T20:00:00+00:00"
+        }
+      ]
+    },
+    "expect_event_types_any": ["vagueness-challenge"],
+    "expect_event_prompt_contains": "конкретное обязательство"
+  },
+  {
+    "name": "intervention_memory_penalizes_repeated_strategy",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {
+      "mode": "standard",
+      "event_type_counts": {"vagueness-challenge": 3},
+      "route_event_type_counts": {"career-vocation::vagueness-challenge": 3},
+      "last_checkin_type": "vagueness-challenge",
+      "last_checkin_route": "career-vocation"
+    },
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "может быть на этой неделе разберу этот вопрос",
+          "action_core": "разберу этот вопрос",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 1,
+          "strength": "soft",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "на этой неделе",
+          "due_at": "2026-04-19T20:00:00+00:00"
+        },
+        {
+          "summary": "постараюсь на этой неделе выбрать направление",
+          "action_core": "выбрать направление",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 1,
+          "strength": "soft",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "на этой неделе",
+          "due_at": "2026-04-19T20:00:00+00:00"
+        }
+      ]
+    },
+    "expect_event_types_any": ["mentor-summary", "micro-step-prompt", "direction-check"]
+  },
+  {
+    "name": "helpful_outcome_biases_summary_reuse",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {
+      "mode": "standard",
+      "event_outcomes": {"career-vocation::mentor-summary": {"used": 2, "helpful": 2, "neutral": 0, "resisted": 0, "ignored": 0}}
+    },
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "завтра точно напишу ему и закрою этот разговор",
+          "action_core": "точно напишу ему и закрою этот разговор",
+          "route": "relationship-maintenance",
+          "status": "open",
+          "count": 1,
+          "strength": "hard",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "завтра",
+          "due_at": "2026-04-15T20:00:00+00:00"
+        },
+        {
+          "summary": "может быть на этой неделе разберу этот вопрос",
+          "action_core": "разберу этот вопрос",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 1,
+          "strength": "soft",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "на этой неделе",
+          "due_at": "2026-04-19T20:00:00+00:00"
+        }
+      ]
+    },
+    "expect_event_types_any": ["mentor-summary"],
+    "expect_selection_audit": {
+      "winner_in_top": true,
+      "runner_up_required": true,
+      "why_won_required": true,
+      "why_won_factor_any": ["route_bonus", "fit_bonus", "step_bonus", "effectiveness_adjust"]
+    }
+  },
+  {
+    "name": "selection_audit_exposes_winner_and_runner_up",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "завтра точно напишу ему и закрою этот разговор",
+          "action_core": "точно напишу ему и закрою этот разговор",
+          "route": "relationship-maintenance",
+          "status": "open",
+          "count": 1,
+          "strength": "hard",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "завтра",
+          "due_at": "2026-04-15T20:00:00+00:00"
+        },
+        {
+          "summary": "может быть на этой неделе разберу этот вопрос",
+          "action_core": "разберу этот вопрос",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 1,
+          "strength": "soft",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "на этой неделе",
+          "due_at": "2026-04-19T20:00:00+00:00"
+        }
+      ]
+    },
+    "expect_event_types_any": ["mentor-summary"]
+  },
+  {
+    "name": "resisted_outcome_penalizes_summary_reuse",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {
+      "mode": "standard",
+      "event_outcomes": {"career-vocation::mentor-summary": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 2, "ignored": 0}}
+    },
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "завтра точно напишу ему и закрою этот разговор",
+          "action_core": "точно напишу ему и закрою этот разговор",
+          "route": "relationship-maintenance",
+          "status": "open",
+          "count": 1,
+          "strength": "hard",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "завтра",
+          "due_at": "2026-04-15T20:00:00+00:00"
+        },
+        {
+          "summary": "может быть на этой неделе разберу этот вопрос",
+          "action_core": "разберу этот вопрос",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 1,
+          "strength": "soft",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "на этой неделе",
+          "due_at": "2026-04-19T20:00:00+00:00"
+        }
+      ]
+    },
+    "expect_event_types_any": ["commitment-check", "micro-step-prompt"]
+  },
+  {
+    "name": "low_pressure_profile_softens_broken_promise_priority",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {
+      "mode": "hard",
+      "event_outcomes": {
+        "career-vocation::broken-promise-check": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 2, "ignored": 0},
+        "shame-self-contempt::micro-step-prompt": {"used": 2, "helpful": 0, "neutral": 1, "fragility": 2, "resisted": 0, "ignored": 0}
+      }
+    },
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "сегодня точно закрою этот вопрос",
+          "action_core": "точно закрою этот вопрос",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 2,
+          "strength": "hard",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "сегодня",
+          "due_at": "2026-04-14T01:00:00+00:00"
+        }
+      ]
+    },
+    "expect_effective_mode": "gentle",
+    "expect_event_types_any": ["broken-promise-check", "micro-step-prompt"]
+  },
+  {
+    "name": "failed_plan_prefers_reorientation_over_pressure",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {
+      "mode": "hard",
+      "active_plan": {
+        "plan_type": "clarity-to-action",
+        "route": "career-vocation",
+        "steps": ["mentor-summary", "vagueness-challenge", "micro-step-prompt", "commitment-check"],
+        "stage": 0,
+        "status": "failed",
+        "status_reason": "no-progress-under-repeated-resistance",
+        "updated_at": "2026-04-14T00:00:00+00:00",
+        "stats": {
+          "sent_count": 3,
+          "movement_count": 0,
+          "resistance_count": 3,
+          "fragility_count": 0,
+          "stall_count": 0,
+          "last_event_type": "commitment-check",
+          "last_rich_outcome": "resistance"
+        }
+      }
+    },
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "сегодня точно закрою этот вопрос",
+          "action_core": "точно закрою этот вопрос",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 2,
+          "strength": "hard",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "сегодня",
+          "due_at": "2026-04-14T01:00:00+00:00"
+        }
+      ]
+    },
+    "expect_effective_mode": "gentle",
+    "expect_event_types_any": ["mentor-summary", "direction-check"],
+    "forbid_event_types": ["broken-promise-check", "commitment-check", "vagueness-challenge"]
+  },
+  {
+    "name": "paused_plan_blocks_broken_promise",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {
+      "mode": "standard",
+      "active_plan": {
+        "plan_type": "clarity-to-action",
+        "route": "career-vocation",
+        "steps": ["mentor-summary", "vagueness-challenge", "micro-step-prompt", "commitment-check"],
+        "stage": 0,
+        "status": "paused",
+        "status_reason": "delay-with-intent",
+        "updated_at": "2026-04-14T00:00:00+00:00",
+        "stats": {
+          "sent_count": 1,
+          "movement_count": 0,
+          "resistance_count": 1,
+          "fragility_count": 0,
+          "stall_count": 0,
+          "last_event_type": "commitment-check",
+          "last_rich_outcome": "delay-with-intent"
+        }
+      }
+    },
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "сегодня точно закрою этот вопрос",
+          "action_core": "точно закрою этот вопрос",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 2,
+          "strength": "hard",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "сегодня",
+          "due_at": "2026-04-14T01:00:00+00:00"
+        }
+      ]
+    },
+    "expect_event_types_any": ["mentor-summary", "micro-step-prompt", "direction-check"],
+    "forbid_event_types": ["broken-promise-check"]
+  },
+  {
+    "name": "gentle_handoff_blocks_accountability_temporarily",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {
+      "mode": "standard",
+      "handoff_mode": "gentle",
+      "handoff_ticks": 2,
+      "active_plan": {
+        "plan_type": "clarity-to-action",
+        "route": "career-vocation",
+        "steps": ["mentor-summary", "vagueness-challenge", "micro-step-prompt", "commitment-check"],
+        "stage": 1,
+        "status": "active",
+        "status_reason": "handoff-from-reorientation-career"
+      }
+    },
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "сегодня точно закрою этот вопрос",
+          "action_core": "точно закрою этот вопрос",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 2,
+          "strength": "hard",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "сегодня",
+          "due_at": "2026-04-14T01:00:00+00:00"
+        }
+      ]
+    },
+    "expect_effective_mode": "gentle",
+    "expect_event_types_any": ["micro-step-prompt", "direction-check", "mentor-summary"],
+    "forbid_event_types": ["broken-promise-check", "commitment-check"]
+  },
+  {
+    "name": "pressure_debt_and_softness_budget_bias_harder_events",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {
+      "mode": "standard",
+      "softness_budget": 3,
+      "pressure_debt": 3
+    },
+    "commitments_override": {
+      "items": [
+        {
+          "summary": "сегодня точно закрою этот вопрос",
+          "action_core": "точно закрою этот вопрос",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 2,
+          "strength": "hard",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "сегодня",
+          "due_at": "2026-04-14T01:00:00+00:00"
+        },
+        {
+          "summary": "может быть на этой неделе разберу этот вопрос",
+          "action_core": "разберу этот вопрос",
+          "route": "career-vocation",
+          "status": "open",
+          "count": 1,
+          "strength": "soft",
+          "created_at": "2026-04-14T00:00:00+00:00",
+          "last_seen": "2026-04-14T00:00:00+00:00",
+          "last_prompted_at": "",
+          "due_hint": "на этой неделе",
+          "due_at": "2026-04-19T20:00:00+00:00"
+        }
+      ]
+    },
+    "expect_event_types_any": ["broken-promise-check", "commitment-check", "vagueness-challenge", "pattern-naming-check", "decision-forcing-check"]
+  },
+  {
+    "name": "confrontation_events_surface_under_high_pressure_debt",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 3,
+      "softness_budget": 2
+    },
+    "expect_event_types_any": ["pattern-naming-check", "decision-forcing-check"]
+  },
+  {
+    "name": "failed_confrontation_is_penalized",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 3,
+      "softness_budget": 2,
+      "event_outcomes": {
+        "career-vocation::pattern-naming-check": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 2, "ignored": 0, "irritation": 1},
+        "career-vocation::decision-forcing-check": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 1, "ignored": 0, "fragility": 1}
+      }
+    },
+    "expect_event_types_any": ["direction-check", "micro-step-prompt"],
+    "forbid_event_types": ["pattern-naming-check", "decision-forcing-check"]
+  },
+  {
+    "name": "relationship_confrontation_events_surface_under_pressure_debt",
+    "question": "У нас копится недосказанность и обида в отношениях",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 3,
+      "softness_budget": 2
+    },
+    "expect_route": "relationship-maintenance",
+    "expect_event_types_any": ["pattern-naming-check", "decision-forcing-check"]
+  },
+  {
+    "name": "shame_route_confrontation_surfaces_under_pressure_debt",
+    "question": "Мне стыдно за себя, я ненавижу себя и опять чувствую себя никчемным",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 3,
+      "softness_budget": 2
+    },
+    "expect_route": "shame-self-contempt",
+    "expect_event_types_any": ["pattern-naming-check", "decision-forcing-check"]
+  },
+  {
+    "name": "failed_shame_confrontation_is_penalized",
+    "question": "Мне стыдно за себя, я ненавижу себя и опять чувствую себя никчемным",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 3,
+      "softness_budget": 2,
+      "event_outcomes": {
+        "shame-self-contempt::pattern-naming-check": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 1, "ignored": 0, "fragility": 1},
+        "shame-self-contempt::decision-forcing-check": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 1, "ignored": 0, "irritation": 1}
+      }
+    },
+    "expect_route": "shame-self-contempt",
+    "forbid_event_types": ["pattern-naming-check", "decision-forcing-check"]
+  },
+  {
+    "name": "self_deception_truth_demand_surfaces_under_pressure_debt",
+    "question": "Кажется я вру себе и прикрываю все красивыми объяснениями",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 3,
+      "softness_budget": 2
+    },
+    "expect_route": "self-deception",
+    "expect_event_types_any": ["pattern-naming-check", "truth-demand-check"]
+  },
+  {
+    "name": "resentment_cost_of_delay_surfaces_under_pressure_debt",
+    "question": "Во мне много обиды и злости, и я всё больше за это держусь",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 3,
+      "softness_budget": 2
+    },
+    "expect_route": "resentment",
+    "expect_event_types_any": ["pattern-naming-check", "cost-of-delay-check"]
+  },
+  {
+    "name": "addiction_identity_vs_action_surfaces_under_pressure_debt",
+    "question": "У меня зависимость и хаос, я снова спиваюсь и всё разваливается",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 3,
+      "softness_budget": 2
+    },
+    "expect_route": "addiction-chaos",
+    "expect_event_types_any": ["pattern-naming-check", "identity-vs-action-check"]
+  },
+  {
+    "name": "failed_self_deception_confrontation_is_penalized",
+    "question": "Кажется я вру себе и прикрываю все красивыми объяснениями",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 3,
+      "softness_budget": 2,
+      "event_outcomes": {
+        "self-deception::pattern-naming-check": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 2, "ignored": 0, "irritation": 1},
+        "self-deception::truth-demand-check": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 1, "ignored": 0, "fragility": 1}
+      }
+    },
+    "expect_route": "self-deception",
+    "forbid_event_types": ["pattern-naming-check", "truth-demand-check"]
+  },
+  {
+    "name": "self_deception_excuse_collapse_surfaces_at_higher_pressure_debt",
+    "question": "Кажется я вру себе и прикрываю все красивыми объяснениями",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 4,
+      "softness_budget": 2
+    },
+    "expect_route": "self-deception",
+    "expect_event_types_any": ["excuse-collapse"]
+  },
+  {
+    "name": "resentment_false_progress_surfaces_at_higher_pressure_debt",
+    "question": "Во мне много обиды и злости, и я всё больше за это держусь",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 4,
+      "softness_budget": 2
+    },
+    "expect_route": "resentment",
+    "expect_event_types_any": ["false-progress-check"]
+  },
+  {
+    "name": "addiction_excuse_collapse_surfaces_at_higher_pressure_debt",
+    "question": "У меня зависимость и хаос, я снова спиваюсь и всё разваливается",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 4,
+      "softness_budget": 2
+    },
+    "expect_route": "addiction-chaos",
+    "expect_event_types_any": ["excuse-collapse"]
+  },
+  {
+    "name": "failed_resentment_confrontation_is_penalized",
+    "question": "Во мне много обиды и злости, и я всё больше за это держусь",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 4,
+      "softness_budget": 2,
+      "event_outcomes": {
+        "resentment::pattern-naming-check": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 1, "ignored": 0, "irritation": 1},
+        "resentment::cost-of-delay-check": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 1, "ignored": 0, "fragility": 1},
+        "resentment::false-progress-check": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 2, "ignored": 0, "irritation": 1}
+      }
+    },
+    "expect_route": "resentment",
+    "forbid_event_types": ["pattern-naming-check", "cost-of-delay-check", "false-progress-check"]
+  },
+  {
+    "name": "failed_addiction_confrontation_is_penalized",
+    "question": "У меня зависимость и хаос, я снова спиваюсь и всё разваливается",
+    "state_override": {
+      "mode": "standard",
+      "pressure_debt": 4,
+      "softness_budget": 2,
+      "event_outcomes": {
+        "addiction-chaos::pattern-naming-check": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 1, "ignored": 0, "irritation": 1},
+        "addiction-chaos::identity-vs-action-check": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 1, "ignored": 0, "fragility": 1},
+        "addiction-chaos::excuse-collapse": {"used": 2, "helpful": 0, "neutral": 0, "resisted": 2, "ignored": 0, "irritation": 1}
+      }
+    },
+    "expect_route": "addiction-chaos",
+    "forbid_event_types": ["pattern-naming-check", "identity-vs-action-check", "excuse-collapse"]
+  },
+  {
+    "name": "low_clarity_of_ends_surfaces_ends_clarification",
+    "question": "Я не понимаю, куда мне двигаться по жизни",
+    "state_override": {
+      "mode": "standard",
+      "event_outcomes": {
+        "career-vocation::mentor-summary": {"used": 1, "helpful": 0, "neutral": 1, "resisted": 0, "ignored": 0}
+      }
+    },
+    "expect_route": "career-vocation",
+    "expect_event_types_any": ["ends-clarification-check"]
+  },
+  {
+    "name": "low_judgment_quality_surfaces_frame_setting",
+    "question": "Кажется я вру себе и прикрываю все красивыми объяснениями",
+    "state_override": {
+      "mode": "standard"
+    },
+    "expect_route": "self-deception",
+    "expect_event_types_any": ["frame-setting-check"]
+  },
+  {
+    "name": "low_self_governance_surfaces_habit_formation",
+    "question": "У меня зависимость и хаос, я снова спиваюсь и всё разваливается",
+    "state_override": {
+      "mode": "standard"
+    },
+    "expect_route": "addiction-chaos",
+    "expect_event_types_any": ["habit-formation-check"]
+  }
+]

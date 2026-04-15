@@ -18,6 +18,8 @@ from library._core.session.reaction import estimate as estimate_reaction
 from library._core.session.effectiveness import update as update_effectiveness
 from library._core.session.context import assemble as assemble_context
 from library._core.state_store import StateStore
+from library._core.mentor.checkins import record_reply
+from library._core.mentor.commitments import record_commitment, maybe_resolve_from_reply
 from library.config import get_default_store
 import logging
 from library.utils import timing_context, get_threshold
@@ -78,6 +80,9 @@ def orchestrate(question, user_id: str = 'default',
                 store: StateStore | None = None):
     question = question or ''
     store = store or get_default_store()
+    if question.strip():
+        record_reply(question, user_id=user_id, store=store)
+        maybe_resolve_from_reply(question, user_id=user_id, store=store)
 
     with timing_context() as timings:
         result = _orchestrate_inner(question, user_id=user_id, store=store)
@@ -97,6 +102,10 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
     """
     question = question or ''
     store = store or get_default_store()
+
+    if question.strip():
+        record_reply(question, user_id=user_id, store=store)
+        maybe_resolve_from_reply(question, user_id=user_id, store=store)
 
     if not should_use_kb(question):
         return {
@@ -188,6 +197,7 @@ def _orchestrate_inner(question, user_id: str = 'default',
 
     try:
         selected = select_frame(question, user_id=user_id, store=store)
+        record_commitment(question, route=selected.get('route_name') or '', user_id=user_id, store=store)
     except Exception as exc:
         log.exception('select_frame failed: %s', exc)
         return {
