@@ -10,6 +10,7 @@ from library._core.runtime.respond import respond
 from library._core.runtime.llm_prompt import build_prompt, build_fallback_response
 from library._core.runtime.retrieval_validator import validate_chunks, get_relevance_judge
 from library._core.runtime.voice import choose as choose_voice
+from library._core.runtime.guardrails import detect_out_of_domain, maybe_reset_out_of_domain_streak
 from library._core.session.continuity import read as read_continuity, load as load_continuity
 from library._core.session.state import build_user_profile, update_session
 from library._core.session.checkpoint import log as log_checkpoint
@@ -109,6 +110,22 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
         record_reply(question, user_id=user_id, store=store)
         maybe_resolve_from_reply(question, user_id=user_id, store=store)
 
+    guardrail = detect_out_of_domain(question, user_id=user_id, store=store)
+    if not guardrail:
+        maybe_reset_out_of_domain_streak(question, user_id=user_id, store=store)
+    if guardrail:
+        return {
+            'system': '',
+            'user': question,
+            'synthesis': None,
+            'continuity': load_continuity(user_id=user_id, store=store),
+            'mode': detect_mode(question),
+            'use_kb': False,
+            'action': 'answer-directly',
+            'guardrail': guardrail,
+            'direct_response': guardrail['message'],
+        }
+
     if not should_use_kb(question):
         return {
             'system': '',
@@ -183,6 +200,22 @@ def _orchestrate_inner(question, user_id: str = 'default',
                        store: StateStore | None = None):
     user_id = canonical_user_id(user_id)
     mode = detect_mode(question)
+
+    guardrail = detect_out_of_domain(question, user_id=user_id, store=store)
+    if not guardrail:
+        maybe_reset_out_of_domain_streak(question, user_id=user_id, store=store)
+    if guardrail:
+        return {
+            'question': question,
+            'mode': mode,
+            'use_kb': False,
+            'confidence': 'high',
+            'action': 'answer-directly',
+            'reason': f"Out-of-domain request: {guardrail['kind']}",
+            'direct_response': guardrail['message'],
+            'guardrail': guardrail,
+            'continuity': read_continuity(user_id=user_id, store=store),
+        }
 
     if not should_use_kb(question):
         return {

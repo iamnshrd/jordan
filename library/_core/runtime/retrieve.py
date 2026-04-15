@@ -4,9 +4,13 @@ Restructured from: retrieve_for_prompt.py
 """
 from __future__ import annotations
 
-from library.config import canonical_user_id, (
-    SOURCE_ARBITRATION, QUESTION_ARCHETYPES,
-    SOURCE_ROLE_PROFILES, get_default_store, get_doc_source_hints,
+from library.config import (
+    canonical_user_id,
+    SOURCE_ARBITRATION,
+    QUESTION_ARCHETYPES,
+    SOURCE_ROLE_PROFILES,
+    get_default_store,
+    get_doc_source_hints,
 )
 from library._core.state_store import StateStore, KEY_USER_STATE, KEY_EFFECTIVENESS
 from library.db import connect, row_to_dict
