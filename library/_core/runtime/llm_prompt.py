@@ -48,6 +48,22 @@ def _format_quotes(quotes: list[dict], max_quotes: int = 3) -> str:
     return '\n'.join(lines)
 
 
+def _format_structured_rows(rows: list[dict], title_key: str = 'title',
+                            body_key: str = 'summary',
+                            max_rows: int = 3) -> str:
+    lines: list[str] = []
+    for row in rows[:max_rows]:
+        title = (row.get(title_key) or '').strip()
+        body = (row.get(body_key) or '').strip()
+        if title and body:
+            lines.append(f'- {title}: {body}')
+        elif title:
+            lines.append(f'- {title}')
+        elif body:
+            lines.append(f'- {body}')
+    return '\n'.join(lines)
+
+
 def _has_text(value: str | None) -> bool:
     return bool((value or '').strip())
 
@@ -93,11 +109,13 @@ def _append_grounding_report(system_parts: list[str], data: dict) -> None:
     missing = report.get('missing_fields') or []
     evidence_count = report.get('evidence_count', 0)
     quote_count = report.get('quote_count', 0)
+    structured_count = report.get('structured_count', 0)
     system_parts.append('\n## Grounding Report')
     system_parts.append(f'- DB-backed fields: {", ".join(backed) if backed else "none"}')
     system_parts.append(f'- Missing DB backing: {", ".join(missing) if missing else "none"}')
     system_parts.append(f'- Evidence chunks: {evidence_count}')
     system_parts.append(f'- Quotes: {quote_count}')
+    system_parts.append(f'- Structured knowledge rows: {structured_count}')
 
 
 def build_prompt(question: str, user_id: str = 'default',
@@ -127,6 +145,12 @@ def build_prompt(question: str, user_id: str = 'default',
     bundle = data.get('raw_selection', {}).get('bundle', {})
     chunks = bundle.get('relevant_chunks', [])
     quotes = bundle.get('relevant_quotes', [])
+    canonical_concepts = bundle.get('canonical_concepts', [])
+    definitions = bundle.get('relevant_definitions', [])
+    claims = bundle.get('relevant_claims', [])
+    practices = bundle.get('relevant_practices', [])
+    objections = bundle.get('relevant_objections', [])
+    chapter_summaries = bundle.get('relevant_chapter_summaries', [])
 
     raw = data.get('raw_selection') or {}
     theme_sel = raw.get('selected_theme')
@@ -184,6 +208,42 @@ def build_prompt(question: str, user_id: str = 'default',
     if quotes:
         system_parts.append('\n## Подходящие цитаты')
         system_parts.append(_format_quotes(quotes))
+
+    if canonical_concepts:
+        system_parts.append('\n## Canonical Concepts')
+        system_parts.append(_format_structured_rows(
+            canonical_concepts, title_key='concept_name', body_key='description', max_rows=3,
+        ))
+
+    if definitions:
+        system_parts.append('\n## Definitions')
+        system_parts.append(_format_structured_rows(
+            definitions, title_key='title', body_key='summary', max_rows=3,
+        ))
+
+    if claims:
+        system_parts.append('\n## Claims')
+        system_parts.append(_format_structured_rows(
+            claims, title_key='title', body_key='summary', max_rows=3,
+        ))
+
+    if practices:
+        system_parts.append('\n## Practices')
+        system_parts.append(_format_structured_rows(
+            practices, title_key='title', body_key='summary', max_rows=3,
+        ))
+
+    if objections:
+        system_parts.append('\n## Objections And Replies')
+        system_parts.append(_format_structured_rows(
+            objections, title_key='title', body_key='response', max_rows=2,
+        ))
+
+    if chapter_summaries:
+        system_parts.append('\n## Chapter Summaries')
+        system_parts.append(_format_structured_rows(
+            chapter_summaries, title_key='section_title', body_key='summary', max_rows=3,
+        ))
 
     if data.get('supporting_quote'):
         system_parts.append(f'\n## Рекомендованная цитата для ответа')

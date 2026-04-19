@@ -44,6 +44,21 @@ BAD_SNIPPETS = COMMON_STOP_SNIPPETS + [
     'london:',
 ]
 
+FALLBACK_QUOTE_KEYWORDS = [
+    'meaning', 'purpose', 'vision', 'goal', 'ideal', 'responsibility',
+    'truth', 'lie', 'order', 'chaos', 'discipline', 'schedule', 'plan',
+    'relationship', 'resentment', 'gratitude', 'courage', 'children',
+    'смысл', 'цель', 'идеал', 'ответствен', 'правд', 'лож', 'поряд',
+    'хаос', 'дисциплин', 'расписан', 'план', 'отношен', 'обид',
+    'благодар', 'мужеств', 'дет', 'границ', 'добросовест',
+]
+
+FALLBACK_MODAL_PATTERNS = [
+    r'\byou (?:need to|should|must|have to|can)\b',
+    r"\b(?:do not|don't|try to|plan and work|pick|write|set|aim)\b",
+    r'\b(?:нужно|надо|следует|должен|можете|попробуй|сделай|определи)\b',
+]
+
 
 def _clean(text):
     text = re.sub(r'\s+', ' ', text).strip()
@@ -51,20 +66,99 @@ def _clean(text):
     return text
 
 
+def _match_norm(text):
+    """Normalize text for quote-to-chunk matching."""
+    return re.sub(r'\s+', ' ', (text or '').lower()).strip()
+
+
+def _active_chunk_exists(cur, document_id, chunk_id):
+    row = cur.execute(
+        'SELECT 1 FROM document_chunks dc '
+        'JOIN documents d ON d.id = dc.document_id '
+        'WHERE dc.id = ? AND dc.document_id = ? '
+        'AND dc.revision_id = d.active_revision_id',
+        (chunk_id, document_id),
+    ).fetchone()
+    return bool(row)
+
+
+def _resolve_quote_chunk_id(cur, document_id, chunk_id, quote_text):
+    """Resolve a valid active chunk id for a quote.
+
+    Manual quote packs currently use ``chunk_id = 0`` as a document-level
+    placeholder. Prefer an exact substring anchor, then token overlap, and
+    finally fall back to the first active chunk in the source document.
+    """
+    if chunk_id and _active_chunk_exists(cur, document_id, chunk_id):
+        return chunk_id, 'as-is'
+
+    rows = cur.execute(
+        'SELECT dc.id, dc.content FROM document_chunks dc '
+        'JOIN documents d ON d.id = dc.document_id '
+        'WHERE dc.document_id = ? AND dc.revision_id = d.active_revision_id '
+        'ORDER BY dc.chunk_index',
+        (document_id,),
+    ).fetchall()
+    if not rows:
+        return None, 'no-active-chunks'
+
+    norm_quote = _match_norm(quote_text)
+    if norm_quote:
+        for row_chunk_id, content in rows:
+            if norm_quote in _match_norm(content):
+                return row_chunk_id, 'substring-match'
+
+    quote_tokens = {
+        token for token in re.findall(r'[\w-]+', norm_quote)
+        if len(token) >= 4
+    }
+    if quote_tokens:
+        best_chunk_id = None
+        best_score = -1
+        for row_chunk_id, content in rows:
+            content_tokens = {
+                token for token in re.findall(r'[\w-]+', _match_norm(content))
+                if len(token) >= 4
+            }
+            score = len(quote_tokens & content_tokens)
+            if score > best_score:
+                best_score = score
+                best_chunk_id = row_chunk_id
+        if best_chunk_id is not None and best_score > 0:
+            return best_chunk_id, 'token-overlap'
+
+    return rows[0][0], 'first-active-chunk'
+
+
 def _classify_quote(text):
     lower = text.lower()
     if 'говорите правду' in lower or 'не лгите' in lower or 'tell the truth' in lower or "don't lie" in lower:
         return ('principle-quote', 'truth', 'tell-the-truth-or-at-least-dont-lie', 'avoidance-loop')
+    if ('vision' in lower or 'goal' in lower or 'ideal' in lower or 'aim' in lower
+            or 'meaningful' in lower or 'значим' in lower or 'цель' in lower
+            or 'идеал' in lower or 'смысл' in lower):
+        return ('discipline-quote', 'meaning', 'take-responsibility-before-blame', 'aimlessness')
     if 'сравнивайте себя' in lower or 'compare yourself' in lower:
         return ('principle-quote', 'meaning', None, 'aimlessness')
+    if ('responsibility' in lower or 'burden' in lower or 'ответствен' in lower
+            or 'обязан' in lower):
+        return ('principle-quote', 'responsibility', 'take-responsibility-before-blame', 'avoidance-loop')
     if 'обращайтесь с собой' in lower or 'treat yourself like someone' in lower:
         return ('principle-quote', 'responsibility', 'take-responsibility-before-blame', None)
+    if ('schedule' in lower or 'расписан' in lower or 'plan' in lower
+            or 'discipline' in lower or 'дисциплин' in lower):
+        return ('discipline-quote', 'order-and-chaos', 'clean-up-what-is-in-front-of-you', 'avoidance-loop')
     if 'не позволяйте детям' in lower or 'do not let your children' in lower:
         return ('relationship-quote', 'responsibility', None, None)
+    if ('relationship' in lower or 'romance' in lower or 'границ' in lower
+            or 'children' in lower or 'partner' in lower or 'партнер' in lower):
+        return ('relationship-quote', 'responsibility', 'tell-the-truth-or-at-least-dont-lie', 'resentment-loop')
     if 'убери' in lower or 'комнат' in lower or 'порядок у себя дома' in lower or 'наведите идеальный порядок у себя дома' in lower or 'clean your room' in lower or 'perfect order in your house' in lower:
         return ('discipline-quote', 'order-and-chaos', 'clean-up-what-is-in-front-of-you', 'avoidance-loop')
     if 'стыд' in lower or 'позор' in lower or 'отвращение к себе' in lower or 'shame' in lower:
         return ('shame-quote', 'suffering', None, 'avoidance-loop')
+    if 'gratitude' in lower or 'thankful' in lower or 'благодар' in lower:
+        return ('shame-quote', 'suffering', 'tell-the-truth-or-at-least-dont-lie', 'avoidance-loop')
     if 'обида' in lower or 'горечь' in lower or 'resentment' in lower:
         return ('resentment-quote', 'resentment', None, 'resentment-loop')
     return ('general-quote', None, None, None)
@@ -77,6 +171,10 @@ def _keep_quote(item):
     if len(text) < get_threshold('quote_min_length', 60):
         return False
     if any(b in lowered for b in BAD_SNIPPETS):
+        return False
+    if lowered.count('правило ') >= 2:
+        return False
+    if re.search(r'(?:\.\s*){8,}', text):
         return False
     if 'не позволяйте детям' in lowered and 'наведите идеальный порядок у себя дома' in lowered:
         return False
@@ -97,9 +195,98 @@ def _keep_quote(item):
         return False
     if re.search(r'\b[A-ZА-ЯЁ]{4,}\b(?:\s+\b[A-ZА-ЯЁ]{4,}\b){3,}', text):
         return False
-    if not any(x in lowered for x in ['правд', 'tell the truth', 'сравнива', 'compare yourself', 'обращайтесь', 'treat yourself like', 'убери', 'clean your room', 'предполаг', 'assume that the person', 'не позволяйте', 'do not let your children', 'порядок у себя дома', 'perfect order in your house', 'стыд', 'позор', 'shame', 'обида', 'горечь', 'resentment']):
+    if not any(x in lowered for x in [
+        'правд', 'tell the truth', 'сравнива', 'compare yourself',
+        'обращайтесь', 'treat yourself like', 'убери', 'clean your room',
+        'предполаг', 'assume that the person', 'не позволяйте',
+        'do not let your children', 'порядок у себя дома',
+        'perfect order in your house', 'стыд', 'позор', 'shame',
+        'обида', 'горечь', 'resentment', 'vision', 'goal', 'ideal',
+        'meaningful', 'смысл', 'цель', 'идеал', 'ответствен',
+        'responsibility', 'burden', 'schedule', 'расписан', 'discipline',
+        'дисциплин', 'relationship', 'romance', 'отношен', 'границ',
+        'gratitude', 'thankful', 'благодар',
+    ]):
         return False
     return True
+
+
+def _split_candidate_sentences(text):
+    parts = re.split(r'(?<=[.!?])\s+', _clean(text))
+    return [p.strip(' "\'«»') for p in parts if p.strip()]
+
+
+def _fallback_quote_score(sentence):
+    lower = sentence.lower()
+    score = 0
+    for kw in FALLBACK_QUOTE_KEYWORDS:
+        if kw in lower:
+            score += 2
+    for pat in FALLBACK_MODAL_PATTERNS:
+        if re.search(pat, lower):
+            score += 3
+    if 70 <= len(sentence) <= 220:
+        score += 2
+    if sentence[:1].isupper():
+        score += 1
+    return score
+
+
+def _build_fallback_quotes(rows, existing_by_doc, existing_quote_texts,
+                           target_per_doc=4):
+    """Generate curated fallback quotes for under-covered article/transcript docs."""
+    out = []
+    existing_hashes = {
+        hashlib.sha256((text or '').lower().encode()).hexdigest()
+        for text in existing_quote_texts
+    }
+    docs_needed = {
+        document_id for document_id, source_pdf, _chunk_id, _content in rows
+        if source_pdf.startswith('articles/')
+        and existing_by_doc.get(document_id, 0) < target_per_doc
+    }
+    candidates_by_doc: dict[int, list[tuple[int, str, int, str]]] = {
+        doc_id: [] for doc_id in docs_needed
+    }
+    for document_id, source_pdf, chunk_id, content in rows:
+        if document_id not in docs_needed:
+            continue
+        for sentence in _split_candidate_sentences(content):
+            if len(sentence) < 60 or len(sentence) > 240:
+                continue
+            if any(bad in sentence.lower() for bad in BAD_SNIPPETS):
+                continue
+            score = _fallback_quote_score(sentence)
+            if score < 5:
+                continue
+            candidates_by_doc[document_id].append(
+                (score, sentence, chunk_id, source_pdf)
+            )
+
+    seen_hashes = set(existing_hashes)
+    for document_id in sorted(candidates_by_doc):
+        needed = max(0, target_per_doc - existing_by_doc.get(document_id, 0))
+        ranked = sorted(
+            candidates_by_doc[document_id],
+            key=lambda item: (-item[0], item[1]),
+        )
+        added = 0
+        for score, sentence, chunk_id, source_pdf in ranked:
+            if added >= needed:
+                break
+            key = hashlib.sha256(sentence.lower().encode()).hexdigest()
+            if key in seen_hashes:
+                continue
+            seen_hashes.add(key)
+            added += 1
+            out.append({
+                'document_id': document_id,
+                'chunk_id': chunk_id,
+                'quote_text': sentence,
+                'note': f'fallback coverage harvest score={score} source={source_pdf.rsplit("/",1)[-1]}',
+                'pattern_priority': 999,
+            })
+    return out
 
 
 # ── public pipeline functions ────────────────────────────────────────────────
@@ -114,12 +301,14 @@ def _spans_overlap(a_start, a_end, b_start, b_end, threshold=0.5):
 def extract_quotes():
     """Extract quote candidates from document chunks. Returns result dict."""
     out = []
+    rows_cache = []
+    by_doc = {}
     batch_size = 500
     offset = 0
     with connect() as conn:
         while True:
             rows = conn.cursor().execute(
-                'SELECT dc.id, dc.document_id, dc.content '
+                'SELECT dc.id, dc.document_id, d.source_pdf, dc.content '
                 'FROM document_chunks dc '
                 'JOIN documents d ON d.id = dc.document_id '
                 'WHERE dc.revision_id = d.active_revision_id '
@@ -129,7 +318,8 @@ def extract_quotes():
             if not rows:
                 break
             offset += len(rows)
-            for chunk_id, document_id, content in rows:
+            rows_cache.extend([(document_id, source_pdf, chunk_id, content) for chunk_id, document_id, source_pdf, content in rows])
+            for chunk_id, document_id, source_pdf, content in rows:
                 if not content:
                     continue
                 text = re.sub(r'\s+', ' ', content).strip()
@@ -149,6 +339,9 @@ def extract_quotes():
                             'note': f'matched pattern: {pat}',
                             'pattern_priority': priority,
                         })
+                        by_doc[document_id] = by_doc.get(document_id, 0) + 1
+    existing_quote_texts = [item.get('quote_text', '') for item in out]
+    out.extend(_build_fallback_quotes(rows_cache, by_doc, existing_quote_texts))
     save_json(QUOTES_CANDIDATES, out)
     return {'quote_candidates': len(out)}
 
@@ -210,27 +403,26 @@ def load_quotes():
         try:
             cur.execute('DELETE FROM quotes')
             fk_skipped = 0
+            resolved = 0
             for item in valid:
                 doc_id = item['document_id']
                 chunk_id = item['chunk_id']
-                exists = cur.execute(
-                    'SELECT 1 FROM document_chunks dc '
-                    'JOIN documents d ON d.id = dc.document_id '
-                    'WHERE dc.id = ? AND dc.document_id = ? '
-                    'AND dc.revision_id = d.active_revision_id',
-                    (chunk_id, doc_id),
-                ).fetchone()
-                if not exists:
+                resolved_chunk_id, resolution = _resolve_quote_chunk_id(
+                    cur, doc_id, chunk_id, item.get('quote_text', ''),
+                )
+                if resolved_chunk_id is None:
                     fk_skipped += 1
                     continue
+                if resolution != 'as-is':
+                    resolved += 1
                 cur.execute(
                     'INSERT INTO quotes (document_id, chunk_id, quote_text, note, quote_type, theme_name, principle_name, pattern_name) '
                     'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                     (
                         doc_id,
-                        chunk_id,
+                        resolved_chunk_id,
                         item['quote_text'],
-                        item['note'],
+                        f"{item['note']} | chunk-resolution:{resolution}",
                         item.get('quote_type'),
                         item.get('theme_name'),
                         item.get('principle_name'),
@@ -240,8 +432,10 @@ def load_quotes():
             conn.commit()
             if fk_skipped:
                 _log.warning('load_quotes: skipped %d items with invalid document_id/chunk_id', fk_skipped)
+            if resolved:
+                _log.info('load_quotes: resolved %d quotes onto active chunks', resolved)
         except Exception:
             conn.rollback()
             raise
         count = cur.execute('SELECT COUNT(*) FROM quotes').fetchone()[0]
-    return {'quotes': count}
+    return {'quotes': count, 'resolved_quotes': resolved}

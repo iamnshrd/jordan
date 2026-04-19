@@ -6,8 +6,9 @@ which significantly reduces false negatives from inflected forms.
 """
 import logging
 import re
+import sys
 
-from library.config import KB_CANDIDATES
+from library.config import KB_CANDIDATES, VENDOR
 from library.db import connect
 from library.utils import save_json, get_threshold
 
@@ -17,6 +18,20 @@ _SENTINEL = object()
 _morph = None
 _morph_loaded = False
 
+_RU_FALLBACK_SUFFIXES = sorted([
+    'иями', 'ями', 'ами', 'иями', 'остью', 'остями', 'остях',
+    'ение', 'ений', 'ению', 'ением', 'ениях',
+    'ировать', 'ировать', 'аться', 'яться', 'иться',
+    'ного', 'нему', 'тельн', 'тельны', 'тельный',
+    'ости', 'остью', 'ость', 'иями', 'иями',
+    'ского', 'скому', 'скими', 'ская', 'ские',
+    'ого', 'его', 'ому', 'ему', 'ыми', 'ими',
+    'иях', 'иях', 'иях', 'ах', 'ях', 'ия', 'ие', 'ий', 'ый', 'ой',
+    'ая', 'яя', 'ую', 'юю', 'ое', 'ее',
+    'ов', 'ев', 'ом', 'ем', 'ам', 'ям', 'ах', 'ях',
+    'ы', 'и', 'а', 'я', 'о', 'е', 'у', 'ю',
+], key=len, reverse=True)
+
 
 def _get_morph():
     """Lazy-load pymorphy3 for Russian lemmatization. Returns None if unavailable."""
@@ -25,20 +40,34 @@ def _get_morph():
         return _morph
     _morph_loaded = True
     try:
+        vendor_path = str(VENDOR)
+        if VENDOR.exists() and vendor_path not in sys.path:
+            sys.path.insert(0, vendor_path)
         import pymorphy3
         _morph = pymorphy3.MorphAnalyzer()
         log.debug('pymorphy3 loaded for lemmatization')
     except ImportError:
-        log.info('pymorphy3 not installed; using substring matching')
+        log.info('pymorphy3 not installed; using heuristic stemming')
         _morph = None
     return _morph
+
+
+def _simple_stem_ru(word: str) -> str:
+    """Very small Russian fallback stemmer for offline environments."""
+    w = word.lower()
+    if len(w) <= 4:
+        return w
+    for suffix in _RU_FALLBACK_SUFFIXES:
+        if w.endswith(suffix) and len(w) - len(suffix) >= 4:
+            return w[:-len(suffix)]
+    return w
 
 
 def _lemmatize_ru(word: str) -> str:
     """Return the normal form of a Russian word, or the word itself."""
     morph = _get_morph()
     if morph is None:
-        return word.lower()
+        return _simple_stem_ru(word)
     parsed = morph.parse(word)
     return parsed[0].normal_form if parsed else word.lower()
 

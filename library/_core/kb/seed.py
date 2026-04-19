@@ -11,6 +11,17 @@ SOURCE_ROUTE_ROWS = [
     ('beyond-order', 'relationship-maintenance', 10, 'best romance maintenance source'),
     ('maps-of-meaning', 'mythic-meaning-collapse', 10, 'best deep collapse source'),
     ('maps-of-meaning', 'chaos-unknown', 9, 'best symbolic chaos source'),
+    ('academy-between-order-chaos', 'career-vocation', 10, 'best planning and vision source'),
+    ('academy-desire-discipline', 'basic-discipline', 10, 'best schedule and discipline source'),
+    ('academy-walled-garden', 'self-deception', 10, 'best truthful narration source'),
+    ('academy-walled-garden', 'relationship-maintenance', 8, 'precise conflict narration source'),
+    ('academy-fear-catalyst', 'avoidance-paralysis', 9, 'best fear and value confrontation source'),
+    ('academy-faith-tragedy', 'shame-self-contempt', 8, 'best tragedy without bitterness source'),
+    ('academy-faith-tragedy', 'mythic-meaning-collapse', 8, 'strong suffering and tragedy source'),
+    ('academy-higher-vision', 'career-vocation', 9, 'best higher vision and worthy offer source'),
+    ('academy-higher-vision', 'relationship-maintenance', 8, 'best reciprocal offer source'),
+    ('success-lecture', 'career-vocation', 8, 'best conscientious structure source'),
+    ('success-lecture', 'basic-discipline', 7, 'strong structure and success source'),
 ]
 
 BRIDGES = [
@@ -30,9 +41,9 @@ NEXT_STEPS = [
 ]
 
 QUOTE_PACKS = [
-    ('career-pack', 'career-vocation', 'beyond-order,12-rules', 'discipline-quote,principle-quote', 'manual v3 seed'),
-    ('shame-pack', 'shame-self-contempt', '12-rules,maps-of-meaning', 'shame-quote,principle-quote', 'manual v3 seed'),
-    ('relationship-pack', 'relationship-maintenance', 'beyond-order,12-rules', 'relationship-quote,resentment-quote', 'manual v3 seed'),
+    ('career-pack', 'career-vocation', 'academy-between-order-chaos,beyond-order,academy-desire-discipline,12-rules', 'discipline-quote,principle-quote', 'manual v3 seed'),
+    ('shame-pack', 'shame-self-contempt', '12-rules,academy-faith-tragedy,maps-of-meaning', 'shame-quote,principle-quote', 'manual v3 seed'),
+    ('relationship-pack', 'relationship-maintenance', 'beyond-order,academy-walled-garden,academy-higher-vision,12-rules', 'relationship-quote,resentment-quote', 'manual v3 seed'),
 ]
 
 ARCHETYPE_INTERVENTIONS = [
@@ -143,6 +154,12 @@ SOURCE_ROUTE_UPSERT = [
     ('beyond-order', 'mythic-meaning-collapse', 6, 'secondary symbolic source'),
     ('maps-of-meaning', 'career-vocation', 5, 'deep but secondary vocation source'),
     ('maps-of-meaning', 'shame-self-contempt', 7, 'deep shame/source of reorganization'),
+    ('academy-between-order-chaos', 'avoidance-paralysis', 8, 'strong vision correction for paralysis'),
+    ('academy-desire-discipline', 'career-vocation', 8, 'discipline support for chosen aim'),
+    ('academy-fear-catalyst', 'career-vocation', 6, 'useful when aim is blocked by fear'),
+    ('academy-higher-vision', 'mythic-meaning-collapse', 6, 'secondary higher-order meaning source'),
+    ('academy-walled-garden', 'shame-self-contempt', 6, 'useful for precise shame narration'),
+    ('success-lecture', 'avoidance-paralysis', 7, 'structure and conscientiousness backup'),
 ]
 
 ARCHETYPE_PACK_LINKS = [
@@ -425,6 +442,7 @@ def seed_quote_pack_items():
     not_found = 0
     with connect() as conn:
         cur = conn.cursor()
+        cur.execute('DELETE FROM quote_pack_items')
         for pack_name, quotes in PACKS.items():
             pack_id = _get_pack_id(cur, pack_name)
             if not pack_id:

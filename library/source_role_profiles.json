@@ -3,7 +3,7 @@
     "best_for": ["basic-discipline", "shame-self-contempt", "truth-basics", "parenting-boundaries"],
     "worst_for": ["deep-mythic-collapse"],
     "primary_routes": ["basic-discipline", "shame-self-contempt"],
-    "secondary_routes": ["career-vocation", "relationship-maintenance"],
+    "secondary_routes": ["career-vocation", "relationship-maintenance", "avoidance-paralysis"],
     "failure_modes": ["too simplistic", "too first-order when deeper symbolic framing is needed"],
     "tone_bias": "direct",
     "depth_level": 1
@@ -12,7 +12,7 @@
     "best_for": ["career-vocation", "relationship-maintenance", "resentment-moral-corrosion", "anti-ideology"],
     "worst_for": ["very basic stabilization"],
     "primary_routes": ["career-vocation", "relationship-maintenance", "resentment-moral-corrosion"],
-    "secondary_routes": ["basic-discipline", "shame-self-contempt"],
+    "secondary_routes": ["basic-discipline", "shame-self-contempt", "mythic-meaning-collapse"],
     "failure_modes": ["too subtle when blunt stabilization is needed"],
     "tone_bias": "mature",
     "depth_level": 2
@@ -21,9 +21,72 @@
     "best_for": ["mythic-meaning-collapse", "chaos-unknown", "symbolic-disorientation"],
     "worst_for": ["simple next-step-only discipline problems"],
     "primary_routes": ["mythic-meaning-collapse", "chaos-unknown"],
-    "secondary_routes": ["resentment-moral-corrosion", "shame-self-contempt"],
+    "secondary_routes": ["resentment-moral-corrosion", "shame-self-contempt", "self-deception"],
     "failure_modes": ["too abstract", "too mythic when user needs a concrete burden"],
     "tone_bias": "symbolic",
+    "depth_level": 3
+  },
+  "success-lecture": {
+    "best_for": ["career-vocation", "basic-discipline", "avoidance-paralysis"],
+    "worst_for": ["mythic-meaning-collapse"],
+    "primary_routes": ["career-vocation", "basic-discipline"],
+    "secondary_routes": ["avoidance-paralysis"],
+    "failure_modes": ["too performance-oriented when user needs symbolic depth"],
+    "tone_bias": "practical",
+    "depth_level": 1
+  },
+  "academy-between-order-chaos": {
+    "best_for": ["career-vocation", "avoidance-paralysis", "basic-discipline"],
+    "worst_for": ["relationship-maintenance"],
+    "primary_routes": ["career-vocation", "avoidance-paralysis"],
+    "secondary_routes": ["basic-discipline", "mythic-meaning-collapse"],
+    "failure_modes": ["can stay too planning-heavy if the user really needs shame repair"],
+    "tone_bias": "practical-symbolic",
+    "depth_level": 2
+  },
+  "academy-walled-garden": {
+    "best_for": ["self-deception", "relationship-maintenance", "shame-self-contempt"],
+    "worst_for": ["very basic stabilization"],
+    "primary_routes": ["self-deception", "relationship-maintenance"],
+    "secondary_routes": ["shame-self-contempt"],
+    "failure_modes": ["can overfocus on articulation when raw action is needed first"],
+    "tone_bias": "precise",
+    "depth_level": 2
+  },
+  "academy-desire-discipline": {
+    "best_for": ["basic-discipline", "avoidance-paralysis", "career-vocation"],
+    "worst_for": ["mythic-meaning-collapse"],
+    "primary_routes": ["basic-discipline", "avoidance-paralysis"],
+    "secondary_routes": ["career-vocation"],
+    "failure_modes": ["can sound procedural if the user needs a higher-order why"],
+    "tone_bias": "structured",
+    "depth_level": 2
+  },
+  "academy-fear-catalyst": {
+    "best_for": ["avoidance-paralysis", "career-vocation", "chaos-unknown"],
+    "worst_for": ["relationship-maintenance"],
+    "primary_routes": ["avoidance-paralysis"],
+    "secondary_routes": ["career-vocation", "chaos-unknown"],
+    "failure_modes": ["can romanticize fear if the user needs immediate containment"],
+    "tone_bias": "courageous",
+    "depth_level": 2
+  },
+  "academy-faith-tragedy": {
+    "best_for": ["shame-self-contempt", "mythic-meaning-collapse", "resentment-moral-corrosion"],
+    "worst_for": ["basic-discipline"],
+    "primary_routes": ["shame-self-contempt", "mythic-meaning-collapse"],
+    "secondary_routes": ["resentment-moral-corrosion"],
+    "failure_modes": ["can become too tragic for straightforward habit repair"],
+    "tone_bias": "grave",
+    "depth_level": 3
+  },
+  "academy-higher-vision": {
+    "best_for": ["career-vocation", "relationship-maintenance", "mythic-meaning-collapse"],
+    "worst_for": ["basic-discipline"],
+    "primary_routes": ["career-vocation", "relationship-maintenance"],
+    "secondary_routes": ["mythic-meaning-collapse"],
+    "failure_modes": ["can become too aspirational when the user needs local order first"],
+    "tone_bias": "elevated",
     "depth_level": 3
   }
 }

@@ -1,8 +1,10 @@
 .env
 .env.*
 openclaw.jordan.json
+.vendor/
 library/jordan_knowledge.db
 workspace/continuity.json
+workspace/*.lock
 workspace/MEMORY.md
 __pycache__/
 **/__pycache__/

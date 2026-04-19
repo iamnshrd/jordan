@@ -26,6 +26,64 @@ def _detect_heading(line: str) -> str | None:
     return None
 
 
+def normalize_source_text(text: str) -> str:
+    """Clean raw source text before chunking.
+
+    Handles OCR form feeds, library metadata headers, and subtitle-style
+    transcript dumps with numeric indices + timecodes.
+    """
+    text = text.replace('\ufeff', '').replace('\x0c', '\n')
+    text = re.sub(r'\r\n?', '\n', text)
+    lines = text.split('\n')
+
+    filtered: list[str] = []
+    saw_timecode = False
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            filtered.append('')
+            continue
+        if line.startswith(('Источник:', 'Название:', 'Тип:', 'Примечание:')):
+            continue
+        if re.fullmatch(r'\d+', line):
+            continue
+        if re.fullmatch(
+            r'\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}',
+            line,
+        ):
+            saw_timecode = True
+            filtered.append('')
+            continue
+        filtered.append(line)
+
+    if not saw_timecode:
+        cleaned = '\n'.join(filtered)
+        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+        return cleaned.strip()
+
+    paragraphs: list[str] = []
+    buffer: list[str] = []
+    for line in filtered:
+        if not line:
+            if buffer:
+                joined = ' '.join(buffer).strip()
+                if joined:
+                    paragraphs.append(joined)
+                buffer = []
+            continue
+        buffer.append(line)
+        joined = ' '.join(buffer)
+        if len(joined) >= 220 or re.search(r'[.!?]["»]?\s*$', joined):
+            paragraphs.append(joined.strip())
+            buffer = []
+    if buffer:
+        paragraphs.append(' '.join(buffer).strip())
+
+    cleaned = '\n\n'.join(p for p in paragraphs if p)
+    cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+    return cleaned.strip()
+
+
 def split_chunks(text, max_chars=None, overlap_chars=None):
     """Split *text* into overlapping chunks respecting section boundaries.
 
@@ -130,9 +188,12 @@ def init_db(conn):
 def upsert_document(conn, source_pdf, text_path, status):
     cur = conn.cursor()
     cur.execute(
-        'INSERT OR REPLACE INTO documents (id, source_pdf, text_path, status) '
-        'VALUES ((SELECT id FROM documents WHERE source_pdf = ?), ?, ?, ?)',
-        (source_pdf, source_pdf, text_path, status),
+        'INSERT INTO documents (source_pdf, text_path, status) '
+        'VALUES (?, ?, ?) '
+        'ON CONFLICT(source_pdf) DO UPDATE SET '
+        'text_path = excluded.text_path, '
+        'status = excluded.status',
+        (source_pdf, text_path, status),
     )
     conn.commit()
     cur.execute('SELECT id FROM documents WHERE source_pdf = ?', (source_pdf,))
@@ -370,7 +431,168 @@ def _raise_manifest_validation_error(report):
     )
 
 
-def build(force: bool = False, allow_partial: bool = False):
+def _run_enrichment_pipeline():
+    """Populate derived KB layers after raw chunk build."""
+    from library._core.kb.concepts import (
+        import_article_concepts, import_beyond_order, import_maps_of_meaning,
+        import_twelve_rules,
+    )
+    from library._core.kb.knowledge import (
+        build_chapter_summaries,
+        import_canonical_concepts,
+        import_structured_knowledge,
+    )
+    from library._core.kb.extract import extract
+    from library._core.kb.normalize import normalize
+    from library._core.kb.evidence import write_evidence
+    from library._core.kb.quotes import extract_quotes, normalize_quotes, load_quotes
+    from library._core.kb.seed import (
+        seed_v3, seed_v3_links, seed_v3_motifs, seed_v3_quality,
+        seed_v3_runtime_links, seed_v3_steps, seed_quote_pack_items,
+    )
+
+    return {
+        'canonical_concepts': import_canonical_concepts(),
+        'structured_knowledge': import_structured_knowledge(),
+        'extract': extract(),
+        'normalize': normalize(),
+        'evidence': write_evidence(),
+        'quotes_extract': extract_quotes(),
+        'quotes_normalize': normalize_quotes(),
+        'quotes_load': load_quotes(),
+        'concepts': {
+            'beyond_order': import_beyond_order(),
+            'maps_of_meaning': import_maps_of_meaning(),
+            'twelve_rules': import_twelve_rules(),
+            'articles': import_article_concepts(),
+        },
+        'chapter_summaries': build_chapter_summaries(),
+        'seed_v3': seed_v3(),
+        'seed_v3_links': seed_v3_links(),
+        'seed_v3_motifs': seed_v3_motifs(),
+        'seed_v3_quality': seed_v3_quality(),
+        'seed_v3_runtime_links': seed_v3_runtime_links(),
+        'seed_v3_steps': seed_v3_steps(),
+        'seed_quote_pack_items': seed_quote_pack_items(),
+    }
+
+
+def prune_superseded_revisions(keep_latest_per_document: int = 0):
+    """Delete stale superseded revisions and their orphanable rows.
+
+    By default, all superseded revisions are removed. Set
+    ``keep_latest_per_document`` to retain the newest N superseded revisions
+    per document for audit/history purposes.
+    """
+    keep_latest_per_document = max(0, int(keep_latest_per_document))
+    with connect() as conn:
+        cur = conn.cursor()
+        rows = cur.execute(
+            'SELECT id, document_id, revision_number '
+            'FROM document_revisions '
+            "WHERE status = 'superseded' "
+            'ORDER BY document_id ASC, revision_number DESC'
+        ).fetchall()
+        to_delete: list[int] = []
+        seen_per_doc: dict[int, int] = {}
+        for revision_id, document_id, _revision_number in rows:
+            seen = seen_per_doc.get(document_id, 0)
+            if seen < keep_latest_per_document:
+                seen_per_doc[document_id] = seen + 1
+                continue
+            to_delete.append(revision_id)
+
+        if not to_delete:
+            return {
+                'deleted_revisions': 0,
+                'deleted_chunks': 0,
+                'deleted_quotes': 0,
+                'deleted_theme_evidence': 0,
+                'deleted_principle_evidence': 0,
+                'deleted_pattern_evidence': 0,
+                'deleted_embeddings': 0,
+                'kept_superseded_per_document': keep_latest_per_document,
+            }
+
+        placeholders = ','.join('?' for _ in to_delete)
+        chunk_rows = cur.execute(
+            f'SELECT id FROM document_chunks WHERE revision_id IN ({placeholders})',
+            to_delete,
+        ).fetchall()
+        chunk_ids = [row[0] for row in chunk_rows]
+        deleted_quotes = 0
+        deleted_theme_evidence = 0
+        deleted_principle_evidence = 0
+        deleted_pattern_evidence = 0
+        deleted_embeddings = 0
+
+        cur.execute('BEGIN IMMEDIATE')
+        try:
+            if chunk_ids:
+                chunk_placeholders = ','.join('?' for _ in chunk_ids)
+                quote_ids = [
+                    row[0] for row in cur.execute(
+                        f'SELECT id FROM quotes WHERE chunk_id IN ({chunk_placeholders})',
+                        chunk_ids,
+                    ).fetchall()
+                ]
+                if quote_ids:
+                    quote_placeholders = ','.join('?' for _ in quote_ids)
+                    cur.execute(
+                        f'DELETE FROM quote_pack_items WHERE quote_id IN ({quote_placeholders})',
+                        quote_ids,
+                    )
+                    deleted_quotes = cur.execute(
+                        f'DELETE FROM quotes WHERE id IN ({quote_placeholders})',
+                        quote_ids,
+                    ).rowcount
+                deleted_theme_evidence = cur.execute(
+                    f'DELETE FROM theme_evidence WHERE chunk_id IN ({chunk_placeholders})',
+                    chunk_ids,
+                ).rowcount
+                deleted_principle_evidence = cur.execute(
+                    f'DELETE FROM principle_evidence WHERE chunk_id IN ({chunk_placeholders})',
+                    chunk_ids,
+                ).rowcount
+                deleted_pattern_evidence = cur.execute(
+                    f'DELETE FROM pattern_evidence WHERE chunk_id IN ({chunk_placeholders})',
+                    chunk_ids,
+                ).rowcount
+                deleted_embeddings = cur.execute(
+                    f'DELETE FROM chunk_embeddings WHERE chunk_id IN ({chunk_placeholders})',
+                    chunk_ids,
+                ).rowcount
+                deleted_chunks = cur.execute(
+                    f'DELETE FROM document_chunks WHERE revision_id IN ({placeholders})',
+                    to_delete,
+                ).rowcount
+            else:
+                deleted_chunks = 0
+
+            deleted_revisions = cur.execute(
+                f'DELETE FROM document_revisions WHERE id IN ({placeholders})',
+                to_delete,
+            ).rowcount
+            cur.execute("INSERT INTO document_chunks_fts(document_chunks_fts) VALUES ('rebuild')")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    return {
+        'deleted_revisions': deleted_revisions,
+        'deleted_chunks': deleted_chunks,
+        'deleted_quotes': deleted_quotes,
+        'deleted_theme_evidence': deleted_theme_evidence,
+        'deleted_principle_evidence': deleted_principle_evidence,
+        'deleted_pattern_evidence': deleted_pattern_evidence,
+        'deleted_embeddings': deleted_embeddings,
+        'kept_superseded_per_document': keep_latest_per_document,
+    }
+
+
+def build(force: bool = False, allow_partial: bool = False,
+          enrich: bool = True):
     """Main build entry point.
 
     When *force* is False (default), only documents whose text file is newer
@@ -408,6 +630,7 @@ def build(force: bool = False, allow_partial: bool = False):
             except UnicodeDecodeError:
                 log.warning('UTF-8 decode failed for %s, falling back to replace mode', text_path)
                 text = text_path.read_text(encoding='utf-8', errors='replace')
+            text = normalize_source_text(text)
             chunks = split_chunks(text)
             try:
                 mtime = os.path.getmtime(text_path)
@@ -451,4 +674,41 @@ def build(force: bool = False, allow_partial: bool = False):
             'symbolic_motifs': cur.execute('SELECT COUNT(*) FROM symbolic_motifs').fetchone()[0],
             'intervention_examples': cur.execute('SELECT COUNT(*) FROM intervention_examples').fetchone()[0],
         }
+    if enrich:
+        enrichment = _run_enrichment_pipeline()
+        with connect() as conn:
+            cur = conn.cursor()
+            counts.update({
+                'quotes': cur.execute('SELECT COUNT(*) FROM quotes').fetchone()[0],
+                'theme_evidence': cur.execute('SELECT COUNT(*) FROM theme_evidence').fetchone()[0],
+                'principle_evidence': cur.execute('SELECT COUNT(*) FROM principle_evidence').fetchone()[0],
+                'pattern_evidence': cur.execute('SELECT COUNT(*) FROM pattern_evidence').fetchone()[0],
+                'bridges': cur.execute('SELECT COUNT(*) FROM bridge_to_action_templates').fetchone()[0],
+                'next_steps': cur.execute('SELECT COUNT(*) FROM next_step_library').fetchone()[0],
+                'quote_packs': cur.execute('SELECT COUNT(*) FROM route_quote_packs').fetchone()[0],
+                'quote_pack_items': cur.execute('SELECT COUNT(*) FROM quote_pack_items').fetchone()[0],
+                'canonical_concepts': cur.execute(
+                    'SELECT COUNT(*) FROM canonical_concepts'
+                ).fetchone()[0],
+                'definitions': cur.execute(
+                    'SELECT COUNT(*) FROM definitions'
+                ).fetchone()[0],
+                'claims': cur.execute(
+                    'SELECT COUNT(*) FROM claims'
+                ).fetchone()[0],
+                'practices': cur.execute(
+                    'SELECT COUNT(*) FROM practices'
+                ).fetchone()[0],
+                'objections': cur.execute(
+                    'SELECT COUNT(*) FROM objections'
+                ).fetchone()[0],
+                'chapter_summaries': cur.execute(
+                    'SELECT COUNT(*) FROM chapter_summaries'
+                ).fetchone()[0],
+                'cases': cur.execute('SELECT COUNT(*) FROM cases').fetchone()[0],
+                'intervention_examples': cur.execute(
+                    'SELECT COUNT(*) FROM intervention_examples'
+                ).fetchone()[0],
+            })
+        counts['enrichment'] = enrichment
     return counts

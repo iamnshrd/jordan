@@ -11,13 +11,75 @@ from library.config import (
     SOURCE_ROLE_PROFILES,
     get_default_store,
     get_doc_source_hints,
+    friendly_source_name,
 )
 from library._core.state_store import StateStore, KEY_USER_STATE, KEY_EFFECTIVENESS
 from library.db import connect, row_to_dict
-from library.utils import load_json, fts_query, timed
+from library.utils import SYNONYM_MAP, load_json, fts_query, timed
 
 
 _source_role_profiles_cache: dict | None = None
+
+_INTENT_SOURCE_SHORTLISTS: list[tuple[list[str], list[str]]] = [
+    (
+        ['видени', 'vision', 'план', 'future', 'author', 'направлен', 'цель', 'goal'],
+        [
+            'academy-between-order-chaos',
+            'academy-desire-discipline',
+            'success-lecture',
+            'beyond-order',
+            '12-rules',
+            'maps-of-meaning',
+        ],
+    ),
+    (
+        ['правд', 'точн', 'жалоб', 'разговор', 'complaint', 'narrat', 'truth'],
+        [
+            'academy-walled-garden',
+            'beyond-order',
+            '12-rules',
+            'maps-of-meaning',
+        ],
+    ),
+    (
+        ['страх', 'fear', 'цен', 'price', 'courage'],
+        [
+            'academy-fear-catalyst',
+            'beyond-order',
+            'maps-of-meaning',
+            '12-rules',
+        ],
+    ),
+    (
+        ['trag', 'траг', 'горе', 'страдан', 'faith', 'bitterness', 'гореч'],
+        [
+            'academy-faith-tragedy',
+            'beyond-order',
+            'maps-of-meaning',
+            '12-rules',
+        ],
+    ),
+    (
+        ['offer', 'предлож', 'higher', 'высш', 'commit', 'обязательств'],
+        [
+            'academy-higher-vision',
+            'beyond-order',
+            'academy-between-order-chaos',
+            '12-rules',
+            'maps-of-meaning',
+        ],
+    ),
+    (
+        ['успех', 'successful', 'талант', 'iq', 'conscient', 'успеш'],
+        [
+            'success-lecture',
+            'academy-between-order-chaos',
+            'academy-desire-discipline',
+            'beyond-order',
+            '12-rules',
+        ],
+    ),
+]
 
 
 def _get_source_role_profiles() -> dict:
@@ -103,6 +165,248 @@ PATTERN_KEYWORDS = {
 def _escape_like(s: str) -> str:
     """Escape special LIKE characters for SQLite."""
     return s.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+
+def _normalize_search_text(text: str) -> tuple[str, str]:
+    raw = ' '.join(
+        ''.join(
+            ch if ch.isalnum() or ch.isspace() else ' '
+            for ch in (text or '').lower()
+        ).split()
+    )
+    if not raw:
+        return '', ''
+    try:
+        from library._core.kb.extract import _lemmatize_text
+        return raw, _lemmatize_text(raw)
+    except Exception:
+        return raw, raw
+
+
+def _query_terms(text: str, min_len: int = 4) -> list[str]:
+    raw, lemma = _normalize_search_text(text)
+    terms: list[str] = []
+    seen: set[str] = set()
+    for source in (raw.split(), lemma.split()):
+        for token in source:
+            if len(token) < min_len or token in seen:
+                continue
+            seen.add(token)
+            terms.append(token)
+    for token in list(terms):
+        for synonym in SYNONYM_MAP.get(token, [])[:3]:
+            synonym = synonym.lower().strip()
+            if len(synonym) < min_len or synonym in seen:
+                continue
+            seen.add(synonym)
+            terms.append(synonym)
+    return terms[:18]
+
+
+def _score_text_match(text: str, terms: list[str], *,
+                      raw_query: str = '', lemma_query: str = '') -> int:
+    if not text:
+        return 0
+    raw_text, lemma_text = _normalize_search_text(text)
+    score = 0
+    for term in terms:
+        if term in raw_text:
+            score += 16 if len(term) >= 7 else 11
+        elif term in lemma_text:
+            score += 9
+    if raw_query and raw_query in raw_text:
+        score += 24
+    if lemma_query and lemma_query in lemma_text and lemma_query != raw_query:
+        score += 12
+    return score
+
+
+def _source_order(preferred_sources: list[str]) -> dict[str, int]:
+    return {name: idx for idx, name in enumerate(preferred_sources or [])}
+
+
+def _intent_specific_sources(question: str) -> list[str] | None:
+    q = (question or '').lower()
+    for markers, shortlist in _INTENT_SOURCE_SHORTLISTS:
+        if any(marker in q for marker in markers):
+            return shortlist
+    return None
+
+
+def search_canonical_concepts(cur, question: str, limit: int = 4):
+    raw_query, lemma_query = _normalize_search_text(question)
+    terms = _query_terms(question)
+    rows = cur.execute(
+        '''
+        SELECT c.id, c.concept_slug, c.concept_name, c.description,
+               c.theme_name, c.principle_name, c.pattern_name, c.priority,
+               GROUP_CONCAT(DISTINCT a.alias_text) AS aliases,
+               COUNT(DISTINCT s.document_id) AS source_count
+        FROM canonical_concepts c
+        LEFT JOIN canonical_concept_aliases a ON a.concept_id = c.id
+        LEFT JOIN canonical_concept_sources s ON s.concept_id = c.id
+        GROUP BY c.id
+        ORDER BY c.priority DESC, c.concept_name ASC
+        '''
+    ).fetchall()
+    out = []
+    for row in rows:
+        item = row_to_dict(cur, row)
+        text = ' '.join(filter(None, [
+            item.get('concept_name'),
+            item.get('description'),
+            item.get('aliases'),
+        ]))
+        score = _score_text_match(
+            text, terms, raw_query=raw_query, lemma_query=lemma_query,
+        )
+        for field in ('theme_name', 'principle_name', 'pattern_name'):
+            value = (item.get(field) or '').lower()
+            if value and value in raw_query:
+                score += 18
+        score += int(item.get('priority') or 0) * 5
+        score += min(int(item.get('source_count') or 0), 5) * 3
+        if score <= 0:
+            continue
+        item['_score'] = score
+        out.append(item)
+    out.sort(
+        key=lambda x: (
+            -x.get('_score', 0),
+            -x.get('priority', 0),
+            -x.get('source_count', 0),
+            x.get('concept_name', ''),
+        )
+    )
+    return out[:limit]
+
+
+def build_expanded_query(question: str, canonical_rows: list[dict]) -> str:
+    extras: list[str] = []
+    for row in canonical_rows[:2]:
+        if row.get('concept_name'):
+            extras.append(row['concept_name'])
+        aliases = [a.strip() for a in (row.get('aliases') or '').split(',') if a.strip()]
+        extras.extend(aliases[:2])
+    return ' '.join(part for part in [question, *extras] if part).strip()
+
+
+def _structured_score(row: dict, question: str, selected_names: list[str],
+                      canonical_slugs: set[str],
+                      preferred_sources: list[str]) -> tuple[int, int]:
+    raw_query, lemma_query = _normalize_search_text(question)
+    terms = _query_terms(question)
+    text = ' '.join(filter(None, [
+        row.get('title'),
+        row.get('summary'),
+        row.get('response'),
+        row.get('concept_name'),
+        row.get('section_title'),
+        row.get('source_pdf'),
+    ]))
+    score = _score_text_match(
+        text, terms, raw_query=raw_query, lemma_query=lemma_query,
+    )
+    if row.get('theme_name') in selected_names:
+        score += 45
+    if row.get('principle_name') in selected_names:
+        score += 55
+    if row.get('pattern_name') in selected_names:
+        score += 35
+    if row.get('concept_slug') in canonical_slugs:
+        score += 80
+
+    source_name = _row_source_name(row)
+    source_pref = _source_order(preferred_sources).get(source_name, 999)
+    if source_pref != 999:
+        score += max(0, 40 - source_pref * 8)
+    return score, source_pref
+
+
+def search_structured_rows(cur, table: str, label_col: str, question: str,
+                           selected_names: list[str],
+                           preferred_sources: list[str],
+                           canonical_slugs: set[str], limit: int = 4,
+                           extra_cols: tuple[str, ...] = ()):
+    cols = ', '.join(f'k.{col}' for col in extra_cols)
+    if cols:
+        cols = ', ' + cols
+    rows = cur.execute(
+        f'''
+        SELECT k.id,
+               k.{label_col} AS title,
+               k.summary,
+               k.theme_name,
+               k.principle_name,
+               k.pattern_name,
+               k.source_document_id,
+               k.note,
+               d.source_pdf,
+               c.concept_slug,
+               c.concept_name{cols}
+        FROM {table} k
+        LEFT JOIN documents d ON d.id = k.source_document_id
+        LEFT JOIN canonical_concepts c ON c.id = k.canonical_concept_id
+        ORDER BY k.id ASC
+        '''
+    ).fetchall()
+    out = []
+    for row in rows:
+        item = row_to_dict(cur, row)
+        score, source_pref = _structured_score(
+            item, question, selected_names, canonical_slugs, preferred_sources,
+        )
+        if score <= 0:
+            continue
+        item['_score'] = score
+        item['_source_preference'] = source_pref
+        out.append(item)
+    out.sort(
+        key=lambda x: (
+            x.get('_source_preference', 999),
+            -x.get('_score', 0),
+            x.get('title', ''),
+        )
+    )
+    return out[:limit]
+
+
+def search_chapter_summaries(cur, question: str, selected_names: list[str],
+                             preferred_sources: list[str],
+                             canonical_slugs: set[str], limit: int = 4):
+    rows = cur.execute(
+        '''
+        SELECT cs.id, cs.document_id AS source_document_id,
+               cs.section_title, cs.summary,
+               cs.theme_name, cs.principle_name, cs.pattern_name,
+               d.source_pdf, c.concept_slug, c.concept_name
+        FROM chapter_summaries cs
+        JOIN documents d ON d.id = cs.document_id
+        LEFT JOIN canonical_concepts c ON c.id = cs.canonical_concept_id
+        ORDER BY cs.document_id ASC, cs.id ASC
+        '''
+    ).fetchall()
+    out = []
+    for row in rows:
+        item = row_to_dict(cur, row)
+        score, source_pref = _structured_score(
+            item, question, selected_names, canonical_slugs, preferred_sources,
+        )
+        if item.get('section_title'):
+            score += _score_text_match(item['section_title'], _query_terms(question))
+        if score <= 0:
+            continue
+        item['_score'] = score
+        item['_source_preference'] = source_pref
+        out.append(item)
+    out.sort(
+        key=lambda x: (
+            x.get('_source_preference', 999),
+            -x.get('_score', 0),
+            x.get('section_title', ''),
+        )
+    )
+    return out[:limit]
 
 
 # -- core helpers ----------------------------------------------------------
@@ -310,13 +614,16 @@ def _rank_sources_by_profile(route_guess: str) -> list[str]:
         if route_guess in profile.get('worst_for', []):
             score -= 2
         scored.append((source_name, score))
-    scored.sort(key=lambda x: -x[1])
+    scored.sort(key=lambda x: (-x[1], x[0]))
     return [s[0] for s in scored]
 
 
 def infer_preferred_sources(question, user_id: str = 'default',
                             store: StateStore | None = None):
     q = question.lower()
+    intent_sources = _intent_specific_sources(question)
+    if intent_sources:
+        return intent_sources
     for arch in load_archetypes():
         if any(x in q for x in arch.get('if_user_says', [])):
             return arch.get('preferred_sources',
@@ -341,6 +648,21 @@ def infer_preferred_sources(question, user_id: str = 'default',
     return ['12-rules', 'beyond-order', 'maps-of-meaning']
 
 
+def _row_source_name(row: dict) -> str:
+    if row.get('document_id') is not None:
+        source_name = get_doc_source_hints().get(row.get('document_id'), '')
+        normalized = friendly_source_name(source_name)
+        return normalized or source_name
+    if row.get('source_document_id') is not None:
+        source_name = get_doc_source_hints().get(row.get('source_document_id'), '')
+        normalized = friendly_source_name(source_name)
+        if normalized:
+            return normalized
+    if row.get('source_pdf'):
+        return friendly_source_name(row.get('source_pdf'))
+    return ''
+
+
 def apply_source_preference(rows, preferred_sources, question='',
                             user_id: str = 'default',
                             store: StateStore | None = None):
@@ -354,7 +676,7 @@ def apply_source_preference(rows, preferred_sources, question='',
         route_guess = ''
 
     for row in rows:
-        source_name = get_doc_source_hints().get(row.get('document_id'))
+        source_name = _row_source_name(row)
         route_key = (
             f'{source_name}::{route_guess}'
             if source_name and route_guess else ''
@@ -509,7 +831,7 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
                 score += 320
         if row.get('quote_type') == route_quote_types[0]:
             score += 120
-        source_name = get_doc_source_hints().get(row.get('document_id'))
+        source_name = _row_source_name(row)
         if row.get('id') in pack_quote_ids:
             score += 160
         if pack_preferred_sources and source_name in pack_preferred_sources:
@@ -583,23 +905,28 @@ def build_response_bundle(question, user_id: str = 'default',
     top_limit = get_threshold('retrieve_top_limit', 8)
     with connect() as conn:
         cur = conn.cursor()
+        canonical_limit = get_threshold('retrieve_canonical_limit', 4)
+        canonical_concepts = search_canonical_concepts(
+            cur, question, limit=canonical_limit,
+        )
+        expanded_question = build_expanded_query(question, canonical_concepts)
 
         raw_themes = (
-            top_linked(cur, question, 'theme_evidence', 'themes',
+            top_linked(cur, expanded_question, 'theme_evidence', 'themes',
                        'theme_id', 'theme_name', True, top_limit)
-            or top_linked(cur, question, 'theme_evidence', 'themes',
+            or top_linked(cur, expanded_question, 'theme_evidence', 'themes',
                           'theme_id', 'theme_name', False, top_limit)
         )
         raw_principles = (
-            top_linked(cur, question, 'principle_evidence', 'principles',
+            top_linked(cur, expanded_question, 'principle_evidence', 'principles',
                        'principle_id', 'principle_name', True, top_limit)
-            or top_linked(cur, question, 'principle_evidence', 'principles',
+            or top_linked(cur, expanded_question, 'principle_evidence', 'principles',
                           'principle_id', 'principle_name', False, top_limit)
         )
         raw_patterns = (
-            top_linked(cur, question, 'pattern_evidence', 'patterns',
+            top_linked(cur, expanded_question, 'pattern_evidence', 'patterns',
                        'pattern_id', 'pattern_name', True, top_limit)
-            or top_linked(cur, question, 'pattern_evidence', 'patterns',
+            or top_linked(cur, expanded_question, 'pattern_evidence', 'patterns',
                           'pattern_id', 'pattern_name', False, top_limit)
         )
 
@@ -624,11 +951,42 @@ def build_response_bundle(question, user_id: str = 'default',
             for x in top_themes[:2] + top_principles[:2] + top_patterns[:2]
         ]
         selected_texts = selected_names
+        canonical_slugs = {
+            row.get('concept_slug')
+            for row in canonical_concepts
+            if row.get('concept_slug')
+        }
 
         quote_limit = get_threshold('retrieve_quote_limit', 4)
         quotes = search_quotes_by_keywords(
             cur, question, selected_names, selected_texts, quote_limit,
             user_id=user_id, store=store,
+        )
+        definitions = search_structured_rows(
+            cur, 'definitions', 'term_name', question, selected_names,
+            preferred_sources, canonical_slugs,
+            limit=get_threshold('retrieve_definition_limit', 4),
+        )
+        claims = search_structured_rows(
+            cur, 'claims', 'claim_text', question, selected_names,
+            preferred_sources, canonical_slugs,
+            limit=get_threshold('retrieve_claim_limit', 4),
+        )
+        practices = search_structured_rows(
+            cur, 'practices', 'practice_name', question, selected_names,
+            preferred_sources, canonical_slugs,
+            limit=get_threshold('retrieve_practice_limit', 4),
+            extra_cols=('difficulty', 'time_horizon'),
+        )
+        objections = search_structured_rows(
+            cur, 'objections', 'objection_name', question, selected_names,
+            preferred_sources, canonical_slugs,
+            limit=get_threshold('retrieve_objection_limit', 3),
+            extra_cols=('response',),
+        )
+        chapter_summaries = search_chapter_summaries(
+            cur, question, selected_names, preferred_sources, canonical_slugs,
+            limit=get_threshold('retrieve_chapter_summary_limit', 4),
         )
 
         if query_embedding is not None:
@@ -637,20 +995,27 @@ def build_response_bundle(question, user_id: str = 'default',
             h_final = get_threshold('hybrid_final_limit', 5)
             h_alpha = get_threshold('hybrid_alpha', 0.4)
             relevant_chunks = hybrid_search(
-                question, query_embedding,
+                expanded_question, query_embedding,
                 fts_limit=h_fts, final_limit=h_final, alpha=h_alpha,
             )
         else:
             chunk_limit = get_threshold('retrieve_chunk_limit', 5)
-            relevant_chunks = search_chunks(cur, question, chunk_limit)
+            relevant_chunks = search_chunks(cur, expanded_question, chunk_limit)
 
         bundle = {
             'question': question,
+            'expanded_question': expanded_question,
             'preferred_sources': preferred_sources,
             'relevant_chunks': relevant_chunks,
-            'relevant_quotes': quotes or search_quotes(cur, question, 4),
+            'relevant_quotes': quotes or search_quotes(cur, expanded_question, 4),
             'top_themes': top_themes,
             'top_principles': top_principles,
             'top_patterns': top_patterns,
+            'canonical_concepts': canonical_concepts,
+            'relevant_definitions': definitions,
+            'relevant_claims': claims,
+            'relevant_practices': practices,
+            'relevant_objections': objections,
+            'relevant_chapter_summaries': chapter_summaries,
         }
     return bundle

@@ -1,0 +1,149 @@
+[
+  {
+    "type": "frame",
+    "name": "Success is built through conscientious structure, not fantasies about raw talent",
+    "summary": "This source pushes attention away from magical thinking about IQ and toward the parts of success that can actually be trained: health, conscientiousness, meaningful long-range planning, and disciplined organization.",
+    "theme_name": "responsibility",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 4,
+    "intervention_style": "responsibility-first",
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "intervention",
+    "name": "Future-authoring through goals and schedule",
+    "summary": "Define a desirable life across major domains three to five years out, then translate that picture into weekly scheduling and micro-habits so motivation has a concrete target.",
+    "theme_name": "meaning",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "aimlessness",
+    "source_document_id": 4,
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "There is no no-vision option",
+    "summary": "A person either chooses a vision deliberately or ends up living out short-term impulse and the aims of other people; refusal to choose is not neutrality but surrender.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 5,
+    "intervention_style": "symbolic-reframing",
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "intervention",
+    "name": "Scale vision down to a livable reward schedule",
+    "summary": "A high-level vision becomes real only when it is broken into implementable steps and a reward structure the actual person can sustain, even if the first step feels embarrassingly small.",
+    "theme_name": "order-and-chaos",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "aimlessness",
+    "source_document_id": 5,
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Truthful narration is confrontation with the unknown",
+    "summary": "Growth starts when a person tells the truth about events and lets the real point of disturbance emerge, rather than flailing at the entire field of problems at once.",
+    "theme_name": "truth",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 6,
+    "intervention_style": "responsibility-first",
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "intervention",
+    "name": "Let the complaint wander until the point appears",
+    "summary": "In difficult conversations, do not force a total theory too early; let the story unfold until the smaller, workable truth becomes clear, then address that specific point directly.",
+    "theme_name": "truth",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "resentment-loop",
+    "source_document_id": 6,
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Desire organizes perception around aim",
+    "summary": "What you want changes what you can see; disciplined desire clarifies the world, while distortion and lying cloud the vision needed for action.",
+    "theme_name": "meaning",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "aimlessness",
+    "source_document_id": 7,
+    "intervention_style": "symbolic-reframing",
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "intervention",
+    "name": "Protect vision by refusing impulse-serving lies",
+    "summary": "When desire demands self-deception, the price is loss of orientation; preserving truthful vision is part of discipline, not an optional moral extra.",
+    "theme_name": "truth",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "avoidance-loop",
+    "source_document_id": 7,
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Fear reveals what you value enough to pay for",
+    "summary": "A goal becomes real when you can say what effort, sacrifice, and discomfort you are willing to trade for it; vague preference is not yet commitment.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 8,
+    "intervention_style": "responsibility-first",
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "intervention",
+    "name": "Write the vision and the price",
+    "summary": "Have the person define the desired future in writing and specify what they are willing to give up, tolerate, or practice in order to move toward it.",
+    "theme_name": "meaning",
+    "principle_name": "clean-up-what-is-in-front-of-you",
+    "pattern_name": "aimlessness",
+    "source_document_id": 8,
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Benefit of the doubt protects vision against tragic bitterness",
+    "summary": "Suffering and injustice easily harden into resentment and cynicism; preserving a charitable stance toward self and reality keeps tragedy from becoming a total worldview.",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "resentment-loop",
+    "source_document_id": 9,
+    "intervention_style": "responsibility-first",
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "intervention",
+    "name": "Face suffering without letting bitterness become sovereign",
+    "summary": "Name tragedy as real, but do not hand over final authority to resentment, self-contempt, or a cynical global judgment about life.",
+    "theme_name": "suffering",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "resentment-loop",
+    "source_document_id": 9,
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "frame",
+    "name": "Higher vision is discovered through voluntary games and worthy offers",
+    "summary": "When desire is confused, examine the durable games people willingly play and ask what sort of person you would have to become to participate honestly and reciprocally.",
+    "theme_name": "meaning",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 10,
+    "intervention_style": "symbolic-reframing",
+    "note": "manual article concept harvest"
+  },
+  {
+    "type": "intervention",
+    "name": "Specify the reciprocal offer and the challenge worthy of you",
+    "summary": "Replace abstract longing with a concrete question: what relationship, role, or challenge would you respect, and who would you have to become to make that offer honestly?",
+    "theme_name": "responsibility",
+    "principle_name": "take-responsibility-before-blame",
+    "pattern_name": "aimlessness",
+    "source_document_id": 10,
+    "note": "manual article concept harvest"
+  }
+]

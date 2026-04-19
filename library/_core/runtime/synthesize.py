@@ -244,6 +244,18 @@ def select_supporting_quote(bundle, selected):
     return normalize_quote_text(first_text) if first_text else ''
 
 
+def select_structured_text(bundle, key, *fields):
+    rows = bundle.get(key, []) or []
+    if not rows:
+        return ''
+    for row in rows:
+        for field in fields:
+            value = (row.get(field) or '').strip()
+            if value:
+                return value
+    return ''
+
+
 # ── archetype inference ───────────────────────────────────────────────
 
 def infer_archetype(question):
@@ -408,31 +420,55 @@ def build_grounding_report(selected, bundle, v3, data) -> dict:
     next_step = (v3 or {}).get('next_step') or {}
     chunks = bundle.get('relevant_chunks', []) or []
     quotes = bundle.get('relevant_quotes', []) or []
+    definitions = bundle.get('relevant_definitions', []) or []
+    claims = bundle.get('relevant_claims', []) or []
+    practices = bundle.get('relevant_practices', []) or []
+    objections = bundle.get('relevant_objections', []) or []
+    chapter_summaries = bundle.get('relevant_chapter_summaries', []) or []
 
     fields = {
         'core_problem': {
-            'backed': bool((bridge.get('diagnosis_stub') or '').strip() or theme_desc),
-            'source': 'bridge' if (bridge.get('diagnosis_stub') or '').strip() else ('theme-description' if theme_desc else 'heuristic'),
+            'backed': bool(
+                (bridge.get('diagnosis_stub') or '').strip()
+                or theme_desc or claims or definitions or chapter_summaries
+            ),
+            'source': (
+                'bridge' if (bridge.get('diagnosis_stub') or '').strip()
+                else ('theme-description' if theme_desc else (
+                    'claims' if claims else (
+                        'definitions' if definitions else (
+                            'chapter-summaries' if chapter_summaries else 'heuristic'
+                        )
+                    )
+                ))
+            ),
         },
         'relevant_pattern': {
             'backed': bool(pattern_desc),
             'source': 'pattern-description' if pattern_desc else 'heuristic',
         },
         'guiding_principle': {
-            'backed': bool(principle_desc),
-            'source': 'principle-description' if principle_desc else 'heuristic',
+            'backed': bool(principle_desc or definitions or claims),
+            'source': 'principle-description' if principle_desc else ('definitions' if definitions else ('claims' if claims else 'heuristic')),
         },
         'responsibility_avoided': {
             'backed': bool((bridge.get('responsibility_stub') or '').strip()),
             'source': 'bridge' if (bridge.get('responsibility_stub') or '').strip() else 'heuristic',
         },
         'practical_next_step': {
-            'backed': bool((next_step.get('step_text') or '').strip() or (bridge.get('next_step_stub') or '').strip()),
-            'source': 'next-step' if (next_step.get('step_text') or '').strip() else ('bridge' if (bridge.get('next_step_stub') or '').strip() else 'heuristic'),
+            'backed': bool(
+                (next_step.get('step_text') or '').strip()
+                or (bridge.get('next_step_stub') or '').strip()
+                or practices
+            ),
+            'source': (
+                'next-step' if (next_step.get('step_text') or '').strip()
+                else ('bridge' if (bridge.get('next_step_stub') or '').strip() else ('practices' if practices else 'heuristic'))
+            ),
         },
         'longer_term_correction': {
-            'backed': bool((bridge.get('long_term_stub') or '').strip()),
-            'source': 'bridge' if (bridge.get('long_term_stub') or '').strip() else 'heuristic',
+            'backed': bool((bridge.get('long_term_stub') or '').strip() or objections or chapter_summaries),
+            'source': 'bridge' if (bridge.get('long_term_stub') or '').strip() else ('objections' if objections else ('chapter-summaries' if chapter_summaries else 'heuristic')),
         },
         'supporting_quote': {
             'backed': bool(data.get('supporting_quote')) and bool(quotes),
@@ -447,6 +483,10 @@ def build_grounding_report(selected, bundle, v3, data) -> dict:
         'missing_fields': missing_fields,
         'evidence_count': len(chunks),
         'quote_count': len(quotes),
+        'structured_count': (
+            len(definitions) + len(claims) + len(practices)
+            + len(objections) + len(chapter_summaries)
+        ),
     }
 
 
@@ -483,6 +523,21 @@ def synthesize(question, user_id: str = 'default',
     core_problem = db_driven_theme_text(theme_name, selected)
     pattern_text = db_driven_pattern_text(pattern_name, selected)
     principle_text = db_driven_principle_text(principle_name, selected)
+    structured_definition = select_structured_text(
+        bundle, 'relevant_definitions', 'summary',
+    )
+    structured_claim = select_structured_text(
+        bundle, 'relevant_claims', 'summary', 'title',
+    )
+    structured_practice = select_structured_text(
+        bundle, 'relevant_practices', 'summary', 'title',
+    )
+    structured_objection_response = select_structured_text(
+        bundle, 'relevant_objections', 'response', 'summary',
+    )
+    chapter_summary = select_structured_text(
+        bundle, 'relevant_chapter_summaries', 'summary',
+    )
 
     bridge = v3.get('bridge') or {}
     next_step_v3 = v3.get('next_step') or {}
@@ -496,6 +551,12 @@ def synthesize(question, user_id: str = 'default',
         core_problem = bridge['diagnosis_stub']
     elif intervention and intervention.get('opening_move'):
         core_problem = append_sentence(core_problem, intervention['opening_move'])
+    elif structured_claim:
+        core_problem = append_sentence(core_problem, structured_claim)
+    elif structured_definition:
+        core_problem = append_sentence(core_problem, structured_definition)
+    elif chapter_summary:
+        core_problem = append_sentence(core_problem, chapter_summary)
 
     responsibility_avoided = db_driven_responsibility_text(
         selected, bridge, question,
@@ -507,6 +568,14 @@ def synthesize(question, user_id: str = 'default',
 
     longer_term = db_driven_longer_term_text(selected, bridge, question)
     practical = db_driven_practical_text(selected, next_step_v3, question)
+    if structured_definition and structured_definition not in principle_text:
+        principle_text = append_sentence(principle_text, structured_definition)
+    if not next_step_v3.get('step_text') and structured_practice:
+        practical = append_sentence(practical, structured_practice)
+    if not bridge.get('long_term_stub') and structured_objection_response:
+        longer_term = append_sentence(longer_term, structured_objection_response)
+    elif not bridge.get('long_term_stub') and chapter_summary:
+        longer_term = append_sentence(longer_term, chapter_summary)
     if intervention and intervention.get('followup_move') and not next_step_v3.get('step_text'):
         practical = append_sentence(practical, intervention['followup_move'])
 
@@ -605,6 +674,14 @@ def synthesize(question, user_id: str = 'default',
         'best_case': best_case,
         'intervention_links': intervention_links,
         'motif_links': motif_links,
+        'structured_knowledge': {
+            'definitions': bundle.get('relevant_definitions', [])[:3],
+            'claims': bundle.get('relevant_claims', [])[:3],
+            'practices': bundle.get('relevant_practices', [])[:3],
+            'objections': bundle.get('relevant_objections', [])[:2],
+            'chapter_summaries': bundle.get('relevant_chapter_summaries', [])[:2],
+            'canonical_concepts': bundle.get('canonical_concepts', [])[:3],
+        },
         'raw_selection': selected,
     }
     result['grounding_report'] = build_grounding_report(

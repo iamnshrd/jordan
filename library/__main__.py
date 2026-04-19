@@ -65,7 +65,11 @@ def cmd_kb(args):
     if action == 'build':
         from library._core.kb.build import build
         print(json.dumps(
-            build(force=args.force, allow_partial=args.allow_partial),
+            build(
+                force=args.force,
+                allow_partial=args.allow_partial,
+                enrich=not args.no_enrich,
+            ),
             ensure_ascii=False, indent=2,
         ))
     elif action == 'doctor':
@@ -120,9 +124,29 @@ def cmd_kb(args):
                     seed_v3_runtime_links, seed_v3_steps, seed_quote_pack_items]:
             print(fn())
     elif action == 'import-concepts':
-        from library._core.kb.concepts import import_beyond_order, import_maps_of_meaning, import_twelve_rules
-        for fn in [import_beyond_order, import_maps_of_meaning, import_twelve_rules]:
+        from library._core.kb.concepts import (
+            import_article_concepts, import_beyond_order,
+            import_maps_of_meaning, import_twelve_rules,
+        )
+        for fn in [import_beyond_order, import_maps_of_meaning, import_twelve_rules, import_article_concepts]:
             print(json.dumps(fn(), ensure_ascii=False, indent=2))
+    elif action == 'import-knowledge':
+        from library._core.kb.knowledge import (
+            build_chapter_summaries,
+            import_canonical_concepts,
+            import_structured_knowledge,
+        )
+        for fn in [import_canonical_concepts, import_structured_knowledge, build_chapter_summaries]:
+            print(json.dumps(fn(), ensure_ascii=False, indent=2))
+    elif action == 'prune-revisions':
+        from library._core.kb.build import prune_superseded_revisions
+        print(json.dumps(
+            prune_superseded_revisions(
+                keep_latest_per_document=args.keep_superseded,
+            ),
+            ensure_ascii=False,
+            indent=2,
+        ))
     else:
         print(f'Unknown kb action: {action}', file=sys.stderr)
         sys.exit(1)
@@ -251,7 +275,8 @@ def build_parser():
         'build', 'doctor', 'smoke', 'query', 'query-v3', 'extract', 'normalize', 'evidence',
         'extract-quotes', 'normalize-quotes', 'load-quotes',
         'migrate-v3', 'migrate-v31', 'migrate-quotes-v2',
-        'seed-v3', 'seed-all', 'import-concepts',
+        'seed-v3', 'seed-all', 'import-concepts', 'import-knowledge',
+        'prune-revisions',
     ])
     p_kb.add_argument('--query', default='')
     p_kb.add_argument('--table', default='')
@@ -264,6 +289,10 @@ def build_parser():
     p_kb.add_argument('--allow-partial', dest='allow_partial',
                       action='store_true',
                       help='Allow kb build to proceed when some corpus files are missing')
+    p_kb.add_argument('--no-enrich', action='store_true',
+                      help='Only build raw chunks and taxonomy without enrichment')
+    p_kb.add_argument('--keep-superseded', dest='keep_superseded', type=int, default=0,
+                      help='How many newest superseded revisions to keep per document when pruning')
     p_kb.set_defaults(func=cmd_kb)
 
     p_ingest = sub.add_parser('ingest', help='Ingest source material')

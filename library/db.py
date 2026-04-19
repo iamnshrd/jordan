@@ -26,6 +26,10 @@ ALLOWED_TABLES = frozenset({
     'pattern_next_steps', 'theme_next_steps',
     'archetype_quote_packs', 'quote_pack_items',
     'chunk_embeddings',
+    'canonical_concepts', 'canonical_concept_aliases',
+    'canonical_concept_sources',
+    'definitions', 'claims', 'practices',
+    'objections', 'chapter_summaries',
 })
 
 

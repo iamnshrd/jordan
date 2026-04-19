@@ -3,37 +3,49 @@
     {
       "name": "basic-discipline",
       "if_any": ["комнат", "дисциплин", "порядок", "не могу начать", "отклады", "прокраст"],
-      "prefer": ["12-rules", "beyond-order", "maps-of-meaning"],
-      "blend": false
+      "prefer": ["academy-desire-discipline", "12-rules", "success-lecture", "academy-between-order-chaos", "beyond-order", "maps-of-meaning"],
+      "blend": true
     },
     {
       "name": "career-vocation",
       "if_any": ["карьер", "призвание", "профес", "путь", "work", "vocation"],
-      "prefer": ["beyond-order", "12-rules", "maps-of-meaning"],
+      "prefer": ["academy-between-order-chaos", "beyond-order", "academy-higher-vision", "academy-desire-discipline", "success-lecture", "12-rules", "maps-of-meaning"],
       "blend": true
     },
     {
       "name": "relationship-maintenance",
       "if_any": ["отношен", "жена", "муж", "роман", "конфликт", "брак"],
-      "prefer": ["beyond-order", "12-rules", "maps-of-meaning"],
+      "prefer": ["beyond-order", "academy-walled-garden", "academy-higher-vision", "12-rules", "maps-of-meaning"],
       "blend": true
     },
     {
       "name": "shame-self-contempt",
       "if_any": ["стыд", "позор", "отвращение к себе", "никчем"],
-      "prefer": ["12-rules", "maps-of-meaning", "beyond-order"],
+      "prefer": ["12-rules", "academy-faith-tragedy", "maps-of-meaning", "academy-walled-garden", "beyond-order"],
       "blend": true
     },
     {
       "name": "mythic-meaning-collapse",
       "if_any": ["хаос", "неизвестн", "символ", "жертв", "трансформ", "иерарх", "ценност", "карта"],
-      "prefer": ["maps-of-meaning", "beyond-order", "12-rules"],
+      "prefer": ["maps-of-meaning", "academy-faith-tragedy", "academy-higher-vision", "beyond-order", "12-rules"],
       "blend": true
     },
     {
       "name": "resentment-moral-corrosion",
       "if_any": ["обид", "гореч", "resentment", "ароган", "идеолог", "несправед"],
-      "prefer": ["beyond-order", "maps-of-meaning", "12-rules"],
+      "prefer": ["beyond-order", "academy-walled-garden", "academy-faith-tragedy", "maps-of-meaning", "12-rules"],
+      "blend": true
+    },
+    {
+      "name": "planning-vision",
+      "if_any": ["видение", "vision", "future authoring", "план жизни", "жизненный план", "расписание"],
+      "prefer": ["academy-between-order-chaos", "academy-desire-discipline", "success-lecture", "beyond-order", "12-rules"],
+      "blend": true
+    },
+    {
+      "name": "truthful-confrontation",
+      "if_any": ["сказать точнее", "правду", "truth", "complaint", "жалоба", "разговор"],
+      "prefer": ["academy-walled-garden", "beyond-order", "12-rules", "maps-of-meaning"],
       "blend": true
     }
   ]

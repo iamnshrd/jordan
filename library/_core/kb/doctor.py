@@ -62,6 +62,12 @@ def doctor() -> dict:
             'theme_evidence': cur.execute('SELECT COUNT(*) FROM theme_evidence').fetchone()[0],
             'principle_evidence': cur.execute('SELECT COUNT(*) FROM principle_evidence').fetchone()[0],
             'pattern_evidence': cur.execute('SELECT COUNT(*) FROM pattern_evidence').fetchone()[0],
+            'canonical_concepts': cur.execute('SELECT COUNT(*) FROM canonical_concepts').fetchone()[0],
+            'definitions': cur.execute('SELECT COUNT(*) FROM definitions').fetchone()[0],
+            'claims': cur.execute('SELECT COUNT(*) FROM claims').fetchone()[0],
+            'practices': cur.execute('SELECT COUNT(*) FROM practices').fetchone()[0],
+            'objections': cur.execute('SELECT COUNT(*) FROM objections').fetchone()[0],
+            'chapter_summaries': cur.execute('SELECT COUNT(*) FROM chapter_summaries').fetchone()[0],
             'bridges': cur.execute('SELECT COUNT(*) FROM bridge_to_action_templates').fetchone()[0],
             'next_steps': cur.execute('SELECT COUNT(*) FROM next_step_library').fetchone()[0],
         }

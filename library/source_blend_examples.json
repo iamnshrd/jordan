@@ -1,26 +1,38 @@
 [
   {
     "route": "career-vocation",
-    "primary_source": "beyond-order",
-    "secondary_source": "12-rules",
-    "why": "Use Beyond Order for chosen burden and vocation; use 12 Rules for first-order discipline and anti-expedience grounding."
+    "primary_source": "academy-between-order-chaos",
+    "secondary_source": "beyond-order",
+    "why": "Use the Peterson Academy planning lectures for explicit vision and implementation; use Beyond Order for chosen burden, sacrifice, and mature vocation framing."
   },
   {
     "route": "shame-self-contempt",
     "primary_source": "12-rules",
-    "secondary_source": "maps-of-meaning",
-    "why": "Use 12 Rules for immediate correction of self-contempt; use Maps of Meaning when shame marks deeper collapse of adaptation and identity."
+    "secondary_source": "academy-faith-tragedy",
+    "why": "Use 12 Rules for immediate first-order repair; use Faith in Tragedy when shame is fused with suffering and bitterness."
   },
   {
     "route": "addiction-chaos",
-    "primary_source": "maps-of-meaning",
+    "primary_source": "academy-fear-catalyst",
     "secondary_source": "beyond-order",
-    "why": "Use Maps of Meaning for chaos/unknown structure; use Beyond Order for resentment, corruption, and rebuilding through burden."
+    "why": "Use Fear as a Catalyst to frame the avoided price and frontier; use Beyond Order for rebuilding through burden and anti-resentment."
   },
   {
     "route": "relationship-maintenance",
-    "primary_source": "beyond-order",
+    "primary_source": "academy-walled-garden",
+    "secondary_source": "beyond-order",
+    "why": "Use The Walled Garden for precise complaint and truthful narration; use Beyond Order for negotiation, reciprocity, and resentment repair."
+  },
+  {
+    "route": "avoidance-paralysis",
+    "primary_source": "academy-desire-discipline",
     "secondary_source": "12-rules",
-    "why": "Use Beyond Order for negotiation/romance maintenance; use 12 Rules for truthful speech and boundary-setting."
+    "why": "Use Desire and Discipline for schedule, reward, and repeatable structure; use 12 Rules for blunt local-order grounding."
+  },
+  {
+    "route": "self-deception",
+    "primary_source": "academy-walled-garden",
+    "secondary_source": "12-rules",
+    "why": "Use The Walled Garden for truthful narration and emergence of the actual point; use 12 Rules for first-order truth discipline."
   }
 ]

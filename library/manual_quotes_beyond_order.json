@@ -72,6 +72,16 @@
   {
     "document_id": 3,
     "chunk_id": 0,
+    "quote_text": "If you have something difficult to say, silence may feel easier in the moment, but it is deadly in the long run.",
+    "note": "manual beyond-order hard conversation seed",
+    "quote_type": "relationship-quote",
+    "theme_name": "responsibility",
+    "principle_name": "tell-the-truth-or-at-least-dont-lie",
+    "pattern_name": "resentment-loop"
+  },
+  {
+    "document_id": 3,
+    "chunk_id": 0,
     "quote_text": "Do not allow yourself to become resentful, deceitful, or arrogant.",
     "note": "manual beyond-order resentment seed",
     "quote_type": "resentment-quote",

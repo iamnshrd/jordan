@@ -9,10 +9,12 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import re
 
 ROOT = Path(__file__).resolve().parent            # library/
 PROJECT = ROOT.parent                             # jordan/
 WORKSPACE = PROJECT / 'workspace'
+VENDOR = PROJECT / '.vendor'
 
 # --- SQLite knowledge base ---
 DB_PATH = ROOT / 'jordan_knowledge.db'
@@ -34,6 +36,9 @@ SOURCE_BLEND_EXAMPLES = ROOT / 'source_blend_examples.json'
 BEYOND_ORDER_CONCEPTS = ROOT / 'beyond_order_concepts.json'
 MAPS_OF_MEANING_CONCEPTS = ROOT / 'maps_of_meaning_concepts.json'
 TWELVE_RULES_CONCEPTS = ROOT / 'twelve_rules_concepts.json'
+ARTICLE_CONCEPTS = ROOT / 'article_concepts_manual.json'
+ARTICLE_KNOWLEDGE = ROOT / 'article_knowledge_manual.json'
+CANONICAL_CONCEPTS = ROOT / 'canonical_concepts_manual.json'
 MANUAL_QUOTES = ROOT / 'manual_quotes.json'
 MANUAL_QUOTES_BEYOND = ROOT / 'manual_quotes_beyond_order.json'
 MANUAL_QUOTES_MAPS = ROOT / 'manual_quotes_maps_of_meaning.json'
@@ -78,6 +83,48 @@ _doc_source_hints_cache: dict | None = None
 _doc_source_hints_cache_key: tuple[float | None, int, float | None] | None = None
 
 
+def _simplify_source_key(value: str) -> str:
+    """Collapse punctuation and spacing so source matching is stable."""
+    return re.sub(r'[^a-zа-я0-9]+', ' ', (value or '').lower()).strip()
+
+
+def friendly_source_name(source_pdf: str | None) -> str:
+    """Return a stable logical source name for a document path."""
+    source_pdf = (source_pdf or '').strip()
+    lower = source_pdf.lower()
+    simple = _simplify_source_key(source_pdf)
+    if not lower:
+        return ''
+    if '12-pravil' in lower or '12-rules' in lower:
+        return '12-rules'
+    if 'maps-of-meaning' in lower:
+        return 'maps-of-meaning'
+    if 'beyond-order' in lower:
+        return 'beyond-order'
+    if (
+        'что сделает тебя успешным' in lower
+        or 'what-will-make-you-successful' in lower
+        or 'what will make you successful' in simple
+    ):
+        return 'success-lecture'
+    if (
+        'between-order-and-chaos' in lower
+        or 'between order and chaos' in simple
+    ):
+        return 'academy-between-order-chaos'
+    if 'the-walled-garden' in lower or 'the walled garden' in simple:
+        return 'academy-walled-garden'
+    if 'desire-and-discipline' in lower or 'desire and discipline' in simple:
+        return 'academy-desire-discipline'
+    if 'fear-as-a-catalyst' in lower or 'fear as a catalyst' in simple:
+        return 'academy-fear-catalyst'
+    if 'faith-in-tragedy' in lower or 'faith in tragedy' in simple:
+        return 'academy-faith-tragedy'
+    if 'a-higher-vision' in lower or 'a higher vision' in simple:
+        return 'academy-higher-vision'
+    return source_pdf.rsplit('.', 1)[0].rsplit('/', 1)[-1]
+
+
 def _doc_source_hints_fingerprint() -> tuple[float | None, int, float | None]:
     """Return a cheap fingerprint for cache invalidation.
 
@@ -117,7 +164,7 @@ def get_doc_source_hints() -> dict:
             ).fetchall():
                 doc_id, source_pdf = row
                 if doc_id not in hints and source_pdf:
-                    name = source_pdf.rsplit('.', 1)[0].rsplit('/', 1)[-1]
+                    name = friendly_source_name(source_pdf)
                     hints[doc_id] = name
         _doc_source_hints_cache = hints
         _doc_source_hints_cache_key = cache_key

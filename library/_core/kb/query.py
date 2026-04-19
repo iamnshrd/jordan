@@ -55,15 +55,22 @@ def top_evidence(cur, evidence_table, target_table, fk_col, name_col, limit):
 
 def query(query_text='', table='', limit=8):
     """Main query entry point. Returns dict with chunk_hits / table_rows / evidence."""
-    with connect() as conn:
-        cur = conn.cursor()
-        out = {}
-        if query_text:
-            out['chunk_hits'] = search_chunks(cur, query_text, limit)
-            out['quotes'] = search_quotes(cur, query_text, limit)
-            out['top_themes'] = top_evidence(cur, 'theme_evidence', 'themes', 'theme_id', 'theme_name', limit)
-            out['top_principles'] = top_evidence(cur, 'principle_evidence', 'principles', 'principle_id', 'principle_name', limit)
-            out['top_patterns'] = top_evidence(cur, 'pattern_evidence', 'patterns', 'pattern_id', 'pattern_name', limit)
-        if table:
+    out = {}
+    if query_text:
+        from library._core.runtime.retrieve import build_response_bundle
+        bundle = build_response_bundle(query_text)
+        out['chunk_hits'] = bundle.get('relevant_chunks', [])[:limit]
+        out['quotes'] = bundle.get('relevant_quotes', [])[:limit]
+        out['top_themes'] = bundle.get('top_themes', [])[:limit]
+        out['top_principles'] = bundle.get('top_principles', [])[:limit]
+        out['top_patterns'] = bundle.get('top_patterns', [])[:limit]
+        out['canonical_concepts'] = bundle.get('canonical_concepts', [])[:limit]
+        out['definitions'] = bundle.get('relevant_definitions', [])[:limit]
+        out['claims'] = bundle.get('relevant_claims', [])[:limit]
+        out['practices'] = bundle.get('relevant_practices', [])[:limit]
+        out['objections'] = bundle.get('relevant_objections', [])[:limit]
+        out['chapter_summaries'] = bundle.get('relevant_chapter_summaries', [])[:limit]
+    if table:
+        with connect() as conn:
             out['table_rows'] = list_table(conn, table, limit)
     return out

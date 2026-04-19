@@ -11,6 +11,7 @@ Version 2 -> 3: V3.1 (quote_pack_items)
 Version 3 -> 4: quotes classification columns
 Version 4 -> 5: cases taxonomy columns + section_title on chunks + evidence weight
 Version 8 -> 9: document revisions + active revision pointers
+Version 10 -> 11: structured knowledge + canonical concepts
 """
 from __future__ import annotations
 
@@ -402,6 +403,133 @@ def _migrate_v9_document_revisions(conn):
     conn.commit()
 
 
+def _migrate_v10_intervention_source_doc(conn):
+    """Add source_document_id to intervention_examples."""
+    cur = conn.cursor()
+    _add_col(cur, 'intervention_examples', 'source_document_id', 'INTEGER')
+    conn.commit()
+
+
+_V11_STRUCTURED_KNOWLEDGE_SQL = '''
+CREATE TABLE IF NOT EXISTS canonical_concepts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  concept_slug TEXT NOT NULL UNIQUE,
+  concept_name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  theme_name TEXT,
+  principle_name TEXT,
+  pattern_name TEXT,
+  priority INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS canonical_concept_aliases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  concept_id INTEGER NOT NULL,
+  alias_text TEXT NOT NULL,
+  UNIQUE(concept_id, alias_text),
+  FOREIGN KEY(concept_id) REFERENCES canonical_concepts(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_canonical_concept_aliases_text
+  ON canonical_concept_aliases(alias_text);
+
+CREATE TABLE IF NOT EXISTS canonical_concept_sources (
+  concept_id INTEGER NOT NULL,
+  document_id INTEGER NOT NULL,
+  support_type TEXT NOT NULL,
+  support_ref TEXT NOT NULL DEFAULT '',
+  note TEXT,
+  PRIMARY KEY(concept_id, document_id, support_type, support_ref),
+  FOREIGN KEY(concept_id) REFERENCES canonical_concepts(id) ON DELETE CASCADE,
+  FOREIGN KEY(document_id) REFERENCES documents(id)
+);
+CREATE INDEX IF NOT EXISTS idx_canonical_concept_sources_document
+  ON canonical_concept_sources(document_id, support_type);
+
+CREATE TABLE IF NOT EXISTS definitions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  term_name TEXT NOT NULL UNIQUE,
+  summary TEXT NOT NULL,
+  theme_name TEXT,
+  principle_name TEXT,
+  pattern_name TEXT,
+  source_document_id INTEGER,
+  canonical_concept_id INTEGER,
+  note TEXT,
+  FOREIGN KEY(source_document_id) REFERENCES documents(id),
+  FOREIGN KEY(canonical_concept_id) REFERENCES canonical_concepts(id)
+);
+
+CREATE TABLE IF NOT EXISTS claims (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  claim_text TEXT NOT NULL UNIQUE,
+  summary TEXT,
+  claim_kind TEXT,
+  theme_name TEXT,
+  principle_name TEXT,
+  pattern_name TEXT,
+  source_document_id INTEGER,
+  canonical_concept_id INTEGER,
+  note TEXT,
+  FOREIGN KEY(source_document_id) REFERENCES documents(id),
+  FOREIGN KEY(canonical_concept_id) REFERENCES canonical_concepts(id)
+);
+
+CREATE TABLE IF NOT EXISTS practices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  practice_name TEXT NOT NULL UNIQUE,
+  summary TEXT NOT NULL,
+  difficulty TEXT,
+  time_horizon TEXT,
+  theme_name TEXT,
+  principle_name TEXT,
+  pattern_name TEXT,
+  source_document_id INTEGER,
+  canonical_concept_id INTEGER,
+  note TEXT,
+  FOREIGN KEY(source_document_id) REFERENCES documents(id),
+  FOREIGN KEY(canonical_concept_id) REFERENCES canonical_concepts(id)
+);
+
+CREATE TABLE IF NOT EXISTS objections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  objection_name TEXT NOT NULL UNIQUE,
+  summary TEXT NOT NULL,
+  response TEXT,
+  theme_name TEXT,
+  principle_name TEXT,
+  pattern_name TEXT,
+  source_document_id INTEGER,
+  canonical_concept_id INTEGER,
+  note TEXT,
+  FOREIGN KEY(source_document_id) REFERENCES documents(id),
+  FOREIGN KEY(canonical_concept_id) REFERENCES canonical_concepts(id)
+);
+
+CREATE TABLE IF NOT EXISTS chapter_summaries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  document_id INTEGER NOT NULL,
+  section_title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  theme_name TEXT,
+  principle_name TEXT,
+  pattern_name TEXT,
+  canonical_concept_id INTEGER,
+  note TEXT,
+  UNIQUE(document_id, section_title),
+  FOREIGN KEY(document_id) REFERENCES documents(id),
+  FOREIGN KEY(canonical_concept_id) REFERENCES canonical_concepts(id)
+);
+CREATE INDEX IF NOT EXISTS idx_chapter_summaries_document
+  ON chapter_summaries(document_id);
+'''
+
+
+def _migrate_v11_structured_knowledge(conn):
+    """Add structured knowledge tables and canonical concept normalization."""
+    conn.cursor().executescript(_V11_STRUCTURED_KNOWLEDGE_SQL)
+    conn.commit()
+
+
 MIGRATIONS: list[tuple[int, callable]] = [
     (1, _migrate_base),
     (2, _migrate_v3),
@@ -412,6 +540,8 @@ MIGRATIONS: list[tuple[int, callable]] = [
     (7, _migrate_v7_doc_mtime),
     (8, _migrate_v8_intervention_taxonomy),
     (9, _migrate_v9_document_revisions),
+    (10, _migrate_v10_intervention_source_doc),
+    (11, _migrate_v11_structured_knowledge),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0]
