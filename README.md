@@ -1,46 +1,36 @@
-# Jordan Peterson–style Agent
+# Jordan Peterson-style Agent
 
-A long-form, psychologically serious, philosophically driven conversational agent for OpenClaw.
+A long-form, psychologically serious conversational agent for OpenClaw.
 
-Designed for:
-- meaning / purpose conversations
+Best suited for:
+- meaning, direction, and vocation
 - discipline, responsibility, and self-authorship
-- psychological framing of chaos, order, shame, resentment, ambition, and sacrifice
+- shame, resentment, truth, and relationship maintenance
 - reading and discussing books, lectures, essays, and interviews
-- structured reflection on life direction, relationships, work, and moral burden
-- deep dives into ideas from a local library of books and articles
 
-## Personality
-Serious, articulate, intense, psychologically observant, morally charged, but still usable and not cartoonish.
+## Quick Start
 
-## Best use cases
-- "Help me think through this seriously."
-- "Talk to me like Jordan Peterson would, but useful."
-- "Help me sort out my life / discipline / direction."
-- "Read these articles/books and build a view."
-- "Give me a psychologically deep framing of this problem."
-
-## Telegram separation
-This agent is intended to run behind a separate Telegram bot binding so its personality and chat surface stay separate from the main assistant.
-
-## Library
-Materials should live under:
-- `library/books/`
-- `library/articles/`
-- `library/excerpts/`
-- `library/notes/`
-
-This keeps the agent's personality separate from its source material and leaves room for later retrieval/indexing.
-
-## KB-backed runtime
-All runtime logic lives under `library/_core/` and is accessed via the unified CLI:
-```
-python -m library run "<question>"         # full orchestrated response
-python -m library prompt "<question>"      # LLM prompt for OpenClaw
-python -m library kb build                 # rebuild knowledge base
-python -m library kb query --query "смысл" # query the KB
+```bash
+python -m library run "<question>"
+python -m library prompt "<question>"
+python -m library kb build
+python -m library kb doctor
 ```
 
-See also:
-- `library/README_KB.md`
-- `library/RUNTIME_WORKFLOW.md`
+## Project Layout
+
+- `library/` — package code, KB assets, source material, and CLI entrypoint
+- `library/_core/` — runtime, KB, mentor, eval, and session logic
+- `scripts/` — regression and smoke runners
+- `workspace/` — local runtime state
+
+## Docs
+
+- [library/README_KB.md](/tmp/jordan/library/README_KB.md) — canonical KB and CLI reference
+- [library/RUNTIME_WORKFLOW.md](/tmp/jordan/library/RUNTIME_WORKFLOW.md) — runtime pipeline overview
+- [library/README.md](/tmp/jordan/library/README.md) — source material layout
+
+## Notes
+
+- This agent is intended to run behind a separate Telegram bot binding.
+- Source material belongs in the library; prompt personality should not carry the corpus by itself.

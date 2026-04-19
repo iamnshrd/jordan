@@ -1,25 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
-
-
-def simulate_dispatch(users: list[dict], decisions: dict[str, dict]) -> list[dict]:
-    outputs = []
-    for item in users:
-        if not item.get('enabled', True):
-            continue
-        user_id = item.get('user_id', '')
-        target = item.get('target', '')
-        if user_id == 'default':
-            outputs.append({'user_id': user_id, 'skip': True, 'skip_reason': 'default-user-id-blocked'})
-            continue
-        if not target:
-            outputs.append({'user_id': user_id, 'skip': True, 'skip_reason': 'missing-user-target'})
-            continue
-        decision = decisions.get(user_id, {'skip': True, 'skip_reason': 'no-decision'})
-        outputs.append({'user_id': user_id, **decision})
-    return outputs
+from _helpers import emit_report, simulate_dispatch
 
 
 def main() -> None:
@@ -47,10 +29,7 @@ def main() -> None:
             'pass': simulate_dispatch([{'user_id': 'default', 'target': '333', 'enabled': True}], {})[0]['skip_reason'] == 'default-user-id-blocked',
         },
     ]
-    total = len(results)
-    passed = sum(1 for x in results if x.get('pass'))
-    print(json.dumps({'total': total, 'pass': passed, 'results': results}, ensure_ascii=False, indent=2))
-    raise SystemExit(0 if total == passed else 1)
+    emit_report(results)
 
 
 if __name__ == '__main__':

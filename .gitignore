@@ -10,6 +10,11 @@ __pycache__/
 library/tmp/
 library/texts/
 library/ingest_report.json
+library/eval_report.json
+library/kb_candidates.json
+library/kb_candidates_normalized.json
+library/quotes_candidates.json
+library/quotes_normalized.json
 library/runtime_audit_report.json
 library/runtime_regression_report.json
 library/voice_regression_report.json

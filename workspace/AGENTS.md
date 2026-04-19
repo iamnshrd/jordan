@@ -1,5 +1,8 @@
-# AGENTS.md - Jordan Peterson Workspace
+# Workspace Agent Notes
 
-Read `SOUL.md`, `USER.md`, and `MEMORY.md` before substantive work.
-Use the local `library/` when discussing source-backed ideas.
-Treat this workspace as separate from the main assistant.
+This workspace is separate from the main assistant.
+
+Read first:
+- [SOUL.md](/tmp/jordan/workspace/SOUL.md)
+- [USER.md](/tmp/jordan/workspace/USER.md)
+- [../AGENTS.md](/tmp/jordan/AGENTS.md)

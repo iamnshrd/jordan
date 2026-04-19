@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
-import tempfile
-from pathlib import Path
-import sys
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from library._adapters.fs_store import FileSystemStore
+from _helpers import emit_report, temp_store
 from library._core.mentor.checkins import save_state, record_reply, evaluate
 from library._core.mentor.commitments import record_commitment, load_commitments
 from library._core.state_store import KEY_CONTINUITY
@@ -17,8 +10,7 @@ from library.config import canonical_user_id
 
 def main() -> None:
     results = []
-    with tempfile.TemporaryDirectory() as td:
-        store = FileSystemStore(Path(td))
+    with temp_store() as store:
         u1 = canonical_user_id('77571089')
         u2 = canonical_user_id('99999999')
 
@@ -65,10 +57,7 @@ def main() -> None:
             'user2_question': e2.get('question'),
         })
 
-    total = len(results)
-    passed = sum(1 for x in results if x.get('pass'))
-    print(json.dumps({'total': total, 'pass': passed, 'results': results}, ensure_ascii=False, indent=2))
-    raise SystemExit(0 if total == passed else 1)
+    emit_report(results)
 
 
 if __name__ == '__main__':

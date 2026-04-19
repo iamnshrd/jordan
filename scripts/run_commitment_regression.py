@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
-import sys
-import tempfile
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from library._adapters.fs_store import FileSystemStore
+from _helpers import emit_report, temp_store
 from library._core.mentor.commitments import infer_commitment, record_commitment, maybe_resolve_from_reply, load_commitments, best_open_commitment, commitment_summary, commitment_prompt_style
 from library._core.mentor.render import render_event
 
@@ -22,8 +15,7 @@ def main() -> None:
     results.append({'name': 'parse_commitment', 'pass': ok, 'value': parsed})
     passed += int(ok)
 
-    with tempfile.TemporaryDirectory() as td:
-        store = FileSystemStore(Path(td))
+    with temp_store() as store:
         item = record_commitment('Я завтра точно напишу ему и закрою этот разговор', user_id='default', store=store)
         ok = bool(item and item.get('route') == 'relationship-maintenance')
         results.append({'name': 'route_inference', 'pass': ok, 'route': item.get('route') if item else None})
@@ -62,7 +54,7 @@ def main() -> None:
         results.append({'name': 'movement_digest_render', 'pass': ok, 'rendered': rendered})
         passed += int(ok)
 
-    print(json.dumps({'total': 8, 'pass': passed, 'results': results}, ensure_ascii=False, indent=2))
+    emit_report(results)
 
 
 if __name__ == '__main__':

@@ -1,21 +1,24 @@
-# Conversation Continuity Workflow
+# Conversation Continuity
 
-Use this to maintain personal continuity for the Jordan Peterson–style agent.
+Continuity is managed through `StateStore` and updated automatically during
+`python -m library run`.
 
-## Storage
-Continuity data is managed via `StateStore` and persisted in `workspace/continuity.json`.
+## What It Tracks
 
-## Track
 - recurring themes
 - recurring user patterns
-- open loops / unresolved burdens
+- open loops and unresolved burdens
 
-## Usage
-Continuity is automatically updated by the orchestrator during `python -m library run`.
-The relevant logic lives in `library/_core/session/continuity.py`.
+## Main Code
 
-## When continuity updates
-- when the same issue appears again
-- when the user reveals a recurring burden
-- when a theme/pattern becomes stable across multiple conversations
-- when an unresolved loop should be remembered for future talks
+- `library/_core/session/continuity.py`
+- `library/_core/state_store.py`
+- `library/_adapters/fs_store.py`
+
+## Storage
+
+The legacy local file path is `workspace/continuity.json`, but callers should
+interact through the store layer rather than the file directly.
+
+For the main runtime flow, see
+[RUNTIME_WORKFLOW.md](/tmp/jordan/library/RUNTIME_WORKFLOW.md).

@@ -75,12 +75,37 @@ _DOC_SOURCE_HINTS_STATIC = {
     3: 'beyond-order',
 }
 _doc_source_hints_cache: dict | None = None
+_doc_source_hints_cache_key: tuple[float | None, int, float | None] | None = None
+
+
+def _doc_source_hints_fingerprint() -> tuple[float | None, int, float | None]:
+    """Return a cheap fingerprint for cache invalidation.
+
+    Includes DB mtime/size plus manifest mtime so long-running processes
+    automatically refresh cached source hints after KB rebuilds or manifest edits.
+    """
+    try:
+        db_stat = DB_PATH.stat()
+        db_mtime = db_stat.st_mtime
+        db_size = db_stat.st_size
+    except OSError:
+        db_mtime = None
+        db_size = 0
+    try:
+        manifest_mtime = MANIFEST.stat().st_mtime
+    except OSError:
+        manifest_mtime = None
+    return (db_mtime, db_size, manifest_mtime)
 
 
 def get_doc_source_hints() -> dict:
     """Build source hints from DB with static fallback."""
-    global _doc_source_hints_cache
-    if _doc_source_hints_cache is not None:
+    global _doc_source_hints_cache, _doc_source_hints_cache_key
+    cache_key = _doc_source_hints_fingerprint()
+    if (
+        _doc_source_hints_cache is not None
+        and _doc_source_hints_cache_key == cache_key
+    ):
         return _doc_source_hints_cache
     try:
         from library.db import connect
@@ -95,9 +120,18 @@ def get_doc_source_hints() -> dict:
                     name = source_pdf.rsplit('.', 1)[0].rsplit('/', 1)[-1]
                     hints[doc_id] = name
         _doc_source_hints_cache = hints
+        _doc_source_hints_cache_key = cache_key
     except Exception:
         _doc_source_hints_cache = dict(_DOC_SOURCE_HINTS_STATIC)
+        _doc_source_hints_cache_key = cache_key
     return _doc_source_hints_cache
+
+
+def invalidate_doc_source_hints_cache() -> None:
+    """Clear cached document source hints after KB document changes."""
+    global _doc_source_hints_cache, _doc_source_hints_cache_key
+    _doc_source_hints_cache = None
+    _doc_source_hints_cache_key = None
 
 
 # --- Common stop snippets (shared by normalize + quotes pipelines) ---

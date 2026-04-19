@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
-import tempfile
-from pathlib import Path
-import sys
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from library._adapters.fs_store import FileSystemStore
+from _helpers import emit_report, temp_store
 from library._core.mentor.checkins import save_state, record_reply, evaluate
 from library._core.mentor.commitments import record_commitment, load_commitments
 from library._core.state_store import KEY_CONTINUITY, KEY_MENTOR_STATE
@@ -50,8 +43,7 @@ USERS = [
 
 
 def main() -> None:
-    with tempfile.TemporaryDirectory() as td:
-        store = FileSystemStore(Path(td))
+    with temp_store() as store:
         summaries = []
         for spec in USERS:
             user_id = canonical_user_id(spec['raw'])
@@ -97,10 +89,7 @@ def main() -> None:
                 'pass': all(x['last_rich_outcome'] for x in summaries),
             },
         ]
-        total = len(results)
-        passed = sum(1 for x in results if x.get('pass'))
-        print(json.dumps({'total': total, 'pass': passed, 'results': results, 'summaries': summaries}, ensure_ascii=False, indent=2))
-        raise SystemExit(0 if total == passed else 1)
+        emit_report(results, summaries=summaries)
 
 
 if __name__ == '__main__':

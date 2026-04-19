@@ -118,7 +118,9 @@ def search_chunks(cur, query, limit=None):
                bm25(document_chunks_fts) AS rank
         FROM document_chunks_fts fts
         JOIN document_chunks dc ON dc.id = fts.rowid
-        WHERE document_chunks_fts MATCH ?
+        JOIN documents d ON d.id = dc.document_id
+        WHERE dc.revision_id = d.active_revision_id
+          AND document_chunks_fts MATCH ?
         ORDER BY bm25(document_chunks_fts)
         LIMIT ?
         """,
@@ -132,7 +134,13 @@ def search_quotes(cur, query, limit=None):
         from library.utils import get_threshold
         limit = get_threshold('retrieve_quote_limit', 4)
     cur.execute(
-        "SELECT id, quote_text FROM quotes WHERE quote_text LIKE ? ESCAPE '\\' LIMIT ?",
+        "SELECT q.id, q.quote_text "
+        "FROM quotes q "
+        "JOIN document_chunks dc ON dc.id = q.chunk_id "
+        "JOIN documents d ON d.id = dc.document_id "
+        "WHERE dc.revision_id = d.active_revision_id "
+        "AND q.quote_text LIKE ? ESCAPE '\\' "
+        "LIMIT ?",
         (f'%{_escape_like(query)}%', limit),
     )
     return [row_to_dict(cur, row) for row in cur.fetchall()]
@@ -152,8 +160,10 @@ def top_linked(cur, query, evidence_table, join_table, fk_col, name_col,
         FROM {evidence_table} e
         JOIN {join_table} t ON t.id = e.{fk_col}
         JOIN document_chunks dc ON dc.id = e.chunk_id
+        JOIN documents d ON d.id = dc.document_id
         JOIN document_chunks_fts ON document_chunks_fts.rowid = dc.id
-        WHERE document_chunks_fts MATCH ?
+        WHERE dc.revision_id = d.active_revision_id
+          AND document_chunks_fts MATCH ?
         GROUP BY t.{name_col}
         ORDER BY hits DESC, matched_chunks DESC, t.{name_col} ASC
         LIMIT ?
@@ -167,7 +177,9 @@ def top_linked(cur, query, evidence_table, join_table, fk_col, name_col,
         FROM {evidence_table} e
         JOIN {join_table} t ON t.id = e.{fk_col}
         JOIN document_chunks dc ON dc.id = e.chunk_id
-        WHERE dc.content LIKE ?
+        JOIN documents d ON d.id = dc.document_id
+        WHERE dc.revision_id = d.active_revision_id
+          AND dc.content LIKE ?
         GROUP BY t.{name_col}
         ORDER BY hits DESC
         LIMIT ?
@@ -400,7 +412,12 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
     if course_quote_shortlist:
         placeholders = ','.join(['?'] * len(course_quote_shortlist))
         cur.execute(
-            f'SELECT id, document_id, quote_text, note, quote_type, theme_name, principle_name, pattern_name FROM quotes WHERE quote_text IN ({placeholders})',
+            f'SELECT q.id, q.document_id, q.quote_text, q.note, q.quote_type, q.theme_name, q.principle_name, q.pattern_name '
+            f'FROM quotes q '
+            f'JOIN document_chunks dc ON dc.id = q.chunk_id '
+            f'JOIN documents d ON d.id = dc.document_id '
+            f'WHERE dc.revision_id = d.active_revision_id '
+            f'AND q.quote_text IN ({placeholders})',
             course_quote_shortlist,
         )
         shortlist_rows = [row_to_dict(cur, row) for row in cur.fetchall()]
@@ -431,9 +448,13 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
 
     placeholders = ','.join(['?'] * len(route_quote_types))
     cur.execute(
-        f'SELECT id, document_id, quote_text, note, quote_type, '
-        f'theme_name, principle_name, pattern_name '
-        f'FROM quotes WHERE quote_type IN ({placeholders})',
+        f'SELECT q.id, q.document_id, q.quote_text, q.note, q.quote_type, '
+        f'q.theme_name, q.principle_name, q.pattern_name '
+        f'FROM quotes q '
+        f'JOIN document_chunks dc ON dc.id = q.chunk_id '
+        f'JOIN documents d ON d.id = dc.document_id '
+        f'WHERE dc.revision_id = d.active_revision_id '
+        f'AND q.quote_type IN ({placeholders})',
         route_quote_types,
     )
     rows = [row_to_dict(cur, row) for row in cur.fetchall()]

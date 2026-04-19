@@ -11,6 +11,8 @@ This is the SQLite-backed knowledge layer for the Jordan Peterson–style agent.
 ## CLI
 ```bash
 python -m library kb build                         # build/import corpus into DB
+python -m library kb doctor                        # health report for manifest/DB/FTS
+python -m library kb smoke --query "смысл"         # retrieval smoke check
 python -m library kb query --query "смысл"         # query chunks and taxonomy
 python -m library kb query-v3 --theme "meaning"    # structured v3 query
 python -m library kb extract                       # extract KB candidates

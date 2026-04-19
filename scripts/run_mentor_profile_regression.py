@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
-import sys
-import tempfile
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from library._adapters.fs_store import FileSystemStore
+from _helpers import emit_report, temp_store
 from library._core.mentor.profile import build_profile
 from library._core.state_store import KEY_MENTOR_STATE, KEY_COMMITMENTS
 
@@ -16,8 +9,7 @@ from library._core.state_store import KEY_MENTOR_STATE, KEY_COMMITMENTS
 def main() -> None:
     results = []
     passed = 0
-    with tempfile.TemporaryDirectory() as td:
-        store = FileSystemStore(Path(td))
+    with temp_store() as store:
         store.put_json('default', KEY_MENTOR_STATE, {
             'event_outcomes': {
                 'career-vocation::mentor-summary': {'used': 2, 'helpful': 2, 'neutral': 0, 'resisted': 0, 'ignored': 0},
@@ -36,8 +28,7 @@ def main() -> None:
         results.append({'name': 'strong_profile_derivation', 'pass': ok, 'profile': profile})
         passed += int(ok)
 
-    with tempfile.TemporaryDirectory() as td:
-        store = FileSystemStore(Path(td))
+    with temp_store() as store:
         store.put_json('default', KEY_MENTOR_STATE, {
             'event_outcomes': {
                 'career-vocation::broken-promise-check': {'used': 2, 'helpful': 0, 'neutral': 0, 'resisted': 2, 'ignored': 0},
@@ -55,7 +46,7 @@ def main() -> None:
         ok = profile.get('pressure_tolerance') == 'low' and profile.get('shame_fragility') == 'high'
         results.append({'name': 'fragility_and_pressure_profile', 'pass': ok, 'profile': profile})
         passed += int(ok)
-    print(json.dumps({'total': 2, 'pass': passed, 'results': results}, ensure_ascii=False, indent=2))
+    emit_report(results)
 
 
 if __name__ == '__main__':

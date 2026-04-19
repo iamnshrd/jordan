@@ -64,7 +64,16 @@ def cmd_kb(args):
     action = args.kb_action
     if action == 'build':
         from library._core.kb.build import build
-        print(json.dumps(build(), ensure_ascii=False, indent=2))
+        print(json.dumps(
+            build(force=args.force, allow_partial=args.allow_partial),
+            ensure_ascii=False, indent=2,
+        ))
+    elif action == 'doctor':
+        from library._core.kb.doctor import doctor
+        print(json.dumps(doctor(), ensure_ascii=False, indent=2))
+    elif action == 'smoke':
+        from library._core.kb.doctor import smoke
+        print(json.dumps(smoke(args.query or 'смысл'), ensure_ascii=False, indent=2))
     elif action == 'query':
         from library._core.kb.query import query
         print(json.dumps(query(args.query, args.table, args.limit), ensure_ascii=False, indent=2))
@@ -239,7 +248,7 @@ def build_parser():
 
     p_kb = sub.add_parser('kb', help='Knowledge base operations')
     p_kb.add_argument('kb_action', choices=[
-        'build', 'query', 'query-v3', 'extract', 'normalize', 'evidence',
+        'build', 'doctor', 'smoke', 'query', 'query-v3', 'extract', 'normalize', 'evidence',
         'extract-quotes', 'normalize-quotes', 'load-quotes',
         'migrate-v3', 'migrate-v31', 'migrate-quotes-v2',
         'seed-v3', 'seed-all', 'import-concepts',
@@ -250,6 +259,11 @@ def build_parser():
     p_kb.add_argument('--theme', default='')
     p_kb.add_argument('--pattern', default='')
     p_kb.add_argument('--archetype', default='')
+    p_kb.add_argument('--force', action='store_true',
+                      help='Rebuild all indexed corpus documents')
+    p_kb.add_argument('--allow-partial', dest='allow_partial',
+                      action='store_true',
+                      help='Allow kb build to proceed when some corpus files are missing')
     p_kb.set_defaults(func=cmd_kb)
 
     p_ingest = sub.add_parser('ingest', help='Ingest source material')

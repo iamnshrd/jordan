@@ -1,25 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
-
-
-def simulate_dispatch(users: list[dict], decisions: dict[str, dict]) -> list[dict]:
-    outputs = []
-    for item in users:
-        if not item.get('enabled', True):
-            continue
-        user_id = item.get('user_id', '')
-        target = item.get('target', '')
-        if user_id == 'default':
-            outputs.append({'user_id': user_id, 'skip': True, 'skip_reason': 'default-user-id-blocked'})
-            continue
-        if not target:
-            outputs.append({'user_id': user_id, 'skip': True, 'skip_reason': 'missing-user-target'})
-            continue
-        decision = decisions.get(user_id, {'skip': True, 'skip_reason': 'no-decision', 'should_send': False, 'delivered': False})
-        outputs.append({'user_id': user_id, 'target': target, **decision})
-    return outputs
+from _helpers import emit_report, simulate_dispatch
 
 
 def main() -> None:
@@ -37,7 +19,17 @@ def main() -> None:
         'telegram:10004': {'skip': True, 'skip_reason': 'awaiting-user-reengagement', 'should_send': False, 'delivered': False, 'event_type': None},
         'telegram:10005': {'skip': False, 'skip_reason': '', 'should_send': True, 'delivered': True, 'event_type': 'broken-promise-check'},
     }
-    outputs = simulate_dispatch(users, decisions)
+    outputs = simulate_dispatch(
+        users,
+        decisions,
+        include_target=True,
+        default_decision={
+            'skip': True,
+            'skip_reason': 'no-decision',
+            'should_send': False,
+            'delivered': False,
+        },
+    )
     senders = [x for x in outputs if x.get('should_send')]
     skippers = [x for x in outputs if x.get('skip')]
     results = [
@@ -58,10 +50,7 @@ def main() -> None:
             'pass': {'cooldown-active', 'awaiting-user-reengagement'}.issubset({x.get('skip_reason') for x in outputs}),
         },
     ]
-    total = len(results)
-    passed = sum(1 for x in results if x.get('pass'))
-    print(json.dumps({'total': total, 'pass': passed, 'results': results, 'outputs': outputs}, ensure_ascii=False, indent=2))
-    raise SystemExit(0 if total == passed else 1)
+    emit_report(results, outputs=outputs)
 
 
 if __name__ == '__main__':

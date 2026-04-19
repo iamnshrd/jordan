@@ -399,6 +399,57 @@ def apply_priority_pruning(practical, longer_term, practical_extras,
     return practical, longer_term
 
 
+def build_grounding_report(selected, bundle, v3, data) -> dict:
+    """Expose which synthesis fields are DB-backed vs heuristic/runtime-derived."""
+    theme_desc = ((selected.get('selected_theme') or {}).get('description') or '').strip()
+    pattern_desc = ((selected.get('selected_pattern') or {}).get('description') or '').strip()
+    principle_desc = ((selected.get('selected_principle') or {}).get('description') or '').strip()
+    bridge = (v3 or {}).get('bridge') or {}
+    next_step = (v3 or {}).get('next_step') or {}
+    chunks = bundle.get('relevant_chunks', []) or []
+    quotes = bundle.get('relevant_quotes', []) or []
+
+    fields = {
+        'core_problem': {
+            'backed': bool((bridge.get('diagnosis_stub') or '').strip() or theme_desc),
+            'source': 'bridge' if (bridge.get('diagnosis_stub') or '').strip() else ('theme-description' if theme_desc else 'heuristic'),
+        },
+        'relevant_pattern': {
+            'backed': bool(pattern_desc),
+            'source': 'pattern-description' if pattern_desc else 'heuristic',
+        },
+        'guiding_principle': {
+            'backed': bool(principle_desc),
+            'source': 'principle-description' if principle_desc else 'heuristic',
+        },
+        'responsibility_avoided': {
+            'backed': bool((bridge.get('responsibility_stub') or '').strip()),
+            'source': 'bridge' if (bridge.get('responsibility_stub') or '').strip() else 'heuristic',
+        },
+        'practical_next_step': {
+            'backed': bool((next_step.get('step_text') or '').strip() or (bridge.get('next_step_stub') or '').strip()),
+            'source': 'next-step' if (next_step.get('step_text') or '').strip() else ('bridge' if (bridge.get('next_step_stub') or '').strip() else 'heuristic'),
+        },
+        'longer_term_correction': {
+            'backed': bool((bridge.get('long_term_stub') or '').strip()),
+            'source': 'bridge' if (bridge.get('long_term_stub') or '').strip() else 'heuristic',
+        },
+        'supporting_quote': {
+            'backed': bool(data.get('supporting_quote')) and bool(quotes),
+            'source': 'quotes' if quotes else 'none',
+        },
+    }
+    backed_fields = [name for name, meta in fields.items() if meta['backed']]
+    missing_fields = [name for name, meta in fields.items() if not meta['backed']]
+    return {
+        'fields': fields,
+        'backed_fields': backed_fields,
+        'missing_fields': missing_fields,
+        'evidence_count': len(chunks),
+        'quote_count': len(quotes),
+    }
+
+
 # ── main synthesis ────────────────────────────────────────────────────
 
 def unify_selection_policy(selected, bridge, next_step_v3, question):
@@ -526,7 +577,7 @@ def synthesize(question, user_id: str = 'default',
     if intervention:
         tone_hint = intervention.get('tone_profile')
 
-    return {
+    result = {
         'question': question,
         'selection_policy': policy,
         'core_problem': core_problem,
@@ -556,3 +607,7 @@ def synthesize(question, user_id: str = 'default',
         'motif_links': motif_links,
         'raw_selection': selected,
     }
+    result['grounding_report'] = build_grounding_report(
+        selected, bundle, v3, result,
+    )
+    return result

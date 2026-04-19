@@ -3,7 +3,7 @@
 import logging
 import re
 
-from library.config import MANIFEST, ROOT
+from library.config import MANIFEST, ROOT, invalidate_doc_source_hints_cache
 
 log = logging.getLogger('jordan')
 from library.db import connect
@@ -139,16 +139,40 @@ def upsert_document(conn, source_pdf, text_path, status):
     return cur.fetchone()[0]
 
 
-def replace_chunks(conn, document_id, chunks):
-    """Replace all chunks for *document_id* atomically.
+def _next_revision_number(cur, document_id: int) -> int:
+    row = cur.execute(
+        'SELECT COALESCE(MAX(revision_number), 0) + 1 '
+        'FROM document_revisions WHERE document_id = ?',
+        (document_id,),
+    ).fetchone()
+    return int(row[0] if row and row[0] is not None else 1)
+
+
+def replace_chunks(conn, document_id, chunks, *, source_text_mtime=None):
+    """Create a new active revision with chunks for *document_id* atomically.
 
     *chunks* may be a list of strings (legacy) or list of dicts with
     ``text`` and ``section_title`` keys (new structured format).
     """
     cur = conn.cursor()
-    cur.execute('BEGIN IMMEDIATE')
+    use_savepoint = conn.in_transaction
+    if use_savepoint:
+        cur.execute('SAVEPOINT replace_chunks')
+    else:
+        cur.execute('BEGIN IMMEDIATE')
     try:
-        cur.execute('DELETE FROM document_chunks WHERE document_id = ?', (document_id,))
+        revision_number = _next_revision_number(cur, document_id)
+        cur.execute(
+            'INSERT INTO document_revisions (document_id, revision_number, source_text_mtime, status) '
+            'VALUES (?, ?, ?, ?)',
+            (
+                document_id,
+                revision_number,
+                source_text_mtime,
+                'building',
+            ),
+        )
+        revision_id = cur.lastrowid
         real_idx = 0
         for idx, chunk in enumerate(chunks):
             if isinstance(chunk, dict):
@@ -166,16 +190,37 @@ def replace_chunks(conn, document_id, chunks):
                 text = chunk
                 section = None
             cur.execute(
-                'INSERT INTO document_chunks (document_id, chunk_index, content, char_count, section_title) '
-                'VALUES (?, ?, ?, ?, ?)',
-                (document_id, real_idx, text, len(text), section),
+                'INSERT INTO document_chunks (document_id, revision_id, chunk_index, content, char_count, section_title) '
+                'VALUES (?, ?, ?, ?, ?, ?)',
+                (document_id, revision_id, real_idx, text, len(text), section),
             )
             real_idx += 1
-            rowid = cur.lastrowid
-            cur.execute('INSERT INTO document_chunks_fts(rowid, content) VALUES (?, ?)', (rowid, text))
-        conn.commit()
+        cur.execute(
+            'UPDATE document_revisions SET status = ? WHERE id = ?',
+            ('active', revision_id),
+        )
+        cur.execute(
+            'UPDATE document_revisions SET status = ? '
+            'WHERE document_id = ? AND id <> ? AND status = ?',
+            ('superseded', document_id, revision_id, 'active'),
+        )
+        cur.execute(
+            'UPDATE documents SET active_revision_id = ? WHERE id = ?',
+            (revision_id, document_id),
+        )
+        cur.execute(
+            "INSERT INTO document_chunks_fts(document_chunks_fts) VALUES ('rebuild')"
+        )
+        if use_savepoint:
+            cur.execute('RELEASE SAVEPOINT replace_chunks')
+        else:
+            conn.commit()
     except Exception:
-        conn.rollback()
+        if use_savepoint:
+            cur.execute('ROLLBACK TO SAVEPOINT replace_chunks')
+            cur.execute('RELEASE SAVEPOINT replace_chunks')
+        else:
+            conn.rollback()
         raise
 
 
@@ -256,24 +301,76 @@ def _doc_needs_rebuild(conn, doc_id, text_path) -> bool:
     import os
     cur = conn.cursor()
     row = cur.execute(
-        'SELECT COUNT(*) FROM document_chunks WHERE document_id = ?',
+        'SELECT COUNT(*) FROM document_chunks '
+        'WHERE revision_id = (SELECT active_revision_id FROM documents WHERE id = ?)',
         (doc_id,),
     ).fetchone()
     if not row or row[0] == 0:
         return True
     meta_row = cur.execute(
-        'SELECT text_mtime FROM documents WHERE id = ?', (doc_id,),
+        'SELECT text_mtime, active_revision_id FROM documents WHERE id = ?', (doc_id,),
     ).fetchone()
     try:
         file_mtime = os.path.getmtime(text_path)
     except OSError:
+        return True
+    if meta_row and meta_row[1] is None:
         return True
     if meta_row and meta_row[0] is not None:
         return file_mtime > meta_row[0]
     return True
 
 
-def build(force: bool = False):
+def _validate_manifest_docs(manifest):
+    """Return validation report for corpus files required by the manifest."""
+    report = {
+        'indexed_candidates': 0,
+        'missing_files': [],
+        'invalid_entries': [],
+    }
+    for doc in manifest.get('documents', []):
+        if not isinstance(doc, dict):
+            report['invalid_entries'].append({
+                'reason': 'entry-not-dict',
+                'entry': doc,
+            })
+            continue
+        if doc.get('status') not in {'text_extracted', 'chunked'}:
+            continue
+        report['indexed_candidates'] += 1
+        if not doc.get('text_path') or not doc.get('source_pdf'):
+            report['invalid_entries'].append({
+                'reason': 'missing-text-path-or-source-pdf',
+                'entry': doc,
+            })
+            continue
+        text_path = ROOT / doc['text_path']
+        if not text_path.exists():
+            report['missing_files'].append({
+                'source_pdf': doc.get('source_pdf', ''),
+                'text_path': doc.get('text_path', ''),
+            })
+    return report
+
+
+def _raise_manifest_validation_error(report):
+    details = []
+    if report['missing_files']:
+        details.append(
+            'missing files: ' + ', '.join(
+                item['text_path'] for item in report['missing_files']
+            )
+        )
+    if report['invalid_entries']:
+        details.append(f"invalid entries: {len(report['invalid_entries'])}")
+    summary = '; '.join(details) if details else 'manifest validation failed'
+    raise FileNotFoundError(
+        'KB build aborted because corpus files are missing or invalid; '
+        + summary
+    )
+
+
+def build(force: bool = False, allow_partial: bool = False):
     """Main build entry point.
 
     When *force* is False (default), only documents whose text file is newer
@@ -281,9 +378,14 @@ def build(force: bool = False):
     """
     import os
     manifest = load_manifest()
+    report = _validate_manifest_docs(manifest)
+    if (report['missing_files'] or report['invalid_entries']) and not allow_partial:
+        _raise_manifest_validation_error(report)
+
     with connect() as conn:
         init_db(conn)
         seed_taxonomy(conn)
+        indexed_docs = 0
         for doc in manifest.get('documents', []):
             if not isinstance(doc, dict):
                 continue
@@ -294,10 +396,12 @@ def build(force: bool = False):
                 continue
             text_path = ROOT / doc['text_path']
             if not text_path.exists():
+                log.warning('Manifest text_path is missing, skipping: %s', text_path)
                 continue
             doc_id = upsert_document(conn, doc['source_pdf'], doc['text_path'], 'chunked')
             if not force and not _doc_needs_rebuild(conn, doc_id, text_path):
                 doc['status'] = 'chunked'
+                indexed_docs += 1
                 continue
             try:
                 text = text_path.read_text(encoding='utf-8')
@@ -305,22 +409,37 @@ def build(force: bool = False):
                 log.warning('UTF-8 decode failed for %s, falling back to replace mode', text_path)
                 text = text_path.read_text(encoding='utf-8', errors='replace')
             chunks = split_chunks(text)
-            replace_chunks(conn, doc_id, chunks)
             try:
                 mtime = os.path.getmtime(text_path)
+            except OSError as exc:
+                mtime = None
+                log.warning('Could not record mtime for doc %s: %s', doc_id, exc)
+            replace_chunks(conn, doc_id, chunks, source_text_mtime=mtime)
+            if mtime is not None:
                 conn.cursor().execute(
                     'UPDATE documents SET text_mtime = ? WHERE id = ?',
                     (mtime, doc_id),
                 )
                 conn.commit()
-            except OSError as exc:
-                log.warning('Could not record mtime for doc %s: %s', doc_id, exc)
             doc['status'] = 'chunked'
+            indexed_docs += 1
         save_json(MANIFEST, manifest)
+        invalidate_doc_source_hints_cache()
         cur = conn.cursor()
         counts = {
             'documents': cur.execute('SELECT COUNT(*) FROM documents').fetchone()[0],
             'chunks': cur.execute('SELECT COUNT(*) FROM document_chunks').fetchone()[0],
+            'active_chunks': cur.execute(
+                'SELECT COUNT(*) FROM document_chunks dc '
+                'JOIN documents d ON d.id = dc.document_id '
+                'WHERE dc.revision_id = d.active_revision_id'
+            ).fetchone()[0],
+            'document_revisions': cur.execute(
+                'SELECT COUNT(*) FROM document_revisions'
+            ).fetchone()[0],
+            'indexed_docs': indexed_docs,
+            'missing_files': report['missing_files'],
+            'invalid_entries': report['invalid_entries'],
             'themes': cur.execute('SELECT COUNT(*) FROM themes').fetchone()[0],
             'principles': cur.execute('SELECT COUNT(*) FROM principles').fetchone()[0],
             'patterns': cur.execute('SELECT COUNT(*) FROM patterns').fetchone()[0],

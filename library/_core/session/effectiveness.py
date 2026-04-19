@@ -51,13 +51,33 @@ def update(source='', intervention='', outcome='used', route='',
     """
     user_id = canonical_user_id(user_id)
     store = store or get_default_store()
-    data = store.get_json(user_id, KEY_EFFECTIVENESS, default={
-        'sources': {},
-        'interventions': {},
-        'source_routes': {},
-        'intervention_routes': {},
-        'updated_at': None,
-    })
+    data = store.update_json(
+        user_id,
+        KEY_EFFECTIVENESS,
+        lambda data: _update_effectiveness_payload(
+            data, source=source, intervention=intervention,
+            outcome=outcome, route=route,
+        ),
+        default={
+            'sources': {},
+            'interventions': {},
+            'source_routes': {},
+            'intervention_routes': {},
+            'updated_at': None,
+        },
+    )
+    try:
+        from library._core.runtime.retrieve import invalidate_route_strength_cache
+        invalidate_route_strength_cache()
+    except ImportError:
+        pass
+    return data
+
+
+def _update_effectiveness_payload(data, *, source='', intervention='',
+                                  outcome='used', route=''):
+    data.setdefault('sources', {})
+    data.setdefault('interventions', {})
     data.setdefault('source_routes', {})
     data.setdefault('intervention_routes', {})
 
@@ -76,10 +96,4 @@ def update(source='', intervention='', outcome='used', route='',
             )
 
     data['updated_at'] = now_iso()
-    store.put_json(user_id, KEY_EFFECTIVENESS, data)
-    try:
-        from library._core.runtime.retrieve import invalidate_route_strength_cache
-        invalidate_route_strength_cache()
-    except ImportError:
-        pass
     return data

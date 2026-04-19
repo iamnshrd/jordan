@@ -2,18 +2,14 @@
 from __future__ import annotations
 
 import json
-import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from library._adapters.fs_store import FileSystemStore
+from _helpers import REPO_ROOT, emit_report, temp_store
 from library._core.mentor.checkins import evaluate, save_state
 from library._core.state_store import KEY_CONTINUITY, KEY_COMMITMENTS
 
-CASES_PATH = Path(__file__).resolve().parent / 'mentor_regression_cases.json'
+CASES_PATH = REPO_ROOT / 'library' / 'mentor_regression_cases.json'
 
 
 def main() -> None:
@@ -22,8 +18,7 @@ def main() -> None:
     passed = 0
 
     for case in cases:
-        with tempfile.TemporaryDirectory() as td:
-            store = FileSystemStore(Path(td))
+        with temp_store() as store:
             if case.get('state_override'):
                 state = {'mode': 'standard'}
                 state.update(case['state_override'])
@@ -118,12 +113,7 @@ def main() -> None:
                 'selection_audit': ((result.get('selection_context') or {}).get('selection_audit') or {}),
             })
 
-    output = {
-        'total': len(cases),
-        'pass': passed,
-        'results': report,
-    }
-    print(json.dumps(output, ensure_ascii=False, indent=2))
+    emit_report(report)
 
 
 if __name__ == '__main__':

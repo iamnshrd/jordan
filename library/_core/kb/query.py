@@ -17,7 +17,8 @@ def search_chunks(conn_or_cur, query, limit=8):
         FROM document_chunks_fts fts
         JOIN document_chunks dc ON dc.id = fts.rowid
         JOIN documents d ON d.id = dc.document_id
-        WHERE document_chunks_fts MATCH ?
+        WHERE dc.revision_id = d.active_revision_id
+          AND document_chunks_fts MATCH ?
         ORDER BY bm25(document_chunks_fts)
         LIMIT ?
         """,
@@ -28,7 +29,12 @@ def search_chunks(conn_or_cur, query, limit=8):
 
 def search_quotes(cur, query, limit):
     cur.execute(
-        'SELECT id, quote_text, note FROM quotes WHERE quote_text LIKE ? LIMIT ?',
+        'SELECT q.id, q.quote_text, q.note '
+        'FROM quotes q '
+        'JOIN document_chunks dc ON dc.id = q.chunk_id '
+        'JOIN documents d ON d.id = dc.document_id '
+        'WHERE dc.revision_id = d.active_revision_id '
+        'AND q.quote_text LIKE ? LIMIT ?',
         (f'%{query}%', limit),
     )
     return [row_to_dict(cur, row) for row in cur.fetchall()]

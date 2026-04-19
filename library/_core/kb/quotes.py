@@ -119,8 +119,11 @@ def extract_quotes():
     with connect() as conn:
         while True:
             rows = conn.cursor().execute(
-                'SELECT id, document_id, content '
-                'FROM document_chunks ORDER BY id LIMIT ? OFFSET ?',
+                'SELECT dc.id, dc.document_id, dc.content '
+                'FROM document_chunks dc '
+                'JOIN documents d ON d.id = dc.document_id '
+                'WHERE dc.revision_id = d.active_revision_id '
+                'ORDER BY dc.id LIMIT ? OFFSET ?',
                 (batch_size, offset),
             ).fetchall()
             if not rows:
@@ -211,7 +214,10 @@ def load_quotes():
                 doc_id = item['document_id']
                 chunk_id = item['chunk_id']
                 exists = cur.execute(
-                    'SELECT 1 FROM document_chunks WHERE id = ? AND document_id = ?',
+                    'SELECT 1 FROM document_chunks dc '
+                    'JOIN documents d ON d.id = dc.document_id '
+                    'WHERE dc.id = ? AND dc.document_id = ? '
+                    'AND dc.revision_id = d.active_revision_id',
                     (chunk_id, doc_id),
                 ).fetchone()
                 if not exists:

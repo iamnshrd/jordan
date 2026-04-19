@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 from library.utils import now_iso
@@ -35,6 +37,17 @@ class FileSystemStore:
         ext = '.jsonl' if key in _JSONL_KEYS else '.json'
         return self._user_dir(user_id) / (key + ext)
 
+    def _lock_path(self, user_id: str, key: str) -> Path:
+        return self._user_dir(user_id) / (key + '.lock')
+
+    def _lock_file(self, user_id: str, key: str):
+        import fcntl
+        lock_path = self._lock_path(user_id, key)
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fh = open(lock_path, 'a+', encoding='utf-8')
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        return fh
+
     # -- protocol methods ---------------------------------------------------
 
     def get_json(self, user_id: str, key: str,
@@ -54,7 +67,6 @@ class FileSystemStore:
             return default if default is not None else {}
 
     def put_json(self, user_id: str, key: str, value: dict) -> None:
-        import os, tempfile
         p = self._path(user_id, key)
         p.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=str(p.parent), suffix='.tmp')
@@ -68,6 +80,22 @@ class FileSystemStore:
             except OSError:
                 pass
             raise
+
+    def update_json(self, user_id: str, key: str,
+                    mutator, default: dict | None = None) -> dict:
+        lock_fh = self._lock_file(user_id, key)
+        try:
+            current = self.get_json(user_id, key, default=default)
+            next_value = mutator(dict(current))
+            if not isinstance(next_value, dict):
+                raise TypeError(
+                    f'update_json mutator for {key!r} must return dict, '
+                    f'got {type(next_value).__name__}'
+                )
+            self.put_json(user_id, key, next_value)
+            return next_value
+        finally:
+            lock_fh.close()
 
     def append_jsonl(self, user_id: str, key: str, event: dict) -> None:
         p = self._user_dir(user_id) / (key + '.jsonl')

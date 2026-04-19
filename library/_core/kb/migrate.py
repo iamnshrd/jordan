@@ -10,6 +10,7 @@ Version 1 -> 2: V3 schema (routes, bridges, steps, packs, tags, archetypes, …)
 Version 2 -> 3: V3.1 (quote_pack_items)
 Version 3 -> 4: quotes classification columns
 Version 4 -> 5: cases taxonomy columns + section_title on chunks + evidence weight
+Version 8 -> 9: document revisions + active revision pointers
 """
 from __future__ import annotations
 
@@ -334,6 +335,73 @@ def _migrate_v8_intervention_taxonomy(conn):
     conn.commit()
 
 
+def _migrate_v9_document_revisions(conn):
+    """Add document revision tracking and map existing chunks into active revisions."""
+    cur = conn.cursor()
+    _add_col(cur, 'documents', 'active_revision_id', 'INTEGER')
+    _add_col(cur, 'document_chunks', 'revision_id', 'INTEGER')
+
+    cur.executescript(
+        '''
+        CREATE TABLE IF NOT EXISTS document_revisions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          document_id INTEGER NOT NULL,
+          revision_number INTEGER NOT NULL,
+          source_text_mtime REAL,
+          status TEXT DEFAULT 'active',
+          created_at TEXT DEFAULT (datetime('now')),
+          UNIQUE(document_id, revision_number),
+          FOREIGN KEY(document_id) REFERENCES documents(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_document_revisions_document
+          ON document_revisions(document_id, revision_number);
+        CREATE INDEX IF NOT EXISTS idx_document_chunks_revision
+          ON document_chunks(revision_id, chunk_index);
+        '''
+    )
+
+    docs = cur.execute('SELECT id, text_mtime, active_revision_id FROM documents').fetchall()
+    for document_id, text_mtime, active_revision_id in docs:
+        if active_revision_id:
+            continue
+        row = cur.execute(
+            'SELECT revision_id FROM document_chunks '
+            'WHERE document_id = ? AND revision_id IS NOT NULL '
+            'ORDER BY revision_id DESC LIMIT 1',
+            (document_id,),
+        ).fetchone()
+        if row and row[0]:
+            cur.execute(
+                'UPDATE documents SET active_revision_id = ? WHERE id = ?',
+                (row[0], document_id),
+            )
+            continue
+
+        has_chunks = cur.execute(
+            'SELECT 1 FROM document_chunks WHERE document_id = ? LIMIT 1',
+            (document_id,),
+        ).fetchone()
+        if not has_chunks:
+            continue
+
+        cur.execute(
+            'INSERT INTO document_revisions (document_id, revision_number, source_text_mtime, status) '
+            'VALUES (?, ?, ?, ?)',
+            (document_id, 1, text_mtime, 'active'),
+        )
+        revision_id = cur.lastrowid
+        cur.execute(
+            'UPDATE document_chunks SET revision_id = ? '
+            'WHERE document_id = ? AND revision_id IS NULL',
+            (revision_id, document_id),
+        )
+        cur.execute(
+            'UPDATE documents SET active_revision_id = ? WHERE id = ?',
+            (revision_id, document_id),
+        )
+    conn.commit()
+
+
 MIGRATIONS: list[tuple[int, callable]] = [
     (1, _migrate_base),
     (2, _migrate_v3),
@@ -343,6 +411,7 @@ MIGRATIONS: list[tuple[int, callable]] = [
     (6, _migrate_v6_embeddings),
     (7, _migrate_v7_doc_mtime),
     (8, _migrate_v8_intervention_taxonomy),
+    (9, _migrate_v9_document_revisions),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

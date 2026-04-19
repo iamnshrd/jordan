@@ -146,18 +146,39 @@ def update(question, theme=None, pattern=None, open_loop=None,
            resolved_loop=None, user_id: str = 'default',
            store: StateStore | None = None):
     """Full continuity update cycle -- returns the updated data dict."""
-    data = load(user_id=user_id, store=store)
-    if data.get('version') != 3:
-        data['version'] = 3
-        data.setdefault('resolved_loops', [])
-    bump_named(data['recurring_themes'], theme, 2 if theme else 1)
-    bump_named(data['user_patterns'], pattern, 2 if pattern else 1)
-    bump_loop(data['open_loops'], open_loop, 1)
-    if resolved_loop:
-        resolve_loop(data, resolved_loop)
-    route_bucket(data, theme, pattern, open_loop)
-    save(data, user_id=user_id, store=store)
-    return data
+    user_id = canonical_user_id(user_id)
+    store = store or get_default_store()
+
+    def mutator(data):
+        if not data:
+            data = dict(_DEFAULT_V3)
+        if data.get('version') != 3:
+            data['version'] = 3
+            data.setdefault('resolved_loops', [])
+        for key, default_val in _DEFAULT_V3.items():
+            if data.get(key) is None:
+                data[key] = (
+                    default_val if not isinstance(default_val, list)
+                    else list(default_val)
+                )
+            else:
+                data.setdefault(
+                    key,
+                    default_val if not isinstance(default_val, list)
+                    else list(default_val),
+                )
+        bump_named(data['recurring_themes'], theme, 2 if theme else 1)
+        bump_named(data['user_patterns'], pattern, 2 if pattern else 1)
+        bump_loop(data['open_loops'], open_loop, 1)
+        if resolved_loop:
+            resolve_loop(data, resolved_loop)
+        route_bucket(data, theme, pattern, open_loop)
+        data['last_updated'] = now_iso()
+        return data
+
+    return store.update_json(
+        user_id, KEY_CONTINUITY, mutator, default=dict(_DEFAULT_V3),
+    )
 
 
 # -- read (sorted top items) -----------------------------------------------

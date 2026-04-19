@@ -103,8 +103,9 @@ def embed_all_chunks(provider: EmbeddingProvider, batch_size: int = 64):
     with connect() as conn:
         rows = conn.cursor().execute(
             'SELECT dc.id, dc.content FROM document_chunks dc '
+            'JOIN documents d ON d.id = dc.document_id '
             'LEFT JOIN chunk_embeddings ce ON ce.chunk_id = dc.id AND ce.model_name = ? '
-            'WHERE ce.chunk_id IS NULL',
+            'WHERE dc.revision_id = d.active_revision_id AND ce.chunk_id IS NULL',
             (provider.model_name,),
         ).fetchall()
 
@@ -167,7 +168,9 @@ def hybrid_search(query_text: str, query_embedding: list[float] | None = None,
                    bm25(document_chunks_fts) AS bm25_rank
             FROM document_chunks_fts fts
             JOIN document_chunks dc ON dc.id = fts.rowid
-            WHERE document_chunks_fts MATCH ?
+            JOIN documents d ON d.id = dc.document_id
+            WHERE dc.revision_id = d.active_revision_id
+              AND document_chunks_fts MATCH ?
             ORDER BY bm25(document_chunks_fts)
             LIMIT ?
             """,

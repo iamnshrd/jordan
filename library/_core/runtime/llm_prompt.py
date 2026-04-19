@@ -87,6 +87,19 @@ def _append_db_backed_synthesis(system_parts: list[str], data: dict) -> None:
         )
 
 
+def _append_grounding_report(system_parts: list[str], data: dict) -> None:
+    report = data.get('grounding_report') or {}
+    backed = report.get('backed_fields') or []
+    missing = report.get('missing_fields') or []
+    evidence_count = report.get('evidence_count', 0)
+    quote_count = report.get('quote_count', 0)
+    system_parts.append('\n## Grounding Report')
+    system_parts.append(f'- DB-backed fields: {", ".join(backed) if backed else "none"}')
+    system_parts.append(f'- Missing DB backing: {", ".join(missing) if missing else "none"}')
+    system_parts.append(f'- Evidence chunks: {evidence_count}')
+    system_parts.append(f'- Quotes: {quote_count}')
+
+
 def build_prompt(question: str, user_id: str = 'default',
                  store: StateStore | None = None,
                  voice_mode: str = 'default',
@@ -151,6 +164,7 @@ def build_prompt(question: str, user_id: str = 'default',
     system_parts.append(f'- Принцип: {principle_name}')
     system_parts.append(f'- Паттерн: {pattern_name}')
     _append_db_backed_synthesis(system_parts, data)
+    _append_grounding_report(system_parts, data)
 
     tone_hint = data.get('tone_hint')
     if tone_hint:

@@ -21,6 +21,19 @@ _VOICE_FALLBACK = {
     'longer': 'А более глубокая коррекция выглядит так.',
 }
 
+_STRICT_REQUIRED_FIELDS = {
+    'quick': ['core_problem', 'practical_next_step'],
+    'practical': ['core_problem', 'guiding_principle', 'practical_next_step'],
+    'deep': [
+        'core_problem',
+        'relevant_pattern',
+        'responsibility_avoided',
+        'guiding_principle',
+        'practical_next_step',
+        'longer_term_correction',
+    ],
+}
+
 
 def load_voice(mode_name='default'):
     global _voice_modes_cache
@@ -128,17 +141,47 @@ def render(data, continuity, mode='deep', voice_mode='default'):
     return render_deep(data, continuity, voice_mode=voice_mode)
 
 
+def missing_required_grounding(data: dict, mode: str = 'deep') -> list[str]:
+    report = data.get('grounding_report') or {}
+    fields = report.get('fields') or {}
+    required = _STRICT_REQUIRED_FIELDS.get(mode, _STRICT_REQUIRED_FIELDS['deep'])
+    missing = []
+    for field in required:
+        meta = fields.get(field) or {}
+        if not meta.get('backed'):
+            missing.append(field)
+    return missing
+
+
+def can_render_strict(data: dict, mode: str = 'deep') -> bool:
+    return not missing_required_grounding(data, mode=mode)
+
+
+def build_strict_clarification(data: dict, mode: str = 'deep') -> str:
+    missing = missing_required_grounding(data, mode=mode)
+    readable = ', '.join(missing) if missing else 'grounding'
+    return (
+        'Сейчас у меня недостаточно опоры в базе, чтобы честно собрать '
+        f'полный ответ в режиме {mode}. Не хватает DB-backed опоры для: '
+        f'{readable}. Сузь вопрос до одной цитаты, книги, конфликта или '
+        'паттерна, который нужно разобрать.'
+    )
+
+
 @timed('respond')
 def respond(question, mode='deep', voice='default',
             user_id: str = 'default', store: StateStore | None = None,
-            frame: dict | None = None, progress: dict | None = None):
+            frame: dict | None = None, progress: dict | None = None,
+            data: dict | None = None):
     """Main entry point -- synthesize, update continuity, render.
 
     Returns the rendered text string.
     """
     user_id = canonical_user_id(user_id)
-    data = synthesize(question, user_id=user_id, store=store,
-                      frame=frame, progress=progress)
+    data = data or synthesize(question, user_id=user_id, store=store,
+                              frame=frame, progress=progress)
+    if not can_render_strict(data, mode=mode):
+        return build_strict_clarification(data, mode=mode)
     selected = data.get('raw_selection', {})
     theme = ((selected.get('selected_theme') or {}).get('name'))
     pattern = ((selected.get('selected_pattern') or {}).get('name'))

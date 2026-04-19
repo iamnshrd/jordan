@@ -6,7 +6,10 @@ All subprocess calls replaced with direct Python imports.
 from __future__ import annotations
 
 from library._core.runtime.frame import select_frame
-from library._core.runtime.respond import respond
+from library._core.runtime.respond import (
+    respond, can_render_strict, build_strict_clarification,
+)
+from library._core.runtime.synthesize import synthesize
 from library._core.runtime.llm_prompt import build_prompt
 from library._core.runtime.retrieval_validator import validate_chunks, get_relevance_judge
 from library._core.runtime.voice import choose as choose_voice
@@ -112,6 +115,39 @@ def _build_kb_only_clarification(question: str, *,
             'которую нужно разобрать.')
 
 
+def _decision_meta(*, action: str, mode: str, use_kb: bool,
+                   confidence: str = '', reason: str = '',
+                   validation: dict | None = None,
+                   selected: dict | None = None,
+                   synthesis: dict | None = None) -> dict:
+    selected = selected or {}
+    bundle = selected.get('bundle', {}) if isinstance(selected, dict) else {}
+    route_name = selected.get('route_name') or 'general'
+    evidence_count = len(bundle.get('relevant_chunks', []) or [])
+    quote_count = len(bundle.get('relevant_quotes', []) or [])
+    avg_relevance = (validation or {}).get('avg_relevance')
+    degradation_mode = 'none'
+    if action == 'ask-clarifying-question':
+        degradation_mode = 'clarify'
+    elif action == 'answer-directly' and not use_kb:
+        degradation_mode = 'guardrail-direct'
+    grounding = (synthesis or {}).get('grounding_report') or {}
+    return {
+        'action': action,
+        'mode': mode,
+        'use_kb': use_kb,
+        'confidence': confidence,
+        'reason': reason,
+        'route_name': route_name,
+        'evidence_count': evidence_count,
+        'quote_count': quote_count,
+        'avg_relevance': avg_relevance,
+        'degradation_mode': degradation_mode,
+        'backed_fields': grounding.get('backed_fields', []),
+        'missing_fields': grounding.get('missing_fields', []),
+    }
+
+
 def orchestrate(question, user_id: str = 'default',
                 store: StateStore | None = None):
     question = question or ''
@@ -149,7 +185,7 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
     if not guardrail:
         maybe_reset_out_of_domain_streak(question, user_id=user_id, store=store)
     if guardrail:
-        return {
+        result = {
             'system': '',
             'user': question,
             'synthesis': None,
@@ -160,10 +196,15 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
             'guardrail': guardrail,
             'direct_response': guardrail['message'],
         }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=result['mode'], use_kb=result['use_kb'],
+            confidence='high', reason=guardrail['kind'],
+        )
+        return result
 
     if not should_use_kb(question):
         clarification = _build_kb_only_clarification(question)
-        return {
+        result = {
             'system': '',
             'user': question,
             'synthesis': None,
@@ -174,6 +215,11 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
             'direct_response': clarification,
             'clarifying_question': clarification,
         }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=result['mode'], use_kb=result['use_kb'],
+            confidence='low', reason='Question is too underspecified for KB grounding.',
+        )
+        return result
 
     mode = detect_mode(question)
 
@@ -186,7 +232,7 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
         log.exception('select_frame failed in LLM path: %s', exc)
         reason = f'KB retrieval error: {exc}'
         clarification = _build_kb_only_clarification(question, reason=reason)
-        return {
+        result = {
             'system': '',
             'user': question,
             'synthesis': None,
@@ -198,6 +244,11 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
             'direct_response': clarification,
             'clarifying_question': clarification,
         }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=result['mode'], use_kb=result['use_kb'],
+            confidence='low', reason=reason,
+        )
+        return result
 
     confidence = selected.get('confidence', 'low')
     progress = estimate_progress(question, user_id=user_id, store=store)
@@ -213,7 +264,7 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
         clarification = _build_kb_only_clarification(
             question, validation=validation, selected=selected,
         )
-        return {
+        result = {
             'system': '',
             'user': question,
             'synthesis': None,
@@ -225,6 +276,12 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
             'direct_response': clarification,
             'clarifying_question': clarification,
         }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=result['mode'], use_kb=result['use_kb'],
+            confidence=confidence, reason='Weak retrieval grounding',
+            validation=validation, selected=selected,
+        )
+        return result
 
     theme_name = (selected.get('selected_theme') or {}).get('name', '')
     voice_mode = choose_voice(question, theme=theme_name,
@@ -235,11 +292,40 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
     prompt = build_prompt(question, user_id=user_id, store=store,
                           voice_mode=voice_mode, frame=selected,
                           progress=progress)
+    if not can_render_strict(prompt.get('synthesis') or {}, mode=mode):
+        clarification = build_strict_clarification(
+            prompt.get('synthesis') or {}, mode=mode,
+        )
+        result = {
+            'system': '',
+            'user': question,
+            'synthesis': prompt.get('synthesis'),
+            'continuity': prompt.get('continuity'),
+            'mode': mode,
+            'use_kb': True,
+            'action': 'ask-clarifying-question',
+            'retrieval_validation': validation,
+            'direct_response': clarification,
+            'clarifying_question': clarification,
+        }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=mode, use_kb=True,
+            confidence=confidence, reason='Strict renderer lacks DB-backed fields',
+            validation=validation, selected=selected,
+            synthesis=prompt.get('synthesis'),
+        )
+        return result
     prompt['mode'] = mode
     prompt['use_kb'] = True
     prompt['action'] = 'respond-with-kb'
     prompt['voice_mode'] = voice_mode
     prompt['retrieval_validation'] = validation
+    prompt['decision_meta'] = _decision_meta(
+        action=prompt['action'], mode=mode, use_kb=True,
+        confidence=confidence, reason='KB-backed response',
+        validation=validation, selected=selected,
+        synthesis=prompt.get('synthesis'),
+    )
     return prompt
 
 
@@ -252,7 +338,7 @@ def _orchestrate_inner(question, user_id: str = 'default',
     if not guardrail:
         maybe_reset_out_of_domain_streak(question, user_id=user_id, store=store)
     if guardrail:
-        return {
+        result = {
             'question': question,
             'mode': mode,
             'use_kb': False,
@@ -263,10 +349,15 @@ def _orchestrate_inner(question, user_id: str = 'default',
             'guardrail': guardrail,
             'continuity': read_continuity(user_id=user_id, store=store),
         }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=mode, use_kb=False,
+            confidence='high', reason=result['reason'],
+        )
+        return result
 
     if not should_use_kb(question):
         clarification = _build_kb_only_clarification(question)
-        return {
+        result = {
             'question': question,
             'mode': mode,
             'use_kb': True,
@@ -278,6 +369,11 @@ def _orchestrate_inner(question, user_id: str = 'default',
             'clarifying_question': clarification,
             'continuity': read_continuity(user_id=user_id, store=store),
         }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=mode, use_kb=True,
+            confidence='low', reason=result['reason'],
+        )
+        return result
 
     build_user_profile(user_id=user_id, store=store)
 
@@ -288,7 +384,7 @@ def _orchestrate_inner(question, user_id: str = 'default',
         log.exception('select_frame failed: %s', exc)
         reason = f'KB retrieval error: {exc}'
         clarification = _build_kb_only_clarification(question, reason=reason)
-        return {
+        result = {
             'question': question,
             'mode': mode,
             'use_kb': True,
@@ -300,6 +396,11 @@ def _orchestrate_inner(question, user_id: str = 'default',
             'clarifying_question': clarification,
             'continuity': read_continuity(user_id=user_id, store=store),
         }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=mode, use_kb=True,
+            confidence='low', reason=reason,
+        )
+        return result
     confidence = selected.get('confidence', 'low')
     assemble_context(user_id=user_id, store=store)
     continuity = read_continuity(user_id=user_id, store=store)
@@ -317,7 +418,7 @@ def _orchestrate_inner(question, user_id: str = 'default',
         clarification = _build_kb_only_clarification(
             question, validation=validation, selected=selected,
         )
-        return {
+        result = {
             'question': question,
             'mode': mode,
             'use_kb': True,
@@ -333,6 +434,12 @@ def _orchestrate_inner(question, user_id: str = 'default',
             'continuity': continuity,
             'retrieval_validation': validation,
         }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=mode, use_kb=True,
+            confidence=confidence, reason=result['reason'],
+            validation=validation, selected=selected,
+        )
+        return result
 
     theme_name = (selected.get('selected_theme') or {}).get('name') or ''
     pattern_name = (selected.get('selected_pattern') or {}).get('name') or ''
@@ -405,11 +512,41 @@ def _orchestrate_inner(question, user_id: str = 'default',
                              route=route_name, user_id=user_id, store=store)
 
     effective_mode = mode if mode in {'quick', 'practical', 'deep'} else 'deep'
+    synthesis_data = synthesize(
+        question, user_id=user_id, store=store,
+        frame=selected, progress=progress,
+    )
+    if not can_render_strict(synthesis_data, mode=effective_mode):
+        clarification = build_strict_clarification(
+            synthesis_data, mode=effective_mode,
+        )
+        result = {
+            'question': question,
+            'mode': mode,
+            'use_kb': True,
+            'confidence': confidence,
+            'action': 'ask-clarifying-question',
+            'reason': 'Strict renderer lacks DB-backed fields for full answer.',
+            'selection': selected,
+            'response': clarification,
+            'direct_response': clarification,
+            'clarifying_question': clarification,
+            'continuity': continuity,
+            'retrieval_validation': validation,
+        }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=mode, use_kb=True,
+            confidence=confidence, reason=result['reason'],
+            validation=validation, selected=selected,
+            synthesis=synthesis_data,
+        )
+        return result
     response = respond(question, mode=effective_mode, voice=voice,
                        user_id=user_id, store=store,
-                       frame=selected, progress=progress)
+                       frame=selected, progress=progress,
+                       data=synthesis_data)
 
-    return {
+    result = {
         'question': question,
         'mode': mode,
         'use_kb': True,
@@ -422,3 +559,10 @@ def _orchestrate_inner(question, user_id: str = 'default',
         'response': response,
         'retrieval_validation': validation,
     }
+    result['decision_meta'] = _decision_meta(
+        action=result['action'], mode=mode, use_kb=True,
+        confidence=confidence, reason='KB-backed response',
+        validation=validation, selected=selected,
+        synthesis=synthesis_data,
+    )
+    return result

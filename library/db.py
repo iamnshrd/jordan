@@ -13,6 +13,7 @@ from library.config import DB_PATH
 
 ALLOWED_TABLES = frozenset({
     'documents', 'document_chunks', 'document_chunks_fts',
+    'document_revisions',
     'themes', 'principles', 'patterns', 'intervention_styles',
     'quotes', 'cases', 'argument_frames', 'relationship_patterns',
     'developmental_problems', 'symbolic_motifs', 'intervention_examples',

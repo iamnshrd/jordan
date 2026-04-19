@@ -241,8 +241,11 @@ def extract():
     with connect() as conn:
         while True:
             rows = conn.cursor().execute(
-                'SELECT id, document_id, chunk_index, content '
-                'FROM document_chunks ORDER BY id LIMIT ? OFFSET ?',
+                'SELECT dc.id, dc.document_id, dc.chunk_index, dc.content '
+                'FROM document_chunks dc '
+                'JOIN documents d ON d.id = dc.document_id '
+                'WHERE dc.revision_id = d.active_revision_id '
+                'ORDER BY dc.id LIMIT ? OFFSET ?',
                 (batch_size, offset),
             ).fetchall()
             if not rows:

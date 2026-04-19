@@ -1,21 +1,13 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
-import sys
-import tempfile
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from library._adapters.fs_store import FileSystemStore
+from _helpers import emit_report, temp_store
 from library._core.mentor.effectiveness import summarize
 from library._core.state_store import KEY_MENTOR_STATE, KEY_MENTOR_DELAYS
 
 
 def main() -> None:
-    with tempfile.TemporaryDirectory() as td:
-        store = FileSystemStore(Path(td))
+    with temp_store() as store:
         store.put_json('default', KEY_MENTOR_STATE, {
             'event_outcomes': {
                 'career-vocation::commitment-check': {
@@ -111,8 +103,7 @@ def main() -> None:
             'totals': summary['totals'],
         })
 
-        passed = sum(1 for c in checks if c['pass'])
-        print(json.dumps({'total': len(checks), 'pass': passed, 'results': checks}, ensure_ascii=False, indent=2))
+        emit_report(checks)
 
 
 if __name__ == '__main__':

@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
+from _helpers import emit_report
 from library._core.mentor.outcome import classify_reply
 
 CASES = [
@@ -41,7 +36,7 @@ def main() -> None:
         ok = got == expected
         results.append({'text': text, 'route': route, 'expected': expected, 'got': got, 'pass': ok})
         passed += int(ok)
-    print(json.dumps({'total': len(CASES), 'pass': passed, 'results': results}, ensure_ascii=False, indent=2))
+    emit_report(results)
 
 
 if __name__ == '__main__':

@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
-import tempfile
-from pathlib import Path
-import sys
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
+from _helpers import emit_report
 from library.config import canonical_user_id
 
 
@@ -69,10 +63,7 @@ def main() -> None:
             'pass': canonical_user_id('default') == 'default',
         },
     ]
-    total = len(results)
-    passed = sum(1 for x in results if x.get('pass'))
-    print(json.dumps({'total': total, 'pass': passed, 'results': results}, ensure_ascii=False, indent=2))
-    raise SystemExit(0 if total == passed else 1)
+    emit_report(results)
 
 
 if __name__ == '__main__':
