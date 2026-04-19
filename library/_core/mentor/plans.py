@@ -203,7 +203,7 @@ def advance_plan(event_type: str, route: str, user_id: str = 'default', store: S
     plan['updated_at'] = now_iso()
     if plan.get('stage', 0) >= len(steps):
         _set_status(plan, 'completed', 'all-steps-covered')
-    elif int(stats.get('stall_count', 0) or 0) >= 2 and int(stats.get('movement_count', 0) or 0) == 0:
+    elif int(stats.get('stall_count', 0) or 0) >= 4 and int(stats.get('movement_count', 0) or 0) == 0:
         _set_status(plan, 'stalled', 'repeated-off-path-events')
     state['active_plan'] = plan
     _append_plan_trace(state, {'decision': 'advance-plan', 'route': route, 'event_type': event_type, 'plan_type': plan.get('plan_type', ''), 'stage': plan.get('stage', 0), 'status': plan.get('status', '')})

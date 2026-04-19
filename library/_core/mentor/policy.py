@@ -143,13 +143,17 @@ def should_skip_now(state: dict, *, now: datetime | None = None) -> tuple[bool, 
     if mode == 'silent':
         return True, 'silent-mode'
     unanswered = int(state.get('unanswered_checkins', 0) or 0)
-    if unanswered >= 3:
-        return True, 'awaiting-user-reengagement'
+    last_at = _parse_iso(state.get('last_checkin_at'))
     urgency_reason = _urgency_override_reason(state, now=now)
+
+    if unanswered >= 3:
+        if last_at and now - last_at < timedelta(hours=72):
+            return True, 'awaiting-user-reengagement'
+        urgency_reason = urgency_reason or 'reengagement-escalation-window'
+
     cooldown_until = _parse_iso(state.get('cooldown_until'))
     if cooldown_until and now < cooldown_until and not urgency_reason:
         return True, 'cooldown-active'
-    last_at = _parse_iso(state.get('last_checkin_at'))
     min_gap_hours = _dynamic_gap_hours(state, mode)
     if last_at and now - last_at < timedelta(hours=min_gap_hours) and not urgency_reason:
         return True, 'min-gap-not-reached'
