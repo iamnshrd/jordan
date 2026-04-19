@@ -48,6 +48,45 @@ def _format_quotes(quotes: list[dict], max_quotes: int = 3) -> str:
     return '\n'.join(lines)
 
 
+def _has_text(value: str | None) -> bool:
+    return bool((value or '').strip())
+
+
+def _append_db_backed_synthesis(system_parts: list[str], data: dict) -> None:
+    """Only expose synthesis fields that are backed by DB-selected rows."""
+    raw = data.get('raw_selection') or {}
+    v3 = data.get('v3_runtime') or {}
+    bridge = v3.get('bridge') or {}
+    next_step = v3.get('next_step') or {}
+
+    theme_desc = ((raw.get('selected_theme') or {}).get('description') or '').strip()
+    pattern_desc = ((raw.get('selected_pattern') or {}).get('description') or '').strip()
+    principle_desc = ((raw.get('selected_principle') or {}).get('description') or '').strip()
+
+    if _has_text(data.get('core_problem')) and (
+        _has_text(bridge.get('diagnosis_stub')) or _has_text(theme_desc)
+    ):
+        system_parts.append(f'- Ядро проблемы: {data["core_problem"]}')
+    if _has_text(data.get('relevant_pattern')) and _has_text(pattern_desc):
+        system_parts.append(f'- Релевантный паттерн: {data["relevant_pattern"]}')
+    if (_has_text(data.get('responsibility_avoided'))
+            and _has_text(bridge.get('responsibility_stub'))):
+        system_parts.append(
+            f'- Избегаемая ответственность: {data["responsibility_avoided"]}'
+        )
+    if _has_text(data.get('guiding_principle')) and _has_text(principle_desc):
+        system_parts.append(f'- Опорный принцип: {data["guiding_principle"]}')
+    if (_has_text(data.get('practical_next_step')) and (
+        _has_text(next_step.get('step_text')) or _has_text(bridge.get('next_step_stub'))
+    )):
+        system_parts.append(f'- Следующий шаг: {data["practical_next_step"]}')
+    if (_has_text(data.get('longer_term_correction'))
+            and _has_text(bridge.get('long_term_stub'))):
+        system_parts.append(
+            f'- Долгосрочная коррекция: {data["longer_term_correction"]}'
+        )
+
+
 def build_prompt(question: str, user_id: str = 'default',
                  store: StateStore | None = None,
                  voice_mode: str = 'default',
@@ -95,6 +134,8 @@ def build_prompt(question: str, user_id: str = 'default',
     system_parts.append(
         'Ты отвечаешь на вопрос пользователя, опираясь на конкретный контекст из библиотеки. '
         'НЕ выдумывай цитаты. Используй только предоставленные фрагменты и цитаты. '
+        'Если в предоставленном контексте нет опоры для утверждения, не компенсируй это знаниями модели: '
+        'коротко обозначь ограничение и попроси уточнение. '
         'Отвечай на русском языке в стиле, описанном в persona выше.'
     )
 
@@ -109,17 +150,7 @@ def build_prompt(question: str, user_id: str = 'default',
     system_parts.append(f'- Тема: {theme_name}')
     system_parts.append(f'- Принцип: {principle_name}')
     system_parts.append(f'- Паттерн: {pattern_name}')
-
-    if data.get('core_problem'):
-        system_parts.append(f'- Ядро проблемы: {data["core_problem"]}')
-    if data.get('responsibility_avoided'):
-        system_parts.append(f'- Избегаемая ответственность: {data["responsibility_avoided"]}')
-    if data.get('guiding_principle'):
-        system_parts.append(f'- Опорный принцип: {data["guiding_principle"]}')
-    if data.get('practical_next_step'):
-        system_parts.append(f'- Следующий шаг: {data["practical_next_step"]}')
-    if data.get('longer_term_correction'):
-        system_parts.append(f'- Долгосрочная коррекция: {data["longer_term_correction"]}')
+    _append_db_backed_synthesis(system_parts, data)
 
     tone_hint = data.get('tone_hint')
     if tone_hint:

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from library._core.runtime.frame import select_frame
 from library._core.runtime.respond import respond
-from library._core.runtime.llm_prompt import build_prompt, build_fallback_response
+from library._core.runtime.llm_prompt import build_prompt
 from library._core.runtime.retrieval_validator import validate_chunks, get_relevance_judge
 from library._core.runtime.voice import choose as choose_voice
 from library._core.runtime.guardrails import detect_out_of_domain, maybe_reset_out_of_domain_streak
@@ -32,8 +32,6 @@ _PRACTICAL_TRIGGERS = ['что мне делать', 'что делать', 'nex
                        'практически', 'как мне', 'что дальше']
 _DEEP_TRIGGERS = ['почему', 'разбери', 'объясни', 'помоги понять',
                   'что со мной происходит', 'в чём корень']
-
-from library._core.runtime.routes import ALL_KB_KEYWORDS as _KB_TRIGGERS  # noqa: E402
 
 _mode_classifier = None
 _kb_classifier = None
@@ -68,13 +66,50 @@ def detect_mode(question):
 
 
 def should_use_kb(question):
+    """Jordan is KB-first: all non-empty questions should go through retrieval."""
+    q = (question or '').strip()
+    if not q:
+        return False
     if _kb_classifier is not None:
         try:
-            return _kb_classifier(question)
+            decision = _kb_classifier(question)
+            if decision is False:
+                log.debug('KB classifier requested direct path, but KB-only mode keeps retrieval enabled')
         except Exception:
-            log.debug('LLM KB classifier failed, using heuristic')
-    q = question.lower()
-    return any(t in q for t in _KB_TRIGGERS)
+            log.debug('LLM KB classifier failed, using KB-only default')
+    return True
+
+
+def _build_kb_only_clarification(question: str, *,
+                                 reason: str = '',
+                                 validation: dict | None = None,
+                                 selected: dict | None = None) -> str:
+    """Return a non-generative clarification when DB grounding is weak."""
+    avg = (validation or {}).get('avg_relevance')
+    selected = selected or {}
+    route_name = selected.get('route_name') or 'general'
+
+    if not (question or '').strip():
+        return ('Сформулируй один конкретный вопрос по материалам базы: тезис, '
+                'цитату, книгу или проблему, которую нужно разобрать.')
+
+    if reason.startswith('KB retrieval error'):
+        return ('Сейчас я не могу надёжно опереться на базу знаний из-за ошибки '
+                'retrieval. Повтори запрос чуть уже: укажи тему, цитату или '
+                'источник, который нужно разобрать.')
+
+    if avg is not None and avg <= 0.0:
+        return ('В текущей базе я не вижу прямой опоры для уверенного ответа. '
+                'Уточни, о каком тезисе, книге, цитате или жизненной проблеме '
+                'из библиотеки идёт речь.')
+
+    if route_name == 'general':
+        return ('Я не хочу достраивать ответ вне базы. Уточни вопрос через '
+                'конкретный тезис, источник или сформулируй проблему точнее.')
+
+    return ('Опора на базу пока слишком слабая для честного ответа. '
+            'Сузь вопрос до одного конфликта, паттерна, цитаты или книги, '
+            'которую нужно разобрать.')
 
 
 def orchestrate(question, user_id: str = 'default',
@@ -98,9 +133,9 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
 
     Returns a dict with ``system``, ``user``, ``synthesis``, ``continuity``,
     plus orchestration metadata (``mode``, ``use_kb``, ``action``).
-    When ``action`` is ``'answer-directly'``, OpenClaw should respond without
-    KB context.  When ``action`` is ``'respond-with-kb'``, the ``system`` field
-    contains the fully assembled prompt with retrieved evidence.
+    Guardrail replies may bypass retrieval. All other questions must either
+    produce a KB-backed prompt or a clarification that explicitly avoids
+    model-only free generation.
     """
     question = question or ''
     user_id = canonical_user_id(user_id)
@@ -127,14 +162,17 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
         }
 
     if not should_use_kb(question):
+        clarification = _build_kb_only_clarification(question)
         return {
             'system': '',
             'user': question,
             'synthesis': None,
             'continuity': load_continuity(user_id=user_id, store=store),
             'mode': detect_mode(question),
-            'use_kb': False,
-            'action': 'answer-directly',
+            'use_kb': True,
+            'action': 'ask-clarifying-question',
+            'direct_response': clarification,
+            'clarifying_question': clarification,
         }
 
     mode = detect_mode(question)
@@ -146,15 +184,19 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
         selected = select_frame(question, user_id=user_id, store=store)
     except Exception as exc:
         log.exception('select_frame failed in LLM path: %s', exc)
+        reason = f'KB retrieval error: {exc}'
+        clarification = _build_kb_only_clarification(question, reason=reason)
         return {
             'system': '',
             'user': question,
             'synthesis': None,
             'continuity': load_continuity(user_id=user_id, store=store),
             'mode': mode,
-            'use_kb': False,
-            'action': 'answer-directly',
-            'reason': f'KB retrieval error: {exc}',
+            'use_kb': True,
+            'action': 'ask-clarifying-question',
+            'reason': reason,
+            'direct_response': clarification,
+            'clarifying_question': clarification,
         }
 
     confidence = selected.get('confidence', 'low')
@@ -168,6 +210,9 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
     if confidence == 'low' or (
         not validation['valid'] and confidence != 'high'
     ):
+        clarification = _build_kb_only_clarification(
+            question, validation=validation, selected=selected,
+        )
         return {
             'system': '',
             'user': question,
@@ -177,6 +222,8 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
             'use_kb': True,
             'action': 'ask-clarifying-question',
             'retrieval_validation': validation,
+            'direct_response': clarification,
+            'clarifying_question': clarification,
         }
 
     theme_name = (selected.get('selected_theme') or {}).get('name', '')
@@ -218,14 +265,17 @@ def _orchestrate_inner(question, user_id: str = 'default',
         }
 
     if not should_use_kb(question):
+        clarification = _build_kb_only_clarification(question)
         return {
             'question': question,
             'mode': mode,
-            'use_kb': False,
+            'use_kb': True,
             'confidence': 'low',
-            'action': 'answer-directly',
-            'reason': ('Question does not strongly match '
-                       'psychological/philosophical KB routes.'),
+            'action': 'ask-clarifying-question',
+            'reason': 'Question is too underspecified for KB grounding.',
+            'response': clarification,
+            'direct_response': clarification,
+            'clarifying_question': clarification,
             'continuity': read_continuity(user_id=user_id, store=store),
         }
 
@@ -236,13 +286,18 @@ def _orchestrate_inner(question, user_id: str = 'default',
         record_commitment(question, route=selected.get('route_name') or '', user_id=user_id, store=store)
     except Exception as exc:
         log.exception('select_frame failed: %s', exc)
+        reason = f'KB retrieval error: {exc}'
+        clarification = _build_kb_only_clarification(question, reason=reason)
         return {
             'question': question,
             'mode': mode,
             'use_kb': True,
             'confidence': 'low',
-            'action': 'answer-directly',
-            'reason': f'KB retrieval error: {exc}',
+            'action': 'ask-clarifying-question',
+            'reason': reason,
+            'response': clarification,
+            'direct_response': clarification,
+            'clarifying_question': clarification,
             'continuity': read_continuity(user_id=user_id, store=store),
         }
     confidence = selected.get('confidence', 'low')
@@ -259,6 +314,9 @@ def _orchestrate_inner(question, user_id: str = 'default',
     if confidence == 'low' or (
         not validation['valid'] and confidence != 'high'
     ):
+        clarification = _build_kb_only_clarification(
+            question, validation=validation, selected=selected,
+        )
         return {
             'question': question,
             'mode': mode,
@@ -269,6 +327,9 @@ def _orchestrate_inner(question, user_id: str = 'default',
                        f'(avg={validation["avg_relevance"]:.2f}); '
                        'clarification preferred before forcing a frame.'),
             'selection': selected,
+            'response': clarification,
+            'direct_response': clarification,
+            'clarifying_question': clarification,
             'continuity': continuity,
             'retrieval_validation': validation,
         }

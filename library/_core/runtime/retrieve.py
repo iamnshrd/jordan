@@ -146,6 +146,7 @@ def top_linked(cur, query, evidence_table, join_table, fk_col, name_col,
             return []
         sql = f'''
         SELECT t.{name_col} AS name,
+               t.description AS description,
                COALESCE(SUM(e.weight), COUNT(*)) AS hits,
                COUNT(DISTINCT dc.id) AS matched_chunks
         FROM {evidence_table} e
@@ -161,6 +162,7 @@ def top_linked(cur, query, evidence_table, join_table, fk_col, name_col,
     else:
         sql = f'''
         SELECT t.{name_col} AS name,
+               t.description AS description,
                COALESCE(SUM(e.weight), COUNT(*)) AS hits
         FROM {evidence_table} e
         JOIN {join_table} t ON t.id = e.{fk_col}
