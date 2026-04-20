@@ -12,6 +12,21 @@ import logging
 import sys
 from datetime import datetime, timezone
 
+_STANDARD_RECORD_KEYS = frozenset({
+    'name', 'msg', 'args', 'levelname', 'levelno', 'pathname', 'filename',
+    'module', 'exc_info', 'exc_text', 'stack_info', 'lineno', 'funcName',
+    'created', 'msecs', 'relativeCreated', 'thread', 'threadName',
+    'processName', 'process', 'message', 'asctime',
+})
+
+
+def _safe_value(value):
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, (list, dict)):
+        return value
+    return str(value)
+
 
 class JsonFormatter(logging.Formatter):
     """Emit each log record as a compact JSON line."""
@@ -24,10 +39,10 @@ class JsonFormatter(logging.Formatter):
             'logger': record.name,
             'msg': record.getMessage(),
         }
-        for key in ('user_id', 'request_id', 'stage', 'elapsed_ms'):
-            val = getattr(record, key, None)
-            if val is not None:
-                payload[key] = val
+        for key, val in record.__dict__.items():
+            if key in _STANDARD_RECORD_KEYS or key.startswith('_'):
+                continue
+            payload[key] = _safe_value(val)
         if record.exc_info and record.exc_info[1]:
             payload['exception'] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=False)

@@ -1,7 +1,8 @@
-"""Default adapter implementations wrapping existing modules.
+"""Default adapter implementations wrapping the controlled runtime pipeline.
 
-These thin wrappers satisfy the protocol contracts defined in
-``library._core.protocols`` by delegating to the existing procedural code.
+The canonical public interface is ``AgentRuntime``. The thin wrappers below are
+kept only for internal diagnostics and compatibility; they now delegate through
+the controlled plan builder instead of calling legacy stages independently.
 """
 from __future__ import annotations
 
@@ -9,34 +10,40 @@ from library._core.state_store import StateStore
 
 
 class DefaultFrameSelector:
-    """Wraps ``frame.select_frame()``."""
+    """Legacy diagnostic wrapper exposing the selected frame from a safe plan."""
 
     def __init__(self, store: StateStore | None = None):
         self._store = store
 
     def select(self, question: str, user_id: str = 'default') -> dict:
-        from library._core.runtime.frame import select_frame
-        return select_frame(question, user_id=user_id, store=self._store)
+        from library._core.runtime.planner import build_answer_plan
+        plan = build_answer_plan(question, user_id=user_id,
+                                 store=self._store, purpose='prompt')
+        return plan.selection
 
 
 class DefaultSynthesizer:
-    """Wraps ``synthesize.synthesize()``."""
+    """Legacy diagnostic wrapper exposing synthesis from a safe plan."""
 
     def __init__(self, store: StateStore | None = None):
         self._store = store
 
     def synthesize(self, question: str, user_id: str = 'default') -> dict:
-        from library._core.runtime.synthesize import synthesize
-        return synthesize(question, user_id=user_id, store=self._store)
+        from library._core.runtime.planner import build_answer_plan
+        plan = build_answer_plan(question, user_id=user_id,
+                                 store=self._store, purpose='prompt')
+        return plan.synthesis or {}
 
 
 class DefaultRenderer:
-    """Wraps ``respond.render()``."""
+    """Legacy renderer; direct rendering is internal-only."""
 
     def render(self, data: dict, continuity: dict,
                mode: str = 'deep', voice: str = 'default') -> str:
-        from library._core.runtime.respond import render
-        return render(data, continuity, mode=mode, voice_mode=voice)
+        raise RuntimeError(
+            'Direct rendering is internal-only; use AgentRuntime.handle() '
+            'or respond() through the controlled runtime pipeline.'
+        )
 
 
 def create_default_runtime(store: StateStore | None = None):

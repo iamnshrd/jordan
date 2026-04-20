@@ -1,208 +1,21 @@
-"""Runtime orchestrator -- coordinate all runtime modules via direct imports.
-
-Restructured from: runtime_orchestrator.py
-All subprocess calls replaced with direct Python imports.
-"""
+"""Unified runtime orchestrator backed by the controlled planning pipeline."""
 from __future__ import annotations
 
-from library._core.runtime.frame import select_frame
-from library._core.runtime.respond import (
-    respond, can_render_strict, build_strict_clarification,
-)
-from library._core.runtime.synthesize import synthesize
 from library._core.runtime.llm_prompt import build_prompt
-from library._core.runtime.retrieval_validator import validate_chunks, get_relevance_judge
-from library._core.runtime.voice import choose as choose_voice
-from library._core.runtime.guardrails import detect_out_of_domain, maybe_reset_out_of_domain_streak
-from library._core.runtime.routes import is_broad_question
-from library._core.session.continuity import read as read_continuity, load as load_continuity
-from library._core.session.state import build_user_profile, update_session
-from library._core.session.checkpoint import log as log_checkpoint
-from library._core.session.progress import estimate as estimate_progress
-from library._core.session.reaction import estimate as estimate_reaction
-from library._core.session.effectiveness import update as update_effectiveness
-from library._core.session.context import assemble as assemble_context
+from library._core.runtime.planner import (
+    build_answer_plan,
+    detect_mode,
+    set_kb_classifier,
+    set_mode_classifier,
+    should_use_kb,
+)
+from library._core.runtime.respond import render_plan
 from library._core.state_store import StateStore
-from library._core.mentor.checkins import record_reply
-from library._core.mentor.commitments import record_commitment, maybe_resolve_from_reply
-from library.config import get_default_store, canonical_user_id
-import logging
-from library.utils import timing_context, get_threshold
-
-log = logging.getLogger('jordan')
-
-
-_PRACTICAL_TRIGGERS = ['что мне делать', 'что делать', 'next step',
-                       'практически', 'как мне', 'что дальше']
-_DEEP_TRIGGERS = ['почему', 'разбери', 'объясни', 'помоги понять',
-                  'что со мной происходит', 'в чём корень']
-
-_mode_classifier = None
-_kb_classifier = None
-
-
-def set_mode_classifier(fn):
-    """Register an LLM-based mode classifier: fn(question) -> 'deep'|'practical'|'quick'."""
-    global _mode_classifier
-    _mode_classifier = fn
-
-
-def set_kb_classifier(fn):
-    """Register an LLM-based KB router: fn(question) -> bool."""
-    global _kb_classifier
-    _kb_classifier = fn
-
-
-def detect_mode(question):
-    if _mode_classifier is not None:
-        try:
-            return _mode_classifier(question)
-        except Exception:
-            log.debug('LLM mode classifier failed, using heuristic')
-    q = question.lower()
-    if any(x in q for x in _DEEP_TRIGGERS):
-        return 'deep'
-    if any(x in q for x in _PRACTICAL_TRIGGERS):
-        return 'practical'
-    if len(q) < get_threshold('detect_mode_short_length', 80):
-        return 'practical'
-    return 'deep'
-
-
-def should_use_kb(question):
-    """Jordan is KB-first: all non-empty questions should go through retrieval."""
-    q = (question or '').strip()
-    if not q:
-        return False
-    if _kb_classifier is not None:
-        try:
-            decision = _kb_classifier(question)
-            if decision is False:
-                log.debug('KB classifier requested direct path, but KB-only mode keeps retrieval enabled')
-        except Exception:
-            log.debug('LLM KB classifier failed, using KB-only default')
-    return True
-
-
-def _build_kb_only_clarification(question: str, *,
-                                 reason: str = '',
-                                 validation: dict | None = None,
-                                 selected: dict | None = None) -> str:
-    """Return a non-generative clarification when DB grounding is weak."""
-    avg = (validation or {}).get('avg_relevance')
-    selected = selected or {}
-    route_name = selected.get('route_name') or 'general'
-
-    if not (question or '').strip():
-        return ('Сформулируй один конкретный вопрос по материалам базы: тезис, '
-                'цитату, книгу или проблему, которую нужно разобрать.')
-
-    if reason.startswith('KB retrieval error'):
-        return ('Сейчас я не могу надёжно опереться на базу знаний из-за ошибки '
-                'retrieval. Повтори запрос чуть уже: укажи тему, цитату или '
-                'источник, который нужно разобрать.')
-
-    if avg is not None and avg <= 0.0:
-        return ('В текущей базе я не вижу прямой опоры для уверенного ответа. '
-                'Уточни, о каком тезисе, книге, цитате или жизненной проблеме '
-                'из библиотеки идёт речь.')
-
-    if route_name == 'general':
-        return ('Я не хочу достраивать ответ вне базы. Уточни вопрос через '
-                'конкретный тезис, источник или сформулируй проблему точнее.')
-
-    return ('Опора на базу пока слишком слабая для честного ответа. '
-            'Сузь вопрос до одного конфликта, паттерна, цитаты или книги, '
-            'которую нужно разобрать.')
-
-
-def _decision_meta(*, action: str, mode: str, use_kb: bool,
-                   confidence: str = '', reason: str = '',
-                   validation: dict | None = None,
-                   selected: dict | None = None,
-                   synthesis: dict | None = None) -> dict:
-    selected = selected or {}
-    bundle = selected.get('bundle', {}) if isinstance(selected, dict) else {}
-    route_name = selected.get('route_name') or 'general'
-    evidence_count = len(bundle.get('relevant_chunks', []) or [])
-    quote_count = len(bundle.get('relevant_quotes', []) or [])
-    avg_relevance = (validation or {}).get('avg_relevance')
-    degradation_mode = 'none'
-    if action == 'ask-clarifying-question':
-        degradation_mode = 'clarify'
-    elif action == 'answer-directly' and not use_kb:
-        degradation_mode = 'guardrail-direct'
-    grounding = (synthesis or {}).get('grounding_report') or {}
-    return {
-        'action': action,
-        'mode': mode,
-        'use_kb': use_kb,
-        'confidence': confidence,
-        'reason': reason,
-        'route_name': route_name,
-        'evidence_count': evidence_count,
-        'quote_count': quote_count,
-        'avg_relevance': avg_relevance,
-        'degradation_mode': degradation_mode,
-        'backed_fields': grounding.get('backed_fields', []),
-        'missing_fields': grounding.get('missing_fields', []),
-    }
-
-
-def _has_fallback_frame(selected: dict | None) -> bool:
-    selected = selected or {}
-    reasons = [
-        selected.get('selected_theme_reason') or '',
-        selected.get('selected_principle_reason') or '',
-        selected.get('selected_pattern_reason') or '',
-    ]
-    return any(reason == 'top-score fallback' for reason in reasons)
-
-
-def _should_force_clarification(question: str,
-                                selected: dict | None,
-                                validation: dict | None,
-                                synthesis: dict | None = None) -> tuple[bool, str]:
-    selected = selected or {}
-    bundle = selected.get('bundle', {}) if isinstance(selected, dict) else {}
-    route_name = selected.get('route_name') or 'general'
-    avg_relevance = float((validation or {}).get('avg_relevance') or 0.0)
-    fallback_frame = _has_fallback_frame(selected)
-    broad = is_broad_question(question)
-    claims = bundle.get('relevant_claims', []) or []
-    practices = bundle.get('relevant_practices', []) or []
-    confidence = (selected.get('confidence') or '').lower()
-
-    if broad and route_name == 'general':
-        return True, 'Broad question stayed on general route'
-    if broad and avg_relevance < 0.70:
-        return True, 'Broad question lacks sufficiently tight retrieval relevance'
-    if avg_relevance < 0.50:
-        return True, 'Retrieval relevance is too low for a trustworthy answer'
-    if avg_relevance < 0.75:
-        return True, 'Retrieval relevance is below the trust threshold for a KB answer'
-    if route_name == 'general' and (fallback_frame or avg_relevance < 0.75):
-        return True, 'General route lacks strong retrieval grounding'
-    if fallback_frame and avg_relevance < 0.60:
-        return True, 'Frame still relies on fallback under weak retrieval'
-    if confidence != 'high' and avg_relevance < 0.55:
-        return True, 'Medium-confidence frame needs stronger retrieval grounding'
-    if broad and fallback_frame and avg_relevance < 0.85:
-        return True, 'Broad question relies on fallback frame'
-    if broad and not claims and not practices:
-        return True, 'Broad question lacks source-linked claims/practices'
-
-    if synthesis is not None:
-        report = synthesis.get('grounding_report') or {}
-        fields = report.get('fields') or {}
-        heuristic_fields = sorted(
-            name for name, meta in fields.items()
-            if meta.get('source') == 'heuristic'
-        )
-        if route_name == 'general' and heuristic_fields:
-            return True, 'General route still depends on heuristic synthesis'
-
-    return False, ''
+from library.config import canonical_user_id, get_default_store
+from library.utils import (
+    current_trace_id, ensure_trace_context, log_event,
+    timing_context, traced_stage,
+)
 
 
 def orchestrate(question, user_id: str = 'default',
@@ -210,530 +23,61 @@ def orchestrate(question, user_id: str = 'default',
     question = question or ''
     user_id = canonical_user_id(user_id)
     store = store or get_default_store()
-    if question.strip():
-        record_reply(question, user_id=user_id, store=store)
-        maybe_resolve_from_reply(question, user_id=user_id, store=store)
-
-    with timing_context() as timings:
-        result = _orchestrate_inner(question, user_id=user_id, store=store)
+    with ensure_trace_context(user_id=user_id, store=store,
+                              purpose='response', question=question):
+        trace_id = current_trace_id()
+        log_event('orchestrator.started', store=store, user_id=user_id,
+                  entrypoint='orchestrate')
+        with timing_context() as timings:
+            with traced_stage('orchestrator.plan', store=store, user_id=user_id):
+                plan = build_answer_plan(
+                    question, user_id=user_id, store=store, purpose='response',
+                )
+            response = render_plan(plan)
+            result = plan.runtime_result(response=response)
+        log_event(
+            'orchestrator.finished',
+            store=store,
+            user_id=user_id,
+            action=result.get('action', ''),
+            response_length=len(result.get('response', '') or ''),
+            timings=timings,
+        )
     result['_timings'] = timings
+    result['trace_id'] = trace_id
     return result
 
 
 def orchestrate_for_llm(question: str, user_id: str = 'default',
                         store: StateStore | None = None) -> dict:
-    """Build an LLM-ready prompt bundle for OpenClaw.
-
-    Returns a dict with ``system``, ``user``, ``synthesis``, ``continuity``,
-    plus orchestration metadata (``mode``, ``use_kb``, ``action``).
-    Guardrail replies may bypass retrieval. All other questions must either
-    produce a KB-backed prompt or a clarification that explicitly avoids
-    model-only free generation.
-    """
     question = question or ''
     user_id = canonical_user_id(user_id)
     store = store or get_default_store()
-
-    if question.strip():
-        record_reply(question, user_id=user_id, store=store)
-        maybe_resolve_from_reply(question, user_id=user_id, store=store)
-
-    guardrail = detect_out_of_domain(question, user_id=user_id, store=store)
-    if not guardrail:
-        maybe_reset_out_of_domain_streak(question, user_id=user_id, store=store)
-    if guardrail:
-        result = {
-            'system': '',
-            'user': question,
-            'synthesis': None,
-            'continuity': load_continuity(user_id=user_id, store=store),
-            'mode': detect_mode(question),
-            'use_kb': False,
-            'action': 'answer-directly',
-            'guardrail': guardrail,
-            'direct_response': guardrail['message'],
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=result['mode'], use_kb=result['use_kb'],
-            confidence='high', reason=guardrail['kind'],
-        )
-        return result
-
-    if not should_use_kb(question):
-        clarification = _build_kb_only_clarification(question)
-        result = {
-            'system': '',
-            'user': question,
-            'synthesis': None,
-            'continuity': load_continuity(user_id=user_id, store=store),
-            'mode': detect_mode(question),
-            'use_kb': True,
-            'action': 'ask-clarifying-question',
-            'direct_response': clarification,
-            'clarifying_question': clarification,
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=result['mode'], use_kb=result['use_kb'],
-            confidence='low', reason='Question is too underspecified for KB grounding.',
-        )
-        return result
-
-    mode = detect_mode(question)
-
-    build_user_profile(user_id=user_id, store=store)
-    assemble_context(user_id=user_id, store=store)
-
-    try:
-        selected = select_frame(question, user_id=user_id, store=store)
-    except Exception as exc:
-        log.exception('select_frame failed in LLM path: %s', exc)
-        reason = f'KB retrieval error: {exc}'
-        clarification = _build_kb_only_clarification(question, reason=reason)
-        result = {
-            'system': '',
-            'user': question,
-            'synthesis': None,
-            'continuity': load_continuity(user_id=user_id, store=store),
-            'mode': mode,
-            'use_kb': True,
-            'action': 'ask-clarifying-question',
-            'reason': reason,
-            'direct_response': clarification,
-            'clarifying_question': clarification,
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=result['mode'], use_kb=result['use_kb'],
-            confidence='low', reason=reason,
-        )
-        return result
-
-    confidence = selected.get('confidence', 'low')
-    progress = estimate_progress(question, user_id=user_id, store=store)
-
-    bundle = selected.get('bundle', {})
-    retrieved_chunks = bundle.get('relevant_chunks', [])
-    validation = validate_chunks(question, retrieved_chunks,
-                                 judge=get_relevance_judge())
-
-    if confidence == 'low' or (
-        not validation['valid'] and confidence != 'high'
-    ):
-        clarification = _build_kb_only_clarification(
-            question, validation=validation, selected=selected,
-        )
-        result = {
-            'system': '',
-            'user': question,
-            'synthesis': None,
-            'continuity': load_continuity(user_id=user_id, store=store),
-            'mode': mode,
-            'use_kb': True,
-            'action': 'ask-clarifying-question',
-            'retrieval_validation': validation,
-            'direct_response': clarification,
-            'clarifying_question': clarification,
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=result['mode'], use_kb=result['use_kb'],
-            confidence=confidence, reason='Weak retrieval grounding',
-            validation=validation, selected=selected,
-        )
-        return result
-
-    force_clarify, force_reason = _should_force_clarification(
-        question, selected, validation,
-    )
-    if force_clarify:
-        clarification = _build_kb_only_clarification(
-            question, validation=validation, selected=selected,
-        )
-        result = {
-            'system': '',
-            'user': question,
-            'synthesis': None,
-            'continuity': load_continuity(user_id=user_id, store=store),
-            'mode': mode,
-            'use_kb': True,
-            'action': 'ask-clarifying-question',
-            'retrieval_validation': validation,
-            'direct_response': clarification,
-            'clarifying_question': clarification,
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=result['mode'], use_kb=result['use_kb'],
-            confidence=confidence, reason=force_reason,
-            validation=validation, selected=selected,
-        )
-        return result
-
-    theme_name = (selected.get('selected_theme') or {}).get('name', '')
-    voice_mode = choose_voice(question, theme=theme_name,
-                              user_id=user_id, store=store) or 'default'
-    if progress.get('recommended_voice_override'):
-        voice_mode = progress['recommended_voice_override']
-
-    synthesis_data = synthesize(
-        question, user_id=user_id, store=store,
-        frame=selected, progress=progress,
-    )
-    force_clarify, force_reason = _should_force_clarification(
-        question, selected, validation, synthesis=synthesis_data,
-    )
-    if force_clarify:
-        clarification = build_strict_clarification(
-            synthesis_data, mode=mode,
-        )
-        result = {
-            'system': '',
-            'user': question,
-            'synthesis': synthesis_data,
-            'continuity': load_continuity(user_id=user_id, store=store),
-            'mode': mode,
-            'use_kb': True,
-            'action': 'ask-clarifying-question',
-            'retrieval_validation': validation,
-            'direct_response': clarification,
-            'clarifying_question': clarification,
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=mode, use_kb=True,
-            confidence=confidence, reason=force_reason,
-            validation=validation, selected=selected,
-            synthesis=synthesis_data,
-        )
-        return result
-
-    prompt = build_prompt(question, user_id=user_id, store=store,
-                          voice_mode=voice_mode, frame=selected,
-                          progress=progress,
-                          precomputed_synthesis=synthesis_data)
-    if not can_render_strict(synthesis_data, mode=mode):
-        clarification = build_strict_clarification(
-            synthesis_data, mode=mode,
-        )
-        result = {
-            'system': '',
-            'user': question,
-            'synthesis': synthesis_data,
-            'continuity': prompt.get('continuity'),
-            'mode': mode,
-            'use_kb': True,
-            'action': 'ask-clarifying-question',
-            'retrieval_validation': validation,
-            'direct_response': clarification,
-            'clarifying_question': clarification,
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=mode, use_kb=True,
-            confidence=confidence, reason='Strict renderer lacks DB-backed fields',
-            validation=validation, selected=selected,
-            synthesis=synthesis_data,
-        )
-        return result
-    prompt['mode'] = mode
-    prompt['use_kb'] = True
-    prompt['action'] = 'respond-with-kb'
-    prompt['voice_mode'] = voice_mode
-    prompt['retrieval_validation'] = validation
-    prompt['decision_meta'] = _decision_meta(
-        action=prompt['action'], mode=mode, use_kb=True,
-        confidence=confidence, reason='KB-backed response',
-        validation=validation, selected=selected,
-        synthesis=synthesis_data,
-    )
-    return prompt
-
-
-def _orchestrate_inner(question, user_id: str = 'default',
-                       store: StateStore | None = None):
-    user_id = canonical_user_id(user_id)
-    mode = detect_mode(question)
-
-    guardrail = detect_out_of_domain(question, user_id=user_id, store=store)
-    if not guardrail:
-        maybe_reset_out_of_domain_streak(question, user_id=user_id, store=store)
-    if guardrail:
-        result = {
-            'question': question,
-            'mode': mode,
-            'use_kb': False,
-            'confidence': 'high',
-            'action': 'answer-directly',
-            'reason': f"Out-of-domain request: {guardrail['kind']}",
-            'direct_response': guardrail['message'],
-            'guardrail': guardrail,
-            'continuity': read_continuity(user_id=user_id, store=store),
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=mode, use_kb=False,
-            confidence='high', reason=result['reason'],
-        )
-        return result
-
-    if not should_use_kb(question):
-        clarification = _build_kb_only_clarification(question)
-        result = {
-            'question': question,
-            'mode': mode,
-            'use_kb': True,
-            'confidence': 'low',
-            'action': 'ask-clarifying-question',
-            'reason': 'Question is too underspecified for KB grounding.',
-            'response': clarification,
-            'direct_response': clarification,
-            'clarifying_question': clarification,
-            'continuity': read_continuity(user_id=user_id, store=store),
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=mode, use_kb=True,
-            confidence='low', reason=result['reason'],
-        )
-        return result
-
-    build_user_profile(user_id=user_id, store=store)
-
-    try:
-        selected = select_frame(question, user_id=user_id, store=store)
-        record_commitment(question, route=selected.get('route_name') or '', user_id=user_id, store=store)
-    except Exception as exc:
-        log.exception('select_frame failed: %s', exc)
-        reason = f'KB retrieval error: {exc}'
-        clarification = _build_kb_only_clarification(question, reason=reason)
-        result = {
-            'question': question,
-            'mode': mode,
-            'use_kb': True,
-            'confidence': 'low',
-            'action': 'ask-clarifying-question',
-            'reason': reason,
-            'response': clarification,
-            'direct_response': clarification,
-            'clarifying_question': clarification,
-            'continuity': read_continuity(user_id=user_id, store=store),
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=mode, use_kb=True,
-            confidence='low', reason=reason,
-        )
-        return result
-    confidence = selected.get('confidence', 'low')
-    assemble_context(user_id=user_id, store=store)
-    continuity = read_continuity(user_id=user_id, store=store)
-    progress = estimate_progress(question, user_id=user_id, store=store)
-    reaction = estimate_reaction(question, user_id=user_id, store=store)
-
-    bundle = selected.get('bundle', {})
-    retrieved_chunks = bundle.get('relevant_chunks', [])
-    validation = validate_chunks(question, retrieved_chunks,
-                                 judge=get_relevance_judge())
-
-    if confidence == 'low' or (
-        not validation['valid'] and confidence != 'high'
-    ):
-        clarification = _build_kb_only_clarification(
-            question, validation=validation, selected=selected,
-        )
-        result = {
-            'question': question,
-            'mode': mode,
-            'use_kb': True,
-            'confidence': confidence,
-            'action': 'ask-clarifying-question',
-            'reason': ('KB route is weak or retrieval relevance is low '
-                       f'(avg={validation["avg_relevance"]:.2f}); '
-                       'clarification preferred before forcing a frame.'),
-            'selection': selected,
-            'response': clarification,
-            'direct_response': clarification,
-            'clarifying_question': clarification,
-            'continuity': continuity,
-            'retrieval_validation': validation,
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=mode, use_kb=True,
-            confidence=confidence, reason=result['reason'],
-            validation=validation, selected=selected,
-        )
-        return result
-
-    force_clarify, force_reason = _should_force_clarification(
-        question, selected, validation,
-    )
-    if force_clarify:
-        clarification = _build_kb_only_clarification(
-            question, validation=validation, selected=selected,
-        )
-        result = {
-            'question': question,
-            'mode': mode,
-            'use_kb': True,
-            'confidence': confidence,
-            'action': 'ask-clarifying-question',
-            'reason': force_reason,
-            'selection': selected,
-            'response': clarification,
-            'direct_response': clarification,
-            'clarifying_question': clarification,
-            'continuity': continuity,
-            'retrieval_validation': validation,
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=mode, use_kb=True,
-            confidence=confidence, reason=result['reason'],
-            validation=validation, selected=selected,
-        )
-        return result
-
-    theme_name = (selected.get('selected_theme') or {}).get('name') or ''
-    pattern_name = (selected.get('selected_pattern') or {}).get('name') or ''
-    principle_name = (selected.get('selected_principle') or {}).get('name') or ''
-    blend = selected.get('source_blend') or {}
-    source_blend_str = (f"{blend.get('primary', '')}"
-                        f"->{blend.get('secondary', '')}")
-
-    voice = choose_voice(question, theme=theme_name,
-                         user_id=user_id, store=store) or 'default'
-    if progress.get('recommended_voice_override'):
-        voice = progress['recommended_voice_override']
-
-    update_session(
-        question,
-        theme=theme_name,
-        pattern=pattern_name,
-        principle=principle_name,
-        source_blend=source_blend_str,
-        voice=voice,
-        goal=theme_name,
-        user_id=user_id,
-        store=store,
-    )
-
-    action_step = ('narrow-burden'
-                   if progress.get('recommended_response_mode') == 'narrow'
-                   else 'normal-step')
-
-    resolved_loop_summary = ''
-    if continuity.get('resolved_loops'):
-        first = continuity['resolved_loops'][0]
-        if isinstance(first, dict):
-            resolved_loop_summary = first.get('summary', '')
+    with ensure_trace_context(user_id=user_id, store=store,
+                              purpose='prompt', question=question):
+        trace_id = current_trace_id()
+        log_event('orchestrator.started', store=store, user_id=user_id,
+                  entrypoint='orchestrate_for_llm')
+        with traced_stage('orchestrator.plan', store=store, user_id=user_id):
+            plan = build_answer_plan(
+                question, user_id=user_id, store=store, purpose='prompt',
+            )
+        if plan.decision.allow_llm_prompt:
+            result = build_prompt(
+                question,
+                user_id=user_id,
+                store=store,
+                voice_mode=plan.voice_mode,
+                plan=plan,
+            )
         else:
-            resolved_loop_summary = str(first)
-
-    log_checkpoint({
-        'question': question,
-        'theme': theme_name,
-        'pattern': pattern_name,
-        'principle': principle_name,
-        'source_blend': source_blend_str,
-        'voice': voice,
-        'confidence': confidence,
-        'action_step': action_step,
-        'movement_estimate': progress.get('progress_state', 'unknown'),
-        'user_reaction_estimate': reaction.get('user_reaction_estimate',
-                                               'unknown'),
-        'resolved_loop_if_any': resolved_loop_summary,
-        'session_goal': theme_name,
-        'recommended_next_mode': progress.get('recommended_response_mode',
-                                              'normal'),
-    }, user_id=user_id, store=store)
-
-    primary = blend.get('primary', '')
-    progress_state = progress.get('progress_state')
-    reaction_est = reaction.get('user_reaction_estimate')
-
-    if progress_state == 'moving' and reaction_est == 'accepting':
-        outcome = 'helpful'
-    elif progress_state == 'fragile' or reaction_est == 'ambiguous':
-        outcome = 'neutral'
-    else:
-        outcome = 'resisted'
-
-    if primary:
-        route_name = selected.get('route_name') or 'general'
-        update_effectiveness(source=primary, outcome=outcome,
-                             route=route_name, user_id=user_id, store=store)
-
-    effective_mode = mode if mode in {'quick', 'practical', 'deep'} else 'deep'
-    synthesis_data = synthesize(
-        question, user_id=user_id, store=store,
-        frame=selected, progress=progress,
-    )
-    force_clarify, force_reason = _should_force_clarification(
-        question, selected, validation, synthesis=synthesis_data,
-    )
-    if force_clarify:
-        clarification = build_strict_clarification(
-            synthesis_data, mode=effective_mode,
+            result = plan.prompt_result()
+        log_event(
+            'orchestrator.finished',
+            store=store,
+            user_id=user_id,
+            action=result.get('action', ''),
+            system_length=len(result.get('system', '') or ''),
         )
-        result = {
-            'question': question,
-            'mode': mode,
-            'use_kb': True,
-            'confidence': confidence,
-            'action': 'ask-clarifying-question',
-            'reason': force_reason,
-            'selection': selected,
-            'response': clarification,
-            'direct_response': clarification,
-            'clarifying_question': clarification,
-            'continuity': continuity,
-            'retrieval_validation': validation,
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=mode, use_kb=True,
-            confidence=confidence, reason=result['reason'],
-            validation=validation, selected=selected,
-            synthesis=synthesis_data,
-        )
-        return result
-    if not can_render_strict(synthesis_data, mode=effective_mode):
-        clarification = build_strict_clarification(
-            synthesis_data, mode=effective_mode,
-        )
-        result = {
-            'question': question,
-            'mode': mode,
-            'use_kb': True,
-            'confidence': confidence,
-            'action': 'ask-clarifying-question',
-            'reason': 'Strict renderer lacks DB-backed fields for full answer.',
-            'selection': selected,
-            'response': clarification,
-            'direct_response': clarification,
-            'clarifying_question': clarification,
-            'continuity': continuity,
-            'retrieval_validation': validation,
-        }
-        result['decision_meta'] = _decision_meta(
-            action=result['action'], mode=mode, use_kb=True,
-            confidence=confidence, reason=result['reason'],
-            validation=validation, selected=selected,
-            synthesis=synthesis_data,
-        )
-        return result
-    response = respond(question, mode=effective_mode, voice=voice,
-                       user_id=user_id, store=store,
-                       frame=selected, progress=progress,
-                       data=synthesis_data)
-
-    result = {
-        'question': question,
-        'mode': mode,
-        'use_kb': True,
-        'confidence': confidence,
-        'action': 'respond-with-kb',
-        'selection': selected,
-        'continuity': continuity,
-        'progress': progress,
-        'reaction': reaction,
-        'response': response,
-        'retrieval_validation': validation,
-    }
-    result['decision_meta'] = _decision_meta(
-        action=result['action'], mode=mode, use_kb=True,
-        confidence=confidence, reason='KB-backed response',
-        validation=validation, selected=selected,
-        synthesis=synthesis_data,
-    )
+    result['trace_id'] = trace_id
     return result

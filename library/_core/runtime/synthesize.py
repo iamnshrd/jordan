@@ -1,9 +1,4 @@
-"""Response synthesis -- combine frame, V3 query, and progress into a response bundle.
-
-Restructured from: synthesize_response.py
-Dead-code removal: first assignments to practical / longer_term that were
-immediately overwritten by db_driven_* calls have been removed.
-"""
+"""Response synthesis -- structured assembly from DB-backed runtime inputs."""
 from __future__ import annotations
 
 from library._core.runtime.frame import select_frame
@@ -49,51 +44,6 @@ def match_source_blend(route_name: str) -> dict | None:
         if blend.get('route') == route_name:
             return blend
     return None
-
-
-# ── text maps ─────────────────────────────────────────────────────────
-
-THEME_MAP = {
-    'meaning': 'Проблема упирается в утрату смысла и ориентации.',
-    'responsibility': 'Здесь есть тема ответственности и добровольно принятого бремени.',
-    'order-and-chaos': 'Похоже, что хаос перевешивает порядок и структура распалась.',
-    'truth': 'Есть риск самообмана или неясности в том, что именно происходит.',
-    'suffering': 'Слой страдания здесь не побочный — он структурный.',
-    'resentment': 'Под проблемой может копиться обида или горечь.',
-}
-
-PRINCIPLE_MAP = {
-    'take-responsibility-before-blame': 'Сначала нужно вернуть себе агентность, а не объяснять всё внешними силами.',
-    'clean-up-what-is-in-front-of-you': 'Начинать стоит с локального порядка, а не с абстрактного спасения всей жизни целиком.',
-    'tell-the-truth-or-at-least-dont-lie': 'Нужно назвать проблему точно и перестать лгать себе о её масштабе и природе.',
-}
-
-PATTERN_MAP = {
-    'aimlessness': 'Основной паттерн похож на утрату цели и распад направления.',
-    'avoidance-loop': 'Проблема может поддерживаться избеганием и откладыванием.',
-    'resentment-loop': 'Есть риск, что бессилие уже превращается в горечь.',
-}
-
-THEME_DESC_MAP = {
-    'meaning': 'Смысл здесь выступает как ориентация против хаоса и страдания.',
-    'responsibility': 'Ответственность здесь выступает как стабилизирующая сила, а не как абстрактный моральный жест.',
-    'order-and-chaos': 'Проблема выглядит как перекос между структурой и неопределённостью.',
-    'truth': 'Здесь важно точное называние реальности как форма психологической дисциплины.',
-    'resentment': 'Обида здесь выглядит не случайной эмоцией, а следствием слабости, уклонения или предательства.',
-}
-
-PRINCIPLE_DESC_MAP = {
-    'clean-up-what-is-in-front-of-you': 'Начинать стоит с локального порядка, прежде чем пытаться починить всю жизнь целиком.',
-    'tell-the-truth-or-at-least-dont-lie': 'Правдивость здесь нужна как основа внутренней целостности.',
-    'take-responsibility-before-blame': 'Сначала нужно взять на себя ответственность, а уже потом обвинять мир.',
-}
-
-PATTERN_DESC_MAP = {
-    'avoidance-loop': 'Избегание создаёт страх, слабость и ещё больше избегания.',
-    'resentment-loop': 'Обида растёт там, где ответственность отвергается, а grievance культивируется.',
-    'aimlessness': 'Отсутствие цели постепенно разъедает мотивацию и самоуважение.',
-}
-
 
 # ── db-driven text generators ─────────────────────────────────────────
 
@@ -226,8 +176,6 @@ def infer_archetype(question):
     return '' if route == 'general' else route
 
 
-# ── text assembly helpers ─────────────────────────────────────────────
-
 def append_sentence(base, addition):
     base = (base or '').strip()
     addition = (addition or '').strip()
@@ -238,138 +186,6 @@ def append_sentence(base, addition):
     if not base:
         return addition
     return base.rstrip() + ' ' + addition
-
-
-def should_suppress_progress_extra(question, practical, next_step_v3,
-                                   anti_patterns, intervention_links):
-    q = (question or '').lower()
-    practical = (practical or '').lower()
-    if (next_step_v3.get('confidence_level') == 'high'
-            and len((next_step_v3.get('step_text') or '').split()) >= 8):
-        return True
-    if 'abstract-inflation' in (anti_patterns or []):
-        return True
-    if 'narrow-burden' in (intervention_links or []):
-        return True
-    if (any(x in q for x in ['жена', 'муж', 'отношен', 'конфликт'])
-            and any(x in practical for x in ['разговор', 'скажи', 'обсуди'])):
-        return True
-    if (any(x in q for x in ['стыд', 'позор', 'отвращение к себе'])
-            and any(x in practical for x in ['восстановительный шаг',
-                                              'не превращай',
-                                              'признания поступка'])):
-        return True
-    return False
-
-
-def compress_longer_term(longer_term, best_case, anti_patterns, v3):
-    parts = []
-    seen = set()
-
-    def add(text):
-        text = (text or '').strip()
-        if not text or text in seen:
-            return
-        seen.add(text)
-        parts.append(text)
-
-    base = (longer_term or '').strip()
-    if ' Ближайший аналог:' in base:
-        base = base.split(' Ближайший аналог:')[0].strip()
-    add(base)
-
-    shame_case = (best_case.get('case_name')
-                  == 'Shame marks exposed insufficiency before reorganization')
-    shame_guard = 'identity-annihilation' in (anti_patterns or [])
-
-    if best_case.get('case_name'):
-        if shame_case and shame_guard:
-            add('Ближайший аналог: Shame marks exposed insufficiency before '
-                'reorganization. Смысл здесь не в самоуничтожении, а в '
-                'реорганизации после честного признания.')
-        else:
-            case_line = f"Ближайший аналог: {best_case['case_name']}."
-            if best_case.get('confidence_level') == 'high':
-                case_line += (' Это высоко-уверенный ориентир, а не случайная '
-                              'аналогия.')
-            else:
-                case_line += (' Это полезная рабочая аналогия, но не '
-                              'окончательный якорь.')
-            add(case_line)
-
-    if shame_guard and not shame_case:
-        add('Не превращай исправление в театральное самоуничтожение.')
-
-    if (v3.get('symbolic_permission')
-            and 'dragon' in (v3.get('motif_links') or [])):
-        add('Здесь есть мотив встречи с неизвестным, а не только мотив '
-            'поломки.')
-
-    return ' '.join(parts).strip()
-
-
-def collect_practical_extras(question, practical, next_step_v3, anti_patterns,
-                             intervention_links, motif_links, v3,
-                             progress_extra):
-    extras = []
-    q = (question or '').lower()
-
-    if ('abstract-inflation' in anti_patterns
-            and any(x in q for x in ['карьер', 'призвание', 'путь'])):
-        extras.append(('anti-pattern',
-                       'Не раздувай это в метафизическую драму: выбери один '
-                       'рабочий вектор.'))
-
-    if intervention_links and 'narrow-burden' in intervention_links:
-        extras.append(('intervention',
-                       'Сузь задачу до одного добровольно принятого '
-                       'бремени.'))
-
-    if (v3.get('symbolic_permission')
-            and motif_links and 'burden' in motif_links):
-        extras.append(('symbolic',
-                       'Смотри на это как на вопрос о том, какое бремя ты '
-                       'готов нести.'))
-
-    if (progress_extra
-            and not should_suppress_progress_extra(
-                question, practical, next_step_v3, anti_patterns,
-                intervention_links)):
-        extras.append(('progress', progress_extra))
-
-    return extras
-
-
-def collect_longer_extras(motif_links, v3):
-    extras = []
-    if (v3.get('symbolic_permission')
-            and motif_links and 'dragon' in motif_links):
-        extras.append(('symbolic',
-                       'Здесь есть мотив встречи с неизвестным, а не только '
-                       'мотив поломки.'))
-    return extras
-
-
-def apply_priority_pruning(practical, longer_term, practical_extras,
-                           longer_extras):
-    practical_priority = {
-        'anti-pattern': 4, 'intervention': 3, 'progress': 2, 'symbolic': 1,
-    }
-    longer_priority = {'anti-pattern': 3, 'symbolic': 2}
-
-    if practical_extras:
-        practical_extras = sorted(
-            practical_extras,
-            key=lambda x: -practical_priority.get(x[0], 0),
-        )
-        practical = append_sentence(practical, practical_extras[0][1])
-    if longer_extras:
-        longer_extras = sorted(
-            longer_extras,
-            key=lambda x: -longer_priority.get(x[0], 0),
-        )
-        longer_term = append_sentence(longer_term, longer_extras[0][1])
-    return practical, longer_term
 
 
 def build_grounding_report(selected, bundle, v3, data) -> dict:
@@ -506,11 +322,6 @@ def synthesize(question, user_id: str = 'default',
         longer_term = append_sentence(longer_term, chapter_summary)
         longer_term_source = 'chapter-summaries'
 
-    progress_extra = None
-    progress_state = progress.get('progress_state')
-    if progress_state == 'moving':
-        progress_extra = 'Не меняй рамку снова: дожми уже выбранное действие.'
-
     anti_patterns = v3.get('anti_patterns') or []
     case_links = v3.get('case_links') or []
     best_case = v3.get('best_case') or {}
@@ -523,18 +334,6 @@ def synthesize(question, user_id: str = 'default',
             'case_name': case_links[0],
             'confidence_level': None,
         }
-
-    bridge_conf = bridge if bridge else (conf.get('bridge_confidence') or {})
-    if (bridge_conf.get('confidence_level') not in {'high'}
-            and bridge.get('diagnosis_stub')):
-        core_problem = ('Нужно ещё точнее проверить рамку, но текущая '
-                        'рабочая формулировка такая: ' + core_problem)
-    if (next_step_v3.get('confidence_level') not in {'high'}
-            and next_step_v3.get('step_text')):
-        practical = ('Рабочий, но ещё не окончательно проверенный следующий '
-                     'шаг: ' + practical)
-    if progress_extra and practical and practical_source not in {'heuristic', 'none', ''}:
-        practical = append_sentence(practical, progress_extra)
 
     source_blend = selected.get('source_blend') or {}
     if blend_guidance and not source_blend:

@@ -4,11 +4,13 @@ Restructured from: respond_with_kb.py
 """
 from __future__ import annotations
 
-from library._core.runtime.synthesize import synthesize
+from library._core.runtime.grounding import (
+    build_strict_clarification, can_render_strict,
+)
 from library._core.session.continuity import update as update_continuity, load as load_continuity
 from library._core.state_store import StateStore
 from library.config import canonical_user_id, VOICE_MODES
-from library.utils import load_json, timed
+from library.utils import ensure_trace_context, load_json, log_event, timed, traced_stage
 
 
 _voice_modes_cache: dict | None = None
@@ -20,20 +22,6 @@ _VOICE_FALLBACK = {
     'step': 'Следующий практический шаг такой.',
     'longer': 'А более глубокая коррекция выглядит так.',
 }
-
-_STRICT_REQUIRED_FIELDS = {
-    'quick': ['core_problem', 'practical_next_step'],
-    'practical': ['core_problem', 'guiding_principle', 'practical_next_step'],
-    'deep': [
-        'core_problem',
-        'relevant_pattern',
-        'responsibility_avoided',
-        'guiding_principle',
-        'practical_next_step',
-        'longer_term_correction',
-    ],
-}
-
 
 def load_voice(mode_name='default'):
     global _voice_modes_cache
@@ -141,36 +129,69 @@ def render(data, continuity, mode='deep', voice_mode='default'):
     return render_deep(data, continuity, voice_mode=voice_mode)
 
 
-def missing_required_grounding(data: dict, mode: str = 'deep') -> list[str]:
-    report = data.get('grounding_report') or {}
-    fields = report.get('fields') or {}
-    required = _STRICT_REQUIRED_FIELDS.get(mode, _STRICT_REQUIRED_FIELDS['deep'])
-    missing = []
-    for field in required:
-        meta = fields.get(field) or {}
-        if not meta.get('backed'):
-            missing.append(field)
-    return missing
+def render_plan(plan, mode: str | None = None, voice_mode: str | None = None) -> str:
+    """Render the user-facing text from the authoritative grounded plan."""
+    store = getattr(plan, 'store', None)
+    user_id = canonical_user_id(plan.user_id)
+    with traced_stage('runtime.render', store=store, user_id=user_id):
+        if not plan.decision.allow_answer:
+            text = plan.direct_response or plan.clarifying_question or ''
+            log_event(
+                'render.short_circuit',
+                store=store,
+                user_id=user_id,
+                action=plan.action,
+                response_preview=text[:180],
+                response_length=len(text),
+            )
+            return text
+        data = plan.synthesis or {}
+        effective_mode = mode or plan.mode
+        if not can_render_strict(data, mode=effective_mode):
+            text = build_strict_clarification(data, mode=effective_mode)
+            log_event(
+                'render.strict_clarification',
+                store=store,
+                user_id=user_id,
+                mode=effective_mode,
+                response_preview=text[:180],
+                response_length=len(text),
+            )
+            return text
 
+        selected = data.get('raw_selection', {})
+        theme = ((selected.get('selected_theme') or {}).get('name'))
+        pattern = ((selected.get('selected_pattern') or {}).get('name'))
 
-def can_render_strict(data: dict, mode: str = 'deep') -> bool:
-    return not missing_required_grounding(data, mode=mode)
+        if data.get('confidence') in {'medium', 'high'}:
+            open_loop = data.get('core_problem', '')
+            update_continuity(question=plan.question, theme=theme or '',
+                              pattern=pattern or '', open_loop=open_loop,
+                              user_id=user_id, store=store)
 
-
-def build_strict_clarification(data: dict, mode: str = 'deep') -> str:
-    missing = missing_required_grounding(data, mode=mode)
-    readable = ', '.join(missing) if missing else 'grounding'
-    return (
-        'Сейчас у меня недостаточно опоры в базе, чтобы честно собрать '
-        f'полный ответ в режиме {mode}. Не хватает DB-backed опоры для: '
-        f'{readable}. Сузь вопрос до одной цитаты, книги, конфликта или '
-        'паттерна, который нужно разобрать.'
-    )
+        continuity = load_continuity(user_id=user_id, store=store)
+        text = render(
+            data,
+            continuity,
+            mode=effective_mode,
+            voice_mode=voice_mode or plan.voice_mode or 'default',
+        )
+        log_event(
+            'render.completed',
+            store=store,
+            user_id=user_id,
+            mode=effective_mode,
+            voice_mode=voice_mode or plan.voice_mode or 'default',
+            response_preview=text[:180],
+            response_length=len(text),
+        )
+        return text
 
 
 @timed('respond')
-def respond(question, mode='deep', voice='default',
+def respond(question, mode: str | None = None, voice='default',
             user_id: str = 'default', store: StateStore | None = None,
+            plan=None,
             frame: dict | None = None, progress: dict | None = None,
             data: dict | None = None):
     """Main entry point -- synthesize, update continuity, render.
@@ -178,18 +199,21 @@ def respond(question, mode='deep', voice='default',
     Returns the rendered text string.
     """
     user_id = canonical_user_id(user_id)
-    data = data or synthesize(question, user_id=user_id, store=store,
-                              frame=frame, progress=progress)
-    if not can_render_strict(data, mode=mode):
-        return build_strict_clarification(data, mode=mode)
-    selected = data.get('raw_selection', {})
-    theme = ((selected.get('selected_theme') or {}).get('name'))
-    pattern = ((selected.get('selected_pattern') or {}).get('name'))
+    with ensure_trace_context(user_id=user_id, store=store,
+                              purpose='response', question=question):
+        log_event('respond.entry', store=store, user_id=user_id,
+                  requested_mode=mode or '', voice_mode=voice)
+        if plan is None:
+            from library._core.runtime.planner import build_answer_plan
+            plan = build_answer_plan(question, user_id=user_id, store=store, purpose='response')
+            setattr(plan, 'store', store)
+            return render_plan(plan, mode=mode, voice_mode=voice)
 
-    if data.get('confidence') in {'medium', 'high'}:
-        open_loop = data.get('core_problem', '')
-        update_continuity(question, theme=theme or '', pattern=pattern or '',
-                          open_loop=open_loop, user_id=user_id, store=store)
-
-    continuity = load_continuity(user_id=user_id, store=store)
-    return render(data, continuity, mode=mode, voice_mode=voice)
+        if data is not None:
+            plan.synthesis = data
+        if frame is not None:
+            plan.selection = frame
+        if progress is not None:
+            plan.progress = progress
+        setattr(plan, 'store', store)
+        return render_plan(plan, mode=mode, voice_mode=voice)

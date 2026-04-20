@@ -1,0 +1,172 @@
+"""Grounding plan objects and strict rendering gates.
+
+This module centralizes the allow/deny decision for all user-facing answer
+paths so renderers and prompt builders cannot silently diverge.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from library.utils import current_trace_id
+
+
+_STRICT_REQUIRED_FIELDS = {
+    'quick': ['core_problem', 'practical_next_step'],
+    'practical': ['core_problem', 'guiding_principle', 'practical_next_step'],
+    'deep': [
+        'core_problem',
+        'relevant_pattern',
+        'responsibility_avoided',
+        'guiding_principle',
+        'practical_next_step',
+        'longer_term_correction',
+    ],
+}
+
+
+@dataclass(frozen=True)
+class GroundingDecision:
+    action: str
+    mode: str
+    use_kb: bool
+    confidence: str = ''
+    reason: str = ''
+    route_name: str = 'general'
+    evidence_count: int = 0
+    quote_count: int = 0
+    avg_relevance: float | None = None
+    degradation_mode: str = 'none'
+    backed_fields: list[str] = field(default_factory=list)
+    missing_fields: list[str] = field(default_factory=list)
+
+    @property
+    def allow_answer(self) -> bool:
+        return self.action == 'respond-with-kb'
+
+    @property
+    def allow_llm_prompt(self) -> bool:
+        return self.action == 'respond-with-kb'
+
+    def as_dict(self) -> dict:
+        return {
+            'action': self.action,
+            'mode': self.mode,
+            'use_kb': self.use_kb,
+            'confidence': self.confidence,
+            'reason': self.reason,
+            'route_name': self.route_name,
+            'evidence_count': self.evidence_count,
+            'quote_count': self.quote_count,
+            'avg_relevance': self.avg_relevance,
+            'degradation_mode': self.degradation_mode,
+            'backed_fields': list(self.backed_fields),
+            'missing_fields': list(self.missing_fields),
+        }
+
+
+@dataclass
+class GroundedAnswerPlan:
+    question: str
+    user_id: str
+    decision: GroundingDecision
+    selection: dict = field(default_factory=dict)
+    continuity: dict = field(default_factory=dict)
+    progress: dict = field(default_factory=dict)
+    reaction: dict = field(default_factory=dict)
+    retrieval_validation: dict = field(default_factory=dict)
+    synthesis: dict | None = None
+    voice_mode: str = 'default'
+    guardrail: dict | None = None
+    direct_response: str = ''
+    clarifying_question: str = ''
+    system: str = ''
+    user: str = ''
+
+    @property
+    def action(self) -> str:
+        return self.decision.action
+
+    @property
+    def mode(self) -> str:
+        return self.decision.mode
+
+    @property
+    def use_kb(self) -> bool:
+        return self.decision.use_kb
+
+    @property
+    def confidence(self) -> str:
+        return self.decision.confidence
+
+    @property
+    def reason(self) -> str:
+        return self.decision.reason
+
+    def runtime_result(self, response: str = '') -> dict:
+        result = {
+            'question': self.question,
+            'mode': self.mode,
+            'use_kb': self.use_kb,
+            'confidence': self.confidence,
+            'action': self.action,
+            'reason': self.reason,
+            'selection': self.selection,
+            'continuity': self.continuity,
+            'progress': self.progress,
+            'reaction': self.reaction,
+            'retrieval_validation': self.retrieval_validation,
+            'guardrail': self.guardrail,
+            'response': response or self.direct_response or self.clarifying_question,
+            'direct_response': self.direct_response,
+            'clarifying_question': self.clarifying_question,
+            'decision_meta': self.decision.as_dict(),
+            'trace_id': current_trace_id(),
+        }
+        if self.synthesis is not None:
+            result['synthesis'] = self.synthesis
+        return result
+
+    def prompt_result(self) -> dict:
+        return {
+            'system': self.system,
+            'user': self.user or self.question,
+            'synthesis': self.synthesis,
+            'continuity': self.continuity,
+            'mode': self.mode,
+            'use_kb': self.use_kb,
+            'action': self.action,
+            'voice_mode': self.voice_mode,
+            'guardrail': self.guardrail,
+            'direct_response': self.direct_response,
+            'clarifying_question': self.clarifying_question,
+            'retrieval_validation': self.retrieval_validation,
+            'decision_meta': self.decision.as_dict(),
+            'trace_id': current_trace_id(),
+        }
+
+
+def missing_required_grounding(data: dict, mode: str = 'deep') -> list[str]:
+    report = data.get('grounding_report') or {}
+    fields = report.get('fields') or {}
+    required = _STRICT_REQUIRED_FIELDS.get(mode, _STRICT_REQUIRED_FIELDS['deep'])
+    missing = []
+    for field in required:
+        meta = fields.get(field) or {}
+        if not meta.get('backed'):
+            missing.append(field)
+    return missing
+
+
+def can_render_strict(data: dict, mode: str = 'deep') -> bool:
+    return not missing_required_grounding(data, mode=mode)
+
+
+def build_strict_clarification(data: dict, mode: str = 'deep') -> str:
+    missing = missing_required_grounding(data, mode=mode)
+    readable = ', '.join(missing) if missing else 'grounding'
+    return (
+        'Сейчас у меня недостаточно опоры в базе, чтобы честно собрать '
+        f'полный ответ в режиме {mode}. Не хватает DB-backed опоры для: '
+        f'{readable}. Сузь вопрос до одной цитаты, книги, конфликта или '
+        'паттерна, который нужно разобрать.'
+    )

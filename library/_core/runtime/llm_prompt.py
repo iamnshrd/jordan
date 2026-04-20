@@ -7,9 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from library.config import get_default_store
-from library._core.runtime.synthesize import synthesize
-from library._core.session.continuity import load as load_continuity
 from library._core.state_store import StateStore
+from library.utils import ensure_trace_context, log_event, traced_stage
 
 
 _PERSONA_CACHE: str | None = None
@@ -117,6 +116,7 @@ def _append_grounding_report(system_parts: list[str], data: dict) -> None:
 def build_prompt(question: str, user_id: str = 'default',
                  store: StateStore | None = None,
                  voice_mode: str = 'default',
+                 plan=None,
                  frame: dict | None = None,
                  progress: dict | None = None,
                  precomputed_synthesis: dict | None = None) -> dict:
@@ -132,11 +132,27 @@ def build_prompt(question: str, user_id: str = 'default',
     - ``continuity``: user continuity state
     """
     store = store or get_default_store()
-    data = precomputed_synthesis or synthesize(
-        question, user_id=user_id, store=store,
-        frame=frame, progress=progress,
-    )
-    continuity = load_continuity(user_id=user_id, store=store)
+    with ensure_trace_context(user_id=user_id, store=store,
+                              purpose='prompt', question=question):
+        log_event('prompt.entry', store=store, user_id=user_id,
+                  voice_mode=voice_mode)
+        with traced_stage('runtime.prompt_build', store=store, user_id=user_id):
+            if plan is None:
+                from library._core.runtime.planner import build_answer_plan
+                plan = build_answer_plan(question, user_id=user_id, store=store, purpose='prompt')
+            if not plan.decision.allow_llm_prompt:
+                result = plan.prompt_result()
+                log_event(
+                    'prompt.short_circuit',
+                    store=store,
+                    user_id=user_id,
+                    action=result.get('action', ''),
+                    reason=(result.get('decision_meta') or {}).get('reason', ''),
+                )
+                return result
+
+            data = precomputed_synthesis or plan.synthesis or {}
+            continuity = plan.continuity or {}
 
     bundle = data.get('raw_selection', {}).get('bundle', {})
     chunks = bundle.get('relevant_chunks', [])
@@ -262,12 +278,20 @@ def build_prompt(question: str, user_id: str = 'default',
         'Не нумеруй пункты в финальном ответе.'
     )
 
-    return {
-        'system': '\n'.join(system_parts),
-        'user': question,
-        'synthesis': data,
-        'continuity': continuity,
-    }
+    plan.system = '\n'.join(system_parts)
+    plan.user = question
+    plan.synthesis = data
+    plan.continuity = continuity
+    result = plan.prompt_result()
+    log_event(
+        'prompt.completed',
+        store=store,
+        user_id=user_id,
+        action=result.get('action', ''),
+        system_length=len(result.get('system', '')),
+        backed_fields=(data.get('grounding_report') or {}).get('backed_fields', []),
+    )
+    return result
 
 
 def build_fallback_response(prompt_result: dict, mode: str = 'deep',

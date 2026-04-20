@@ -41,12 +41,14 @@ def cmd_prompt(args):
             'action': result.get('action', ''),
             'mode': result.get('mode', ''),
             'voice_mode': result.get('voice_mode', ''),
+            'trace_id': result.get('trace_id', ''),
         }, ensure_ascii=False, indent=2))
 
 
 def cmd_frame(args):
-    from library._core.runtime.frame import select_frame
-    print(json.dumps(select_frame(args.question), ensure_ascii=False, indent=2))
+    from library._core.runtime.planner import build_answer_plan
+    plan = build_answer_plan(args.question, user_id=args.user_id, purpose='prompt')
+    print(json.dumps(plan.selection, ensure_ascii=False, indent=2))
 
 
 def cmd_respond(args):
@@ -56,8 +58,10 @@ def cmd_respond(args):
 
 
 def cmd_retrieve(args):
-    from library._core.runtime.retrieve import build_response_bundle
-    print(json.dumps(build_response_bundle(args.question), ensure_ascii=False, indent=2))
+    from library._core.runtime.planner import build_answer_plan
+    plan = build_answer_plan(args.question, user_id=args.user_id, purpose='prompt')
+    bundle = (plan.selection or {}).get('bundle', {})
+    print(json.dumps(bundle, ensure_ascii=False, indent=2))
 
 
 def cmd_kb(args):
@@ -240,6 +244,23 @@ def cmd_eval(args):
         sys.exit(1)
 
 
+def cmd_trace(args):
+    from library.config import get_default_store
+    from library._core.state_store import KEY_TRACE_EVENTS
+
+    store = get_default_store()
+    rows = store.read_jsonl(canonical_user_id(args.user_id), KEY_TRACE_EVENTS)
+    if args.trace_id:
+        rows = [row for row in rows if row.get('trace_id') == args.trace_id]
+    if args.event:
+        rows = [row for row in rows if row.get('event') == args.event]
+    if args.reverse:
+        rows = list(reversed(rows))
+    if args.limit:
+        rows = rows[-args.limit:] if not args.reverse else rows[:args.limit]
+    print(json.dumps(rows, ensure_ascii=False, indent=2))
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog='python -m library', description='Jordan Peterson Agent CLI')
     parser.add_argument('--user-id', dest='user_id', default='default',
@@ -250,7 +271,7 @@ def build_parser():
     p_run.add_argument('question')
     p_run.set_defaults(func=cmd_run)
 
-    p_frame = sub.add_parser('frame', help='Select psychological frame')
+    p_frame = sub.add_parser('frame', help=argparse.SUPPRESS)
     p_frame.add_argument('question')
     p_frame.set_defaults(func=cmd_frame)
 
@@ -260,7 +281,7 @@ def build_parser():
     p_respond.add_argument('--voice', choices=['default', 'concise', 'hard', 'reflective'], default='default')
     p_respond.set_defaults(func=cmd_respond)
 
-    p_retrieve = sub.add_parser('retrieve', help='Build response bundle')
+    p_retrieve = sub.add_parser('retrieve', help=argparse.SUPPRESS)
     p_retrieve.add_argument('question')
     p_retrieve.set_defaults(func=cmd_retrieve)
 
@@ -307,6 +328,13 @@ def build_parser():
     p_eval = sub.add_parser('eval', help='Run evaluations')
     p_eval.add_argument('eval_action', choices=['audit', 'regression', 'voice-regression', 'full'])
     p_eval.set_defaults(func=cmd_eval)
+
+    p_trace = sub.add_parser('trace', help='Inspect persisted runtime trace events')
+    p_trace.add_argument('--trace-id', dest='trace_id', default='')
+    p_trace.add_argument('--event', default='')
+    p_trace.add_argument('--limit', type=int, default=50)
+    p_trace.add_argument('--reverse', action='store_true')
+    p_trace.set_defaults(func=cmd_trace)
 
     p_mentor = sub.add_parser('mentor', help='Mentor follow-up triggers')
     p_mentor.add_argument('mentor_action', choices=['check', 'tick', 'sent', 'reply', 'set-mode', 'targets-list', 'targets-enable', 'targets-disable', 'targets-add', 'targets-remove', 'targets-report', 'legacy-report'])

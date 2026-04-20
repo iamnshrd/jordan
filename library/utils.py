@@ -6,6 +6,7 @@ import json
 import logging
 import time
 import threading
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from functools import wraps
@@ -17,6 +18,7 @@ log = logging.getLogger('jordan')
 # -- timing / observability ------------------------------------------------
 
 _timing_ctx: threading.local = threading.local()
+_trace_ctx: threading.local = threading.local()
 
 
 @contextmanager
@@ -43,6 +45,161 @@ def _record_timing(stage: str, elapsed_ms: float):
         timings[stage] = round(elapsed_ms, 2)
 
 
+def _current_trace() -> dict | None:
+    return getattr(_trace_ctx, 'value', None)
+
+
+def _set_current_trace(value: dict | None) -> None:
+    _trace_ctx.value = value
+
+
+def current_trace_id() -> str:
+    trace = _current_trace() or {}
+    return trace.get('trace_id', '')
+
+
+def current_trace_meta() -> dict:
+    trace = _current_trace() or {}
+    meta = {}
+    for key in (
+        'trace_id', 'span_id', 'parent_span_id', 'user_id',
+        'purpose', 'question_preview',
+    ):
+        value = trace.get(key)
+        if value:
+            meta[key] = value
+    return meta
+
+
+def _question_preview(question: str, limit: int = 180) -> str:
+    text = ' '.join((question or '').split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + '...'
+
+
+def _generate_trace_id() -> str:
+    return 'tr-' + uuid.uuid4().hex[:16]
+
+
+def _generate_span_id() -> str:
+    return 'sp-' + uuid.uuid4().hex[:12]
+
+
+def _persist_trace_event(event: dict, *, store=None, user_id: str | None = None) -> None:
+    if store is None or not user_id:
+        return
+    try:
+        from library._core.state_store import KEY_TRACE_EVENTS
+        store.append_jsonl(user_id, KEY_TRACE_EVENTS, event)
+    except Exception:
+        log.exception('Failed to persist trace event', extra={'event': 'trace.persist_failed'})
+
+
+def log_event(event: str, level: int = logging.INFO, *,
+              store=None, user_id: str | None = None, **fields) -> dict:
+    trace = _current_trace() or {}
+    payload = {
+        'event': event,
+        'timestamp': now_iso(),
+        **current_trace_meta(),
+        **fields,
+    }
+    effective_store = store or trace.get('store')
+    effective_user = user_id or trace.get('user_id')
+    _persist_trace_event(payload, store=effective_store, user_id=effective_user)
+    log.log(level, event, extra=payload)
+    return payload
+
+
+@contextmanager
+def ensure_trace_context(*, user_id: str = 'default', store=None,
+                         purpose: str = 'runtime', question: str = '',
+                         trace_id: str | None = None):
+    existing = _current_trace()
+    if existing is not None:
+        yield existing
+        return
+
+    trace = {
+        'trace_id': trace_id or _generate_trace_id(),
+        'span_id': '',
+        'parent_span_id': '',
+        'user_id': user_id,
+        'purpose': purpose,
+        'question_preview': _question_preview(question),
+        'store': store,
+    }
+    _set_current_trace(trace)
+    try:
+        log_event(
+            'trace.started',
+            store=store,
+            user_id=user_id,
+            question_preview=trace['question_preview'],
+            purpose=purpose,
+        )
+        yield trace
+    finally:
+        log_event('trace.finished', store=store, user_id=user_id)
+        _set_current_trace(None)
+
+
+@contextmanager
+def traced_stage(stage: str, *, store=None, user_id: str | None = None, **fields):
+    trace = _current_trace() or {}
+    prev_span = trace.get('span_id', '')
+    span_id = _generate_span_id()
+    if trace:
+        trace['parent_span_id'] = prev_span
+        trace['span_id'] = span_id
+    started = time.monotonic()
+    log_event(
+        'stage.started',
+        level=logging.DEBUG,
+        store=store,
+        user_id=user_id,
+        stage=stage,
+        span_id=span_id,
+        parent_span_id=prev_span or '',
+        **fields,
+    )
+    try:
+        yield span_id
+    except Exception as exc:
+        elapsed_ms = round((time.monotonic() - started) * 1000, 2)
+        log_event(
+            'stage.failed',
+            level=logging.ERROR,
+            store=store,
+            user_id=user_id,
+            stage=stage,
+            span_id=span_id,
+            parent_span_id=prev_span or '',
+            elapsed_ms=elapsed_ms,
+            error=str(exc),
+            **fields,
+        )
+        raise
+    else:
+        elapsed_ms = round((time.monotonic() - started) * 1000, 2)
+        log_event(
+            'stage.finished',
+            level=logging.DEBUG,
+            store=store,
+            user_id=user_id,
+            stage=stage,
+            span_id=span_id,
+            parent_span_id=prev_span or '',
+            elapsed_ms=elapsed_ms,
+            **fields,
+        )
+    finally:
+        if trace:
+            trace['span_id'] = prev_span
+            trace['parent_span_id'] = ''
+
+
 def timed(stage: str):
     """Decorator that logs and records execution time for *stage*."""
     def decorator(fn):
@@ -56,7 +213,11 @@ def timed(stage: str):
                 _record_timing(stage, elapsed_ms)
                 log.debug('%s completed in %.1f ms', stage,
                           elapsed_ms,
-                          extra={'stage': stage, 'elapsed_ms': round(elapsed_ms, 2)})
+                          extra={
+                              'stage': stage,
+                              'elapsed_ms': round(elapsed_ms, 2),
+                              **current_trace_meta(),
+                          })
         return wrapper
     return decorator
 

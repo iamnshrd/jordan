@@ -12,11 +12,11 @@ import os
 import tempfile
 from pathlib import Path
 
-from library.utils import now_iso
+from library.utils import current_trace_meta, now_iso
 
 log = logging.getLogger('jordan')
 
-_JSONL_KEYS = frozenset({'session_checkpoints'})
+_JSONL_KEYS = frozenset({'session_checkpoints', 'trace_events'})
 
 
 class FileSystemStore:
@@ -80,6 +80,13 @@ class FileSystemStore:
             except OSError:
                 pass
             raise
+        log.debug('fs_store.put_json', extra={
+            'event': 'fs_store.put_json',
+            'user_id': user_id,
+            'state_key': key,
+            'path': str(p),
+            **current_trace_meta(),
+        })
 
     def update_json(self, user_id: str, key: str,
                     mutator, default: dict | None = None) -> dict:
@@ -93,6 +100,12 @@ class FileSystemStore:
                     f'got {type(next_value).__name__}'
                 )
             self.put_json(user_id, key, next_value)
+            log.debug('fs_store.update_json', extra={
+                'event': 'fs_store.update_json',
+                'user_id': user_id,
+                'state_key': key,
+                **current_trace_meta(),
+            })
             return next_value
         finally:
             lock_fh.close()
@@ -103,6 +116,13 @@ class FileSystemStore:
         with open(p, 'a', encoding='utf-8') as f:
             f.write(json.dumps(event, ensure_ascii=False) + '\n')
         self._jsonl_cache.pop((user_id, key), None)
+        log.debug('fs_store.append_jsonl', extra={
+            'event': 'fs_store.append_jsonl',
+            'user_id': user_id,
+            'state_key': key,
+            'path': str(p),
+            **current_trace_meta(),
+        })
 
     def read_jsonl(self, user_id: str, key: str) -> list[dict]:
         p = self._user_dir(user_id) / (key + '.jsonl')

@@ -40,3 +40,6 @@ workspace/mentor_delays.json
 workspace/mentor_targets.json
 workspace/telegram:*/
 workspace/audit:db-grounding/
+workspace/audit:*/
+workspace/trace_events.jsonl
+workspace/*/trace_events.jsonl
