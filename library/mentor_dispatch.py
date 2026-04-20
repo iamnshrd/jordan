@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from library._core.mentor.tick import tick
+from library._core.mentor.checkins import record_sent
 from library.config import (
     load_tracked_mentor_users,
     save_tracked_mentor_users,
@@ -119,8 +120,9 @@ def main() -> None:
             })
             continue
 
-        result = tick(send=True, user_id=user_id)
+        result = tick(send=False, user_id=user_id)
         event = result.get('selected_event') or {}
+        delivery = result.get('mentor_delivery') or {}
         compact = {
             'user_id': user_id,
             'channel': channel,
@@ -131,7 +133,10 @@ def main() -> None:
             'event_type': event.get('type'),
             'event_summary': event.get('summary'),
             'should_send': result.get('should_send'),
-            'sent': result.get('sent'),
+            'sent': False,
+            'delivery_path_type': result.get('delivery_path_type'),
+            'delivery_trace_id': result.get('delivery_trace_id'),
+            'suppressed_reason': result.get('suppressed_reason'),
         }
 
         msg = (result.get('rendered_message') or '').strip()
@@ -142,6 +147,8 @@ def main() -> None:
                 '--target', target,
                 '--message', msg,
             ], check=True)
+            record_sent(event, user_id=user_id)
+            compact['sent'] = True
             compact['delivered'] = True
         else:
             compact['delivered'] = False

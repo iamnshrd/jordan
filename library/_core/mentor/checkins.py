@@ -52,6 +52,29 @@ AUDIT_FACTOR_LABELS = {
     'confrontation_penalty': 'confrontation backfire memory',
 }
 
+_DIRECT_SAFE_EVENT_TYPES = {'mentor-summary'}
+
+
+def _build_delivery_contract(event: dict) -> dict:
+    event_type = (event or {}).get('type', '')
+    route = (event or {}).get('route', '')
+    summary = (event or {}).get('summary', '')
+    requires_canonical = event_type not in _DIRECT_SAFE_EVENT_TYPES
+    return {
+        'event_type': event_type,
+        'route': route,
+        'summary': summary,
+        'delivery_class': (
+            'direct-summary' if not requires_canonical
+            else 'canonical-proactive'
+        ),
+        'requires_canonical': requires_canonical,
+        'safe_to_send_direct': not requires_canonical,
+        'goal': 'mentor-followup',
+        'allowed_tone': 'structured' if event_type == 'mentor-summary' else 'grounded-mentor',
+        'prompt_preview': ((event or {}).get('prompt', '') or '')[:180],
+    }
+
 
 def _factor_label(key: str) -> str:
     return AUDIT_FACTOR_LABELS.get(key, key)
@@ -422,6 +445,8 @@ def _candidate_events(question: str, continuity: dict, progress: dict, reaction:
     def maybe_add(event: dict) -> None:
         if not event:
             return
+        event = dict(event)
+        event['delivery'] = _build_delivery_contract(event)
         et = event.get('type', '')
         blocked = lifecycle_blocked(et)
         penalty = confrontation_penalty(event.get('route', route), et) if et in {'pattern-naming-check', 'decision-forcing-check', 'truth-demand-check', 'cost-of-delay-check', 'identity-vs-action-check', 'false-progress-check', 'excuse-collapse'} else 0

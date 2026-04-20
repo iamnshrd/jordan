@@ -69,6 +69,7 @@ class GroundedAnswerPlan:
     question: str
     user_id: str
     decision: GroundingDecision
+    purpose: str = 'response'
     selection: dict = field(default_factory=dict)
     continuity: dict = field(default_factory=dict)
     progress: dict = field(default_factory=dict)
@@ -120,6 +121,7 @@ class GroundedAnswerPlan:
             'direct_response': self.direct_response,
             'clarifying_question': self.clarifying_question,
             'decision_meta': self.decision.as_dict(),
+            'purpose': self.purpose,
             'trace_id': current_trace_id(),
         }
         if self.synthesis is not None:
@@ -141,6 +143,7 @@ class GroundedAnswerPlan:
             'clarifying_question': self.clarifying_question,
             'retrieval_validation': self.retrieval_validation,
             'decision_meta': self.decision.as_dict(),
+            'purpose': self.purpose,
             'trace_id': current_trace_id(),
         }
 

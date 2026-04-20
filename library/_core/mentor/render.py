@@ -42,11 +42,13 @@ def _render_commitment_summary(summary: dict) -> str:
     return '\n'.join(lines).strip()
 
 
-def render_event(event: dict) -> str:
+def render_event(event: dict, *, unsafe_allow_prompt: bool = False) -> str:
     if not event:
         return ''
     if event.get('type') == 'mentor-summary':
         body = _render_commitment_summary(event.get('commitment_summary') or {})
         eff = _render_effectiveness(event.get('effectiveness_summary') or {})
         return '\n'.join([x for x in [body, eff] if x]).strip()
-    return event.get('prompt', '').strip()
+    if unsafe_allow_prompt:
+        return event.get('prompt', '').strip()
+    return ''

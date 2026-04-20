@@ -163,7 +163,7 @@ def render_plan(plan, mode: str | None = None, voice_mode: str | None = None) ->
         theme = ((selected.get('selected_theme') or {}).get('name'))
         pattern = ((selected.get('selected_pattern') or {}).get('name'))
 
-        if data.get('confidence') in {'medium', 'high'}:
+        if getattr(plan, 'purpose', 'response') == 'response' and data.get('confidence') in {'medium', 'high'}:
             open_loop = data.get('core_problem', '')
             update_continuity(question=plan.question, theme=theme or '',
                               pattern=pattern or '', open_loop=open_loop,

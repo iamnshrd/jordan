@@ -176,7 +176,10 @@ def cmd_mentor(args):
         from library._core.mentor.render import render_event
         result = evaluate(args.question or '', user_id=args.user_id)
         if args.render:
-            rendered = render_event(result.get('selected_event') or {})
+            rendered = render_event(
+                result.get('selected_event') or {},
+                unsafe_allow_prompt=True,
+            )
             print(rendered)
         else:
             print(json.dumps(result, ensure_ascii=False, indent=2))
