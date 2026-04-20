@@ -18,6 +18,10 @@ library/kb_candidates_normalized.json
 library/quotes_candidates.json
 library/quotes_normalized.json
 library/runtime_audit_report.json
+library/runtime_audit_report_after_fix.json
+library/runtime_audit_report_after_fix2.json
+library/runtime_audit_report_after_fix3.json
+library/runtime_audit_report_after_fix4.json
 library/runtime_regression_report.json
 library/voice_regression_report.json
 workspace/continuity_summary.json
@@ -35,3 +39,4 @@ workspace/mentor_events.jsonl
 workspace/mentor_delays.json
 workspace/mentor_targets.json
 workspace/telegram:*/
+workspace/audit:db-grounding/

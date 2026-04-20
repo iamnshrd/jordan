@@ -64,40 +64,36 @@ def _format_structured_rows(rows: list[dict], title_key: str = 'title',
     return '\n'.join(lines)
 
 
+def _prefer_source_linked_rows(rows: list[dict], max_rows: int = 2) -> list[dict]:
+    preferred = [row for row in rows if row.get('_source_preference', 999) < 999]
+    source = preferred or rows
+    return source[:max_rows]
+
+
 def _has_text(value: str | None) -> bool:
     return bool((value or '').strip())
 
 
 def _append_db_backed_synthesis(system_parts: list[str], data: dict) -> None:
     """Only expose synthesis fields that are backed by DB-selected rows."""
-    raw = data.get('raw_selection') or {}
-    v3 = data.get('v3_runtime') or {}
-    bridge = v3.get('bridge') or {}
-    next_step = v3.get('next_step') or {}
+    fields = ((data.get('grounding_report') or {}).get('fields') or {})
 
-    theme_desc = ((raw.get('selected_theme') or {}).get('description') or '').strip()
-    pattern_desc = ((raw.get('selected_pattern') or {}).get('description') or '').strip()
-    principle_desc = ((raw.get('selected_principle') or {}).get('description') or '').strip()
-
-    if _has_text(data.get('core_problem')) and (
-        _has_text(bridge.get('diagnosis_stub')) or _has_text(theme_desc)
-    ):
+    if _has_text(data.get('core_problem')) and (fields.get('core_problem') or {}).get('backed'):
         system_parts.append(f'- Ядро проблемы: {data["core_problem"]}')
-    if _has_text(data.get('relevant_pattern')) and _has_text(pattern_desc):
+    if _has_text(data.get('relevant_pattern')) and (fields.get('relevant_pattern') or {}).get('backed'):
         system_parts.append(f'- Релевантный паттерн: {data["relevant_pattern"]}')
     if (_has_text(data.get('responsibility_avoided'))
-            and _has_text(bridge.get('responsibility_stub'))):
+            and (fields.get('responsibility_avoided') or {}).get('backed')):
         system_parts.append(
             f'- Избегаемая ответственность: {data["responsibility_avoided"]}'
         )
-    if _has_text(data.get('guiding_principle')) and _has_text(principle_desc):
+    if _has_text(data.get('guiding_principle')) and (fields.get('guiding_principle') or {}).get('backed'):
         system_parts.append(f'- Опорный принцип: {data["guiding_principle"]}')
-    if (_has_text(data.get('practical_next_step')) and (
-        _has_text(next_step.get('step_text')) or _has_text(bridge.get('next_step_stub'))
-    )):
+    if (_has_text(data.get('practical_next_step'))
+            and (fields.get('practical_next_step') or {}).get('backed')):
         system_parts.append(f'- Следующий шаг: {data["practical_next_step"]}')
     if (_has_text(data.get('longer_term_correction'))
-            and _has_text(bridge.get('long_term_stub'))):
+            and (fields.get('longer_term_correction') or {}).get('backed')):
         system_parts.append(
             f'- Долгосрочная коррекция: {data["longer_term_correction"]}'
         )
@@ -173,6 +169,8 @@ def build_prompt(question: str, user_id: str = 'default',
         'НЕ выдумывай цитаты. Используй только предоставленные фрагменты и цитаты. '
         'Если в предоставленном контексте нет опоры для утверждения, не компенсируй это знаниями модели: '
         'коротко обозначь ограничение и попроси уточнение. '
+        'Каждый содержательный тезис в ответе должен опираться на явный claim, practice, objection или quote из контекста ниже. '
+        'Не расширяй ответ до длинной таксономии качеств, если в контексте нет такого количества отдельных DB-backed утверждений. '
         'Отвечай на русском языке в стиле, описанном в persona выше.'
     )
 
@@ -203,46 +201,40 @@ def build_prompt(question: str, user_id: str = 'default',
 
     if chunks:
         system_parts.append('\n## Релевантные фрагменты из библиотеки')
-        system_parts.append(_format_evidence(chunks))
+        system_parts.append(_format_evidence(chunks, max_chunks=3))
 
-    if quotes:
+    filtered_quotes = _prefer_source_linked_rows(quotes, max_rows=2)
+    filtered_claims = _prefer_source_linked_rows(claims, max_rows=2)
+    filtered_practices = _prefer_source_linked_rows(practices, max_rows=2)
+    filtered_objections = _prefer_source_linked_rows(objections, max_rows=1)
+    filtered_definitions = _prefer_source_linked_rows(definitions, max_rows=1)
+
+    if filtered_quotes:
         system_parts.append('\n## Подходящие цитаты')
-        system_parts.append(_format_quotes(quotes))
+        system_parts.append(_format_quotes(filtered_quotes, max_quotes=2))
 
-    if canonical_concepts:
-        system_parts.append('\n## Canonical Concepts')
-        system_parts.append(_format_structured_rows(
-            canonical_concepts, title_key='concept_name', body_key='description', max_rows=3,
-        ))
-
-    if definitions:
-        system_parts.append('\n## Definitions')
-        system_parts.append(_format_structured_rows(
-            definitions, title_key='title', body_key='summary', max_rows=3,
-        ))
-
-    if claims:
+    if filtered_claims:
         system_parts.append('\n## Claims')
         system_parts.append(_format_structured_rows(
-            claims, title_key='title', body_key='summary', max_rows=3,
+            filtered_claims, title_key='title', body_key='summary', max_rows=2,
         ))
 
-    if practices:
+    if filtered_practices:
         system_parts.append('\n## Practices')
         system_parts.append(_format_structured_rows(
-            practices, title_key='title', body_key='summary', max_rows=3,
+            filtered_practices, title_key='title', body_key='summary', max_rows=2,
         ))
 
-    if objections:
+    if filtered_objections:
         system_parts.append('\n## Objections And Replies')
         system_parts.append(_format_structured_rows(
-            objections, title_key='title', body_key='response', max_rows=2,
+            filtered_objections, title_key='title', body_key='response', max_rows=1,
         ))
 
-    if chapter_summaries:
-        system_parts.append('\n## Chapter Summaries')
+    if not filtered_claims and not filtered_practices and filtered_definitions:
+        system_parts.append('\n## Definitions')
         system_parts.append(_format_structured_rows(
-            chapter_summaries, title_key='section_title', body_key='summary', max_rows=3,
+            filtered_definitions, title_key='title', body_key='summary', max_rows=1,
         ))
 
     if data.get('supporting_quote'):
@@ -264,15 +256,10 @@ def build_prompt(question: str, user_id: str = 'default',
 
     system_parts.append('\n## Формат ответа')
     system_parts.append(
-        'Структурируй ответ:\n'
-        '1. Назови ядро проблемы (1-2 предложения)\n'
-        '2. Покажи паттерн, который поддерживает проблему\n'
-        '3. Назови избегаемую ответственность\n'
-        '4. Дай опорный принцип\n'
-        '5. Включи цитату если она релевантна\n'
-        '6. Дай конкретный следующий шаг\n'
-        '7. Обозначь долгосрочное направление коррекции\n'
-        'Не нумеруй пункты в финальном ответе — пиши связным текстом с абзацами.'
+        'Собери короткий ответ из 2-4 абзацев.\n'
+        'Используй максимум 3 substantive points, и только если каждый из них явно поддержан claim/practice/quote выше.\n'
+        'Если вопрос слишком широкий для такого ответа, не достраивай список из общих качеств — прямо сузь рамку и попроси уточнение.\n'
+        'Не нумеруй пункты в финальном ответе.'
     )
 
     return {

@@ -100,82 +100,43 @@ PATTERN_DESC_MAP = {
 def db_driven_theme_text(theme_name, selected):
     desc = ((selected.get('selected_theme') or {}).get('description') or '').strip()
     if desc:
-        return desc
-    return THEME_DESC_MAP.get(theme_name,
-           THEME_MAP.get(theme_name,
-                         'Нужно точнее определить, в чём ядро проблемы.'))
+        return desc, 'theme-description'
+    return '', 'none'
 
 
 def db_driven_principle_text(principle_name, selected):
     desc = ((selected.get('selected_principle') or {}).get('description') or '').strip()
     if desc:
-        return desc
-    return PRINCIPLE_DESC_MAP.get(principle_name,
-           PRINCIPLE_MAP.get(principle_name,
-                             'Нужен принцип, который вернёт структуру и направление.'))
+        return desc, 'principle-description'
+    return '', 'none'
 
 
 def db_driven_pattern_text(pattern_name, selected):
     desc = ((selected.get('selected_pattern') or {}).get('description') or '').strip()
     if desc:
-        return desc
-    return PATTERN_DESC_MAP.get(pattern_name,
-           PATTERN_MAP.get(pattern_name,
-                           'Здесь есть повторяющийся разрушительный паттерн, который стоит назвать точнее.'))
+        return desc, 'pattern-description'
+    return '', 'none'
 
 
 def db_driven_responsibility_text(selected, bridge, question):
     stub = (bridge.get('responsibility_stub') or '').strip()
     if stub:
-        return stub
-    q = (question or '').lower()
-    theme_name = (selected.get('selected_theme') or {}).get('name')
-    principle_reason = selected.get('selected_principle_reason') or ''
-    if principle_reason == 'discipline/order tie-break':
-        return 'Скорее всего, ты перестал добровольно наводить локальный порядок и начал ждать мотивацию раньше структуры.'
-    if principle_reason == 'meaning-direction tie-break':
-        return 'Похоже, что ты уклоняешься от выбора направления и от ответственности, которая идёт вместе с ним.'
-    if any(x in q for x in ['стыд', 'позор', 'отвращение к себе']):
-        return 'Похоже, ты избегаешь точного признания поступка и заменяешь его тотальным осуждением себя.'
-    if theme_name == 'resentment':
-        return 'Похоже, ты долго терпишь, копишь обиду и не называешь прямо то, что должно быть вынесено в разговор.'
-    return 'Есть ощущение, что часть ответственности была отложена, а вместе с ней распалась и опора.'
+        return stub, 'bridge'
+    return '', 'none'
 
 
 def db_driven_longer_term_text(selected, bridge, question):
     stub = (bridge.get('long_term_stub') or '').strip()
     if stub:
-        return stub
-    q = (question or '').lower()
-    theme_name = (selected.get('selected_theme') or {}).get('name')
-    if theme_name == 'meaning':
-        return 'Тебе нужно не ждать возвращения смысла как чувства, а заново строить его через цель, дисциплину и повторяющееся действие.'
-    if theme_name == 'resentment':
-        return 'Долгосрочно придётся отделить реальную несправедливость от горечи, которая выросла из избегания и бессилия.'
-    if any(x in q for x in ['стыд', 'позор', 'отвращение к себе']):
-        return 'Долгосрочно нужно научиться различать вину за поступок и тотальное отвержение собственной личности.'
-    return 'Долгосрочная коррекция требует более честной структуры жизни, а не только эмоционального облегчения.'
+        return stub, 'bridge'
+    return '', 'none'
 
 
 def db_driven_practical_text(selected, next_step_v3, question):
     step = (next_step_v3.get('step_text') or '').strip()
     if step:
-        return step
-    q = (question or '').lower()
-    principle_name = (selected.get('selected_principle') or {}).get('name')
-    theme_name = (selected.get('selected_theme') or {}).get('name')
-    theme_reason = selected.get('selected_theme_reason') or ''
-    if principle_name == 'clean-up-what-is-in-front-of-you':
-        return 'Следующий шаг — выбрать одну зону локального беспорядка и привести её в порядок сегодня, а не когда-нибудь потом.'
-    if principle_name == 'tell-the-truth-or-at-least-dont-lie':
-        return 'Следующий шаг — письменно сформулировать, что именно ты разрушил, чего избегаешь и что продолжаешь себе про это рассказывать.'
-    if principle_name == 'take-responsibility-before-blame':
-        return 'Следующий шаг — назвать одну обязанность, которую ты перестал нести, и вернуть её себе добровольно.'
-    if theme_name == 'resentment' and theme_reason == 'relationship tie-break':
-        return 'Следующий шаг — назвать один повторяющийся конфликт, один невысказанный упрёк и одну границу, которую ты не обозначаешь прямо.'
-    if any(x in q for x in ['стыд', 'позор', 'отвращение к себе']):
-        return 'Следующий шаг — назвать один конкретный поступок или провал, за который тебе стыдно, не превращая его в тотальный приговор себе целиком.'
-    return 'Следующий шаг — сузить проблему до одной сферы, где ты реально можешь навести порядок уже сегодня.'
+        return step, 'next-step'
+    return '', 'none'
 
 
 # ── quote helpers ─────────────────────────────────────────────────────
@@ -413,11 +374,6 @@ def apply_priority_pruning(practical, longer_term, practical_extras,
 
 def build_grounding_report(selected, bundle, v3, data) -> dict:
     """Expose which synthesis fields are DB-backed vs heuristic/runtime-derived."""
-    theme_desc = ((selected.get('selected_theme') or {}).get('description') or '').strip()
-    pattern_desc = ((selected.get('selected_pattern') or {}).get('description') or '').strip()
-    principle_desc = ((selected.get('selected_principle') or {}).get('description') or '').strip()
-    bridge = (v3 or {}).get('bridge') or {}
-    next_step = (v3 or {}).get('next_step') or {}
     chunks = bundle.get('relevant_chunks', []) or []
     quotes = bundle.get('relevant_quotes', []) or []
     definitions = bundle.get('relevant_definitions', []) or []
@@ -425,51 +381,22 @@ def build_grounding_report(selected, bundle, v3, data) -> dict:
     practices = bundle.get('relevant_practices', []) or []
     objections = bundle.get('relevant_objections', []) or []
     chapter_summaries = bundle.get('relevant_chapter_summaries', []) or []
+    field_sources = data.get('field_sources') or {}
+
+    def _meta(field: str, default_source: str = 'heuristic') -> dict:
+        source = field_sources.get(field, default_source)
+        return {
+            'backed': source not in {'heuristic', 'none', ''},
+            'source': source or default_source,
+        }
 
     fields = {
-        'core_problem': {
-            'backed': bool(
-                (bridge.get('diagnosis_stub') or '').strip()
-                or theme_desc or claims or definitions or chapter_summaries
-            ),
-            'source': (
-                'bridge' if (bridge.get('diagnosis_stub') or '').strip()
-                else ('theme-description' if theme_desc else (
-                    'claims' if claims else (
-                        'definitions' if definitions else (
-                            'chapter-summaries' if chapter_summaries else 'heuristic'
-                        )
-                    )
-                ))
-            ),
-        },
-        'relevant_pattern': {
-            'backed': bool(pattern_desc),
-            'source': 'pattern-description' if pattern_desc else 'heuristic',
-        },
-        'guiding_principle': {
-            'backed': bool(principle_desc or definitions or claims),
-            'source': 'principle-description' if principle_desc else ('definitions' if definitions else ('claims' if claims else 'heuristic')),
-        },
-        'responsibility_avoided': {
-            'backed': bool((bridge.get('responsibility_stub') or '').strip()),
-            'source': 'bridge' if (bridge.get('responsibility_stub') or '').strip() else 'heuristic',
-        },
-        'practical_next_step': {
-            'backed': bool(
-                (next_step.get('step_text') or '').strip()
-                or (bridge.get('next_step_stub') or '').strip()
-                or practices
-            ),
-            'source': (
-                'next-step' if (next_step.get('step_text') or '').strip()
-                else ('bridge' if (bridge.get('next_step_stub') or '').strip() else ('practices' if practices else 'heuristic'))
-            ),
-        },
-        'longer_term_correction': {
-            'backed': bool((bridge.get('long_term_stub') or '').strip() or objections or chapter_summaries),
-            'source': 'bridge' if (bridge.get('long_term_stub') or '').strip() else ('objections' if objections else ('chapter-summaries' if chapter_summaries else 'heuristic')),
-        },
+        'core_problem': _meta('core_problem'),
+        'relevant_pattern': _meta('relevant_pattern'),
+        'guiding_principle': _meta('guiding_principle'),
+        'responsibility_avoided': _meta('responsibility_avoided'),
+        'practical_next_step': _meta('practical_next_step'),
+        'longer_term_correction': _meta('longer_term_correction'),
         'supporting_quote': {
             'backed': bool(data.get('supporting_quote')) and bool(quotes),
             'source': 'quotes' if quotes else 'none',
@@ -520,9 +447,9 @@ def synthesize(question, user_id: str = 'default',
     archetype = infer_archetype(question)
     v3 = query_v3(theme_name or '', pattern_name or '', archetype)
 
-    core_problem = db_driven_theme_text(theme_name, selected)
-    pattern_text = db_driven_pattern_text(pattern_name, selected)
-    principle_text = db_driven_principle_text(principle_name, selected)
+    core_problem, core_problem_source = db_driven_theme_text(theme_name, selected)
+    pattern_text, pattern_source = db_driven_pattern_text(pattern_name, selected)
+    principle_text, principle_source = db_driven_principle_text(principle_name, selected)
     structured_definition = select_structured_text(
         bundle, 'relevant_definitions', 'summary',
     )
@@ -549,54 +476,40 @@ def synthesize(question, user_id: str = 'default',
 
     if bridge.get('diagnosis_stub'):
         core_problem = bridge['diagnosis_stub']
-    elif intervention and intervention.get('opening_move'):
-        core_problem = append_sentence(core_problem, intervention['opening_move'])
+        core_problem_source = 'bridge'
     elif structured_claim:
         core_problem = append_sentence(core_problem, structured_claim)
+        core_problem_source = 'claims'
     elif structured_definition:
         core_problem = append_sentence(core_problem, structured_definition)
+        core_problem_source = 'definitions'
     elif chapter_summary:
         core_problem = append_sentence(core_problem, chapter_summary)
+        core_problem_source = 'chapter-summaries'
 
-    responsibility_avoided = db_driven_responsibility_text(
+    responsibility_avoided, responsibility_source = db_driven_responsibility_text(
         selected, bridge, question,
     )
-    if intervention and intervention.get('core_move') and not bridge.get('responsibility_stub'):
-        responsibility_avoided = append_sentence(
-            responsibility_avoided, intervention['core_move'],
-        )
 
-    longer_term = db_driven_longer_term_text(selected, bridge, question)
-    practical = db_driven_practical_text(selected, next_step_v3, question)
+    longer_term, longer_term_source = db_driven_longer_term_text(selected, bridge, question)
+    practical, practical_source = db_driven_practical_text(selected, next_step_v3, question)
     if structured_definition and structured_definition not in principle_text:
         principle_text = append_sentence(principle_text, structured_definition)
+        principle_source = 'definitions'
     if not next_step_v3.get('step_text') and structured_practice:
         practical = append_sentence(practical, structured_practice)
+        practical_source = 'practices'
     if not bridge.get('long_term_stub') and structured_objection_response:
         longer_term = append_sentence(longer_term, structured_objection_response)
+        longer_term_source = 'objections'
     elif not bridge.get('long_term_stub') and chapter_summary:
         longer_term = append_sentence(longer_term, chapter_summary)
-    if intervention and intervention.get('followup_move') and not next_step_v3.get('step_text'):
-        practical = append_sentence(practical, intervention['followup_move'])
+        longer_term_source = 'chapter-summaries'
 
     progress_extra = None
     progress_state = progress.get('progress_state')
-    if progress_state == 'stuck':
-        practical = ('Следующий шаг — перестать расширять проблему и выбрать '
-                     'одну конкретную обязанность или один разговор, который '
-                     'ты откладываешь, и сделать только его.')
-        longer_term = ('Сейчас тебе меньше всего нужен новый красивый '
-                       'анализ. Тебе нужна повторяемая дисциплина в одной '
-                       'точке, пока не появится реальное движение.')
-    elif progress_state == 'moving':
+    if progress_state == 'moving':
         progress_extra = 'Не меняй рамку снова: дожми уже выбранное действие.'
-    elif progress_state == 'fragile':
-        practical = ('Следующий шаг — не ломать себя об глобальные выводы, '
-                     'а сделать один маленький, но честный шаг без '
-                     'самоунижения.')
-        longer_term = ('Долгосрочно тебе нужна не жестокость к себе, а более '
-                       'устойчивая форма честности, в которой правда не '
-                       'превращается в самоуничтожение.')
 
     anti_patterns = v3.get('anti_patterns') or []
     case_links = v3.get('case_links') or []
@@ -611,12 +524,6 @@ def synthesize(question, user_id: str = 'default',
             'confidence_level': None,
         }
 
-    practical_extras = collect_practical_extras(
-        question, practical, next_step_v3, anti_patterns,
-        intervention_links, motif_links, v3, progress_extra,
-    )
-    longer_extras = collect_longer_extras(motif_links, v3)
-
     bridge_conf = bridge if bridge else (conf.get('bridge_confidence') or {})
     if (bridge_conf.get('confidence_level') not in {'high'}
             and bridge.get('diagnosis_stub')):
@@ -626,13 +533,8 @@ def synthesize(question, user_id: str = 'default',
             and next_step_v3.get('step_text')):
         practical = ('Рабочий, но ещё не окончательно проверенный следующий '
                      'шаг: ' + practical)
-
-    practical, longer_term = apply_priority_pruning(
-        practical, longer_term, practical_extras, longer_extras,
-    )
-    longer_term = compress_longer_term(
-        longer_term, best_case, anti_patterns, v3,
-    )
+    if progress_extra and practical and practical_source not in {'heuristic', 'none', ''}:
+        practical = append_sentence(practical, progress_extra)
 
     source_blend = selected.get('source_blend') or {}
     if blend_guidance and not source_blend:
@@ -674,6 +576,14 @@ def synthesize(question, user_id: str = 'default',
         'best_case': best_case,
         'intervention_links': intervention_links,
         'motif_links': motif_links,
+        'field_sources': {
+            'core_problem': core_problem_source,
+            'relevant_pattern': pattern_source,
+            'responsibility_avoided': responsibility_source,
+            'guiding_principle': principle_source,
+            'practical_next_step': practical_source,
+            'longer_term_correction': longer_term_source,
+        },
         'structured_knowledge': {
             'definitions': bundle.get('relevant_definitions', [])[:3],
             'claims': bundle.get('relevant_claims', [])[:3],

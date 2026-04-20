@@ -16,9 +16,55 @@ def infer_route_name(question):
     return infer_route(question)
 
 
+def _is_success_structure_question(question: str) -> bool:
+    q = (question or '').lower()
+    markers = [
+        'успеш', 'успех', 'преусп', 'какие качества', 'какие привычки',
+        'что отличает', 'что общего', 'талант', 'successful', 'success',
+    ]
+    return any(marker in q for marker in markers)
+
+
 def choose_theme(bundle, question):
     q = question.lower()
     rows = bundle.get('top_themes', [])
+    route_name = infer_route_name(question)
+
+    if route_name == 'career-vocation':
+        for preferred in ['meaning', 'responsibility', 'order-and-chaos']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'career-vocation route tie-break'
+
+    if route_name == 'fear-value':
+        for preferred in ['meaning', 'suffering', 'responsibility']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'fear-value route tie-break'
+
+    if route_name == 'tragedy-suffering':
+        for preferred in ['suffering', 'meaning', 'truth']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'tragedy-suffering route tie-break'
+
+    if route_name == 'parenting-overprotection':
+        for preferred in ['responsibility', 'order-and-chaos', 'truth']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'parenting route tie-break'
+
+    if route_name == 'relationship-maintenance':
+        for preferred in ['responsibility', 'truth', 'resentment']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'relationship route tie-break'
+
+    if _is_success_structure_question(question):
+        for preferred in ['responsibility', 'order-and-chaos', 'meaning']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'success-structure tie-break'
 
     if any(x in q for x in ['смысл', 'направление', 'цель', 'дисциплин', 'туман', 'размыт', 'плыть по течению', 'нет жизни', 'нет структуры']):
         for preferred in ['meaning', 'responsibility', 'order-and-chaos']:
@@ -62,6 +108,51 @@ def choose_theme(bundle, question):
 def choose_principle(bundle, question):
     q = question.lower()
     rows = bundle.get('top_principles', [])
+    route_name = infer_route_name(question)
+
+    if route_name == 'career-vocation':
+        for preferred in ['take-responsibility-before-blame',
+                          'clean-up-what-is-in-front-of-you']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'career-vocation route tie-break'
+
+    if route_name == 'fear-value':
+        for preferred in ['take-responsibility-before-blame',
+                          'clean-up-what-is-in-front-of-you']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'fear-value route tie-break'
+
+    if route_name == 'tragedy-suffering':
+        for preferred in ['tell-the-truth-or-at-least-dont-lie',
+                          'take-responsibility-before-blame']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'tragedy-suffering route tie-break'
+
+    if route_name == 'parenting-overprotection':
+        for preferred in ['clean-up-what-is-in-front-of-you',
+                          'tell-the-truth-or-at-least-dont-lie',
+                          'take-responsibility-before-blame']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'parenting route tie-break'
+
+    if route_name == 'relationship-maintenance':
+        for preferred in ['tell-the-truth-or-at-least-dont-lie',
+                          'take-responsibility-before-blame',
+                          'clean-up-what-is-in-front-of-you']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'relationship route tie-break'
+
+    if _is_success_structure_question(question):
+        for preferred in ['clean-up-what-is-in-front-of-you',
+                          'take-responsibility-before-blame']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'success-structure tie-break'
 
     if any(x in q for x in ['дисциплин', 'хаос', 'беспоряд',
                              'не могу начать', 'жестк', 'расписан', 'график']):
@@ -113,6 +204,49 @@ def choose_principle(bundle, question):
 def choose_pattern(bundle, question):
     q = question.lower()
     rows = bundle.get('top_patterns', [])
+    route_name = infer_route_name(question)
+
+    if route_name == 'career-vocation':
+        for preferred in ['aimlessness', 'avoidance-loop']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'career-vocation route tie-break'
+
+    if route_name == 'fear-value':
+        for preferred in ['avoidance-loop', 'aimlessness']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'fear-value route tie-break'
+
+    if route_name == 'tragedy-suffering':
+        for preferred in ['resentment-loop', 'avoidance-loop', 'aimlessness']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'tragedy-suffering route tie-break'
+
+    if route_name == 'shame-self-contempt':
+        for preferred in ['avoidance-loop', 'aimlessness', 'resentment-loop']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'shame-self-contempt route tie-break'
+
+    if route_name == 'parenting-overprotection':
+        for preferred in ['avoidance-loop', 'resentment-loop', 'aimlessness']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'parenting route tie-break'
+
+    if route_name == 'relationship-maintenance':
+        for preferred in ['resentment-loop', 'avoidance-loop', 'aimlessness']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'relationship route tie-break'
+
+    if _is_success_structure_question(question):
+        for preferred in ['aimlessness', 'avoidance-loop']:
+            for row in rows:
+                if row['name'] == preferred:
+                    return row, 'success-structure tie-break'
 
     if any(x in q for x in ['смысл', 'направление', 'цель', 'туман', 'размыт', 'плыть по течению', 'нет жизни', 'нет структуры']):
         for preferred in ['aimlessness', 'avoidance-loop']:

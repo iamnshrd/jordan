@@ -14,6 +14,7 @@ from library._core.runtime.llm_prompt import build_prompt
 from library._core.runtime.retrieval_validator import validate_chunks, get_relevance_judge
 from library._core.runtime.voice import choose as choose_voice
 from library._core.runtime.guardrails import detect_out_of_domain, maybe_reset_out_of_domain_streak
+from library._core.runtime.routes import is_broad_question
 from library._core.session.continuity import read as read_continuity, load as load_continuity
 from library._core.session.state import build_user_profile, update_session
 from library._core.session.checkpoint import log as log_checkpoint
@@ -146,6 +147,62 @@ def _decision_meta(*, action: str, mode: str, use_kb: bool,
         'backed_fields': grounding.get('backed_fields', []),
         'missing_fields': grounding.get('missing_fields', []),
     }
+
+
+def _has_fallback_frame(selected: dict | None) -> bool:
+    selected = selected or {}
+    reasons = [
+        selected.get('selected_theme_reason') or '',
+        selected.get('selected_principle_reason') or '',
+        selected.get('selected_pattern_reason') or '',
+    ]
+    return any(reason == 'top-score fallback' for reason in reasons)
+
+
+def _should_force_clarification(question: str,
+                                selected: dict | None,
+                                validation: dict | None,
+                                synthesis: dict | None = None) -> tuple[bool, str]:
+    selected = selected or {}
+    bundle = selected.get('bundle', {}) if isinstance(selected, dict) else {}
+    route_name = selected.get('route_name') or 'general'
+    avg_relevance = float((validation or {}).get('avg_relevance') or 0.0)
+    fallback_frame = _has_fallback_frame(selected)
+    broad = is_broad_question(question)
+    claims = bundle.get('relevant_claims', []) or []
+    practices = bundle.get('relevant_practices', []) or []
+    confidence = (selected.get('confidence') or '').lower()
+
+    if broad and route_name == 'general':
+        return True, 'Broad question stayed on general route'
+    if broad and avg_relevance < 0.70:
+        return True, 'Broad question lacks sufficiently tight retrieval relevance'
+    if avg_relevance < 0.50:
+        return True, 'Retrieval relevance is too low for a trustworthy answer'
+    if avg_relevance < 0.75:
+        return True, 'Retrieval relevance is below the trust threshold for a KB answer'
+    if route_name == 'general' and (fallback_frame or avg_relevance < 0.75):
+        return True, 'General route lacks strong retrieval grounding'
+    if fallback_frame and avg_relevance < 0.60:
+        return True, 'Frame still relies on fallback under weak retrieval'
+    if confidence != 'high' and avg_relevance < 0.55:
+        return True, 'Medium-confidence frame needs stronger retrieval grounding'
+    if broad and fallback_frame and avg_relevance < 0.85:
+        return True, 'Broad question relies on fallback frame'
+    if broad and not claims and not practices:
+        return True, 'Broad question lacks source-linked claims/practices'
+
+    if synthesis is not None:
+        report = synthesis.get('grounding_report') or {}
+        fields = report.get('fields') or {}
+        heuristic_fields = sorted(
+            name for name, meta in fields.items()
+            if meta.get('source') == 'heuristic'
+        )
+        if route_name == 'general' and heuristic_fields:
+            return True, 'General route still depends on heuristic synthesis'
+
+    return False, ''
 
 
 def orchestrate(question, user_id: str = 'default',
@@ -283,23 +340,81 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
         )
         return result
 
+    force_clarify, force_reason = _should_force_clarification(
+        question, selected, validation,
+    )
+    if force_clarify:
+        clarification = _build_kb_only_clarification(
+            question, validation=validation, selected=selected,
+        )
+        result = {
+            'system': '',
+            'user': question,
+            'synthesis': None,
+            'continuity': load_continuity(user_id=user_id, store=store),
+            'mode': mode,
+            'use_kb': True,
+            'action': 'ask-clarifying-question',
+            'retrieval_validation': validation,
+            'direct_response': clarification,
+            'clarifying_question': clarification,
+        }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=result['mode'], use_kb=result['use_kb'],
+            confidence=confidence, reason=force_reason,
+            validation=validation, selected=selected,
+        )
+        return result
+
     theme_name = (selected.get('selected_theme') or {}).get('name', '')
     voice_mode = choose_voice(question, theme=theme_name,
                               user_id=user_id, store=store) or 'default'
     if progress.get('recommended_voice_override'):
         voice_mode = progress['recommended_voice_override']
 
-    prompt = build_prompt(question, user_id=user_id, store=store,
-                          voice_mode=voice_mode, frame=selected,
-                          progress=progress)
-    if not can_render_strict(prompt.get('synthesis') or {}, mode=mode):
+    synthesis_data = synthesize(
+        question, user_id=user_id, store=store,
+        frame=selected, progress=progress,
+    )
+    force_clarify, force_reason = _should_force_clarification(
+        question, selected, validation, synthesis=synthesis_data,
+    )
+    if force_clarify:
         clarification = build_strict_clarification(
-            prompt.get('synthesis') or {}, mode=mode,
+            synthesis_data, mode=mode,
         )
         result = {
             'system': '',
             'user': question,
-            'synthesis': prompt.get('synthesis'),
+            'synthesis': synthesis_data,
+            'continuity': load_continuity(user_id=user_id, store=store),
+            'mode': mode,
+            'use_kb': True,
+            'action': 'ask-clarifying-question',
+            'retrieval_validation': validation,
+            'direct_response': clarification,
+            'clarifying_question': clarification,
+        }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=mode, use_kb=True,
+            confidence=confidence, reason=force_reason,
+            validation=validation, selected=selected,
+            synthesis=synthesis_data,
+        )
+        return result
+
+    prompt = build_prompt(question, user_id=user_id, store=store,
+                          voice_mode=voice_mode, frame=selected,
+                          progress=progress,
+                          precomputed_synthesis=synthesis_data)
+    if not can_render_strict(synthesis_data, mode=mode):
+        clarification = build_strict_clarification(
+            synthesis_data, mode=mode,
+        )
+        result = {
+            'system': '',
+            'user': question,
+            'synthesis': synthesis_data,
             'continuity': prompt.get('continuity'),
             'mode': mode,
             'use_kb': True,
@@ -312,7 +427,7 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
             action=result['action'], mode=mode, use_kb=True,
             confidence=confidence, reason='Strict renderer lacks DB-backed fields',
             validation=validation, selected=selected,
-            synthesis=prompt.get('synthesis'),
+            synthesis=synthesis_data,
         )
         return result
     prompt['mode'] = mode
@@ -324,7 +439,7 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
         action=prompt['action'], mode=mode, use_kb=True,
         confidence=confidence, reason='KB-backed response',
         validation=validation, selected=selected,
-        synthesis=prompt.get('synthesis'),
+        synthesis=synthesis_data,
     )
     return prompt
 
@@ -441,6 +556,34 @@ def _orchestrate_inner(question, user_id: str = 'default',
         )
         return result
 
+    force_clarify, force_reason = _should_force_clarification(
+        question, selected, validation,
+    )
+    if force_clarify:
+        clarification = _build_kb_only_clarification(
+            question, validation=validation, selected=selected,
+        )
+        result = {
+            'question': question,
+            'mode': mode,
+            'use_kb': True,
+            'confidence': confidence,
+            'action': 'ask-clarifying-question',
+            'reason': force_reason,
+            'selection': selected,
+            'response': clarification,
+            'direct_response': clarification,
+            'clarifying_question': clarification,
+            'continuity': continuity,
+            'retrieval_validation': validation,
+        }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=mode, use_kb=True,
+            confidence=confidence, reason=result['reason'],
+            validation=validation, selected=selected,
+        )
+        return result
+
     theme_name = (selected.get('selected_theme') or {}).get('name') or ''
     pattern_name = (selected.get('selected_pattern') or {}).get('name') or ''
     principle_name = (selected.get('selected_principle') or {}).get('name') or ''
@@ -516,6 +659,34 @@ def _orchestrate_inner(question, user_id: str = 'default',
         question, user_id=user_id, store=store,
         frame=selected, progress=progress,
     )
+    force_clarify, force_reason = _should_force_clarification(
+        question, selected, validation, synthesis=synthesis_data,
+    )
+    if force_clarify:
+        clarification = build_strict_clarification(
+            synthesis_data, mode=effective_mode,
+        )
+        result = {
+            'question': question,
+            'mode': mode,
+            'use_kb': True,
+            'confidence': confidence,
+            'action': 'ask-clarifying-question',
+            'reason': force_reason,
+            'selection': selected,
+            'response': clarification,
+            'direct_response': clarification,
+            'clarifying_question': clarification,
+            'continuity': continuity,
+            'retrieval_validation': validation,
+        }
+        result['decision_meta'] = _decision_meta(
+            action=result['action'], mode=mode, use_kb=True,
+            confidence=confidence, reason=result['reason'],
+            validation=validation, selected=selected,
+            synthesis=synthesis_data,
+        )
+        return result
     if not can_render_strict(synthesis_data, mode=effective_mode):
         clarification = build_strict_clarification(
             synthesis_data, mode=effective_mode,
