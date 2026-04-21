@@ -81,6 +81,13 @@ Restart Jordan + OpenClaw after `git pull`:
 sudo /usr/local/bin/restart-jordan-runtime
 ```
 
+If OpenClaw is installed as a user service, prefer running the helper without
+`sudo` so it can reach the user bus cleanly:
+
+```bash
+/usr/local/bin/restart-jordan-runtime
+```
+
 If your OpenClaw gateway is installed as a user service, the helper also tries
 to restart:
 
