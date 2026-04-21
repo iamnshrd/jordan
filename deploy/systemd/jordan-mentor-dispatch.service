@@ -5,11 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/jordan
-Environment=JORDAN_LOG_PATH=/opt/jordan/workspace/logs/jordan.jsonl
-ExecStart=/opt/jordan/deploy/systemd/run-mentor-dispatch.sh
-StandardOutput=append:/opt/jordan/workspace/logs/jordan.jsonl
-StandardError=append:/opt/jordan/workspace/logs/jordan.jsonl
+EnvironmentFile=-/etc/default/jordan
+ExecStart=/bin/bash -lc 'exec "${JORDAN_HOME:?set JORDAN_HOME in /etc/default/jordan}/deploy/systemd/run-mentor-dispatch.sh"'
 
 [Install]
 WantedBy=multi-user.target

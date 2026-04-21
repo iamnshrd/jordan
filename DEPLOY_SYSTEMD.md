@@ -2,15 +2,16 @@
 
 This repository now writes unified structured runtime logs to one canonical file:
 
-- `/opt/jordan/workspace/logs/jordan.jsonl`
+- `$JORDAN_HOME/workspace/logs/jordan.jsonl`
 
 Use this file as the primary artifact when copying logs off the server for
 analysis.
 
 ## Assumptions
 
-- repo is deployed at `/opt/jordan`
-- Python virtualenv lives at `/opt/jordan/.venv`
+- repo can live anywhere on disk
+- `JORDAN_HOME` points to that repo path
+- Python virtualenv lives at `$JORDAN_HOME/.venv`
 - OpenClaw is configured separately
 - Jordan mentor dispatch should run every 15 minutes
 
@@ -19,14 +20,22 @@ analysis.
 Copy the repo to the server and prepare the environment:
 
 ```bash
-cd /opt/jordan
+cd /path/to/jordan
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
 python3 -m library kb build
 python3 -m library kb doctor
 chmod +x deploy/systemd/run-mentor-dispatch.sh
-sudo mkdir -p /opt/jordan/workspace/logs
+sudo mkdir -p workspace/logs
+```
+
+Create an environment file that tells systemd where the repo lives:
+
+```bash
+sudo tee /etc/default/jordan >/dev/null <<'EOF'
+JORDAN_HOME=/path/to/jordan
+EOF
 ```
 
 Install the unit files:
@@ -68,7 +77,7 @@ python3 -m library state log-paths
 Tail the canonical log file:
 
 ```bash
-tail -f /opt/jordan/workspace/logs/jordan.jsonl
+tail -f "$JORDAN_HOME/workspace/logs/jordan.jsonl"
 ```
 
 ## SCP Workflow
@@ -76,7 +85,7 @@ tail -f /opt/jordan/workspace/logs/jordan.jsonl
 Copy the single canonical log file to your local machine:
 
 ```bash
-scp user@your-vps:/opt/jordan/workspace/logs/jordan.jsonl ./jordan.jsonl
+scp user@your-vps:$JORDAN_HOME/workspace/logs/jordan.jsonl ./jordan.jsonl
 ```
 
 Then send me `jordan.jsonl` or paste the relevant fragment.
