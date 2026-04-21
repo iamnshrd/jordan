@@ -43,6 +43,8 @@ Install the unit files:
 ```bash
 sudo cp deploy/systemd/jordan-mentor-dispatch.service /etc/systemd/system/
 sudo cp deploy/systemd/jordan-mentor-dispatch.timer /etc/systemd/system/
+sudo cp deploy/systemd/restart-jordan-runtime.sh /usr/local/bin/restart-jordan-runtime
+sudo chmod +x /usr/local/bin/restart-jordan-runtime
 sudo systemctl daemon-reload
 sudo systemctl enable --now jordan-mentor-dispatch.timer
 ```
@@ -60,6 +62,12 @@ Status:
 ```bash
 systemctl status jordan-mentor-dispatch.timer
 systemctl status jordan-mentor-dispatch.service
+```
+
+Restart Jordan + OpenClaw after `git pull`:
+
+```bash
+sudo /usr/local/bin/restart-jordan-runtime
 ```
 
 Recent journal output:

@@ -1,5 +1,6 @@
 .env
 .env.*
+jordan.jsonl
 openclaw.jordan.json
 .vendor/
 library/jordan_knowledge.db
