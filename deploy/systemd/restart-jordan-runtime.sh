@@ -31,6 +31,28 @@ restart_active_match() {
   return "$restarted"
 }
 
+restart_user_if_exists() {
+  local unit="$1"
+  if systemctl --user list-unit-files "$unit" --no-legend 2>/dev/null | grep -q "^$unit"; then
+    log "restarting user unit $unit"
+    systemctl --user restart "$unit"
+    return 0
+  fi
+  return 1
+}
+
+restart_user_active_match() {
+  local pattern="$1"
+  local restarted=0
+  while IFS= read -r unit; do
+    [ -n "$unit" ] || continue
+    log "restarting user unit $unit"
+    systemctl --user restart "$unit"
+    restarted=1
+  done < <(systemctl --user list-units --type=service --all --no-legend | awk '{print $1}' | grep -E "$pattern" || true)
+  return "$restarted"
+}
+
 main() {
   if [ -x "$JORDAN_HOME/deploy/systemd/configure-openclaw-logging.sh" ]; then
     log "configuring OpenClaw file logging"
@@ -49,6 +71,10 @@ main() {
     :
   elif restart_active_match '^openclaw.*\.service$'; then
     :
+  elif restart_user_if_exists "openclaw-gateway-jordan-peterson.service"; then
+    :
+  elif restart_user_active_match '^openclaw.*\.service$'; then
+    :
   else
     log "no OpenClaw service units found"
   fi
@@ -56,6 +82,7 @@ main() {
   log "status snapshot"
   systemctl --no-pager --full status jordan-mentor-dispatch.service || true
   systemctl --no-pager --full status jordan-mentor-dispatch.timer || true
+  systemctl --user --no-pager --full status openclaw-gateway-jordan-peterson.service || true
 }
 
 main "$@"

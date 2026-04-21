@@ -14,6 +14,7 @@ analysis.
 - `JORDAN_HOME` points to that repo path
 - Python virtualenv lives at `$JORDAN_HOME/.venv`
 - OpenClaw is configured separately
+- OpenClaw may be installed as a user service
 - Jordan mentor dispatch should run every 15 minutes
 
 ## Install
@@ -78,6 +79,13 @@ Restart Jordan + OpenClaw after `git pull`:
 
 ```bash
 sudo /usr/local/bin/restart-jordan-runtime
+```
+
+If your OpenClaw gateway is installed as a user service, the helper also tries
+to restart:
+
+```bash
+systemctl --user restart openclaw-gateway-jordan-peterson.service
 ```
 
 Recent journal output:
