@@ -17,8 +17,15 @@ def main() -> None:
         env = dict(os.environ)
         env['JORDAN_LOG_PATH'] = str(runtime_log)
 
-        proc = subprocess.run(
+        run_proc = subprocess.run(
             [sys.executable, '-m', 'library', 'run', 'Я застрял и не понимаю, с чего начать'],
+            cwd=REPO_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        prompt_proc = subprocess.run(
+            [sys.executable, '-m', 'library', 'prompt', 'Я застрял и не понимаю, с чего начать'],
             cwd=REPO_ROOT,
             env=env,
             capture_output=True,
@@ -39,19 +46,31 @@ def main() -> None:
         results = [
             {
                 'name': 'cli_run_succeeds',
-                'pass': proc.returncode == 0,
+                'pass': run_proc.returncode == 0,
+            },
+            {
+                'name': 'cli_prompt_succeeds',
+                'pass': prompt_proc.returncode == 0,
             },
             {
                 'name': 'runtime_log_created',
                 'pass': runtime_log.exists(),
             },
             {
-                'name': 'runtime_log_contains_trace_started',
-                'pass': any(row.get('event') == 'trace.started' for row in rows),
+                'name': 'runtime_log_contains_conversation_inbound',
+                'pass': any(row.get('event') == 'conversation.inbound' for row in rows),
             },
             {
-                'name': 'runtime_log_contains_orchestrator_resolution',
-                'pass': any(row.get('event') == 'orchestrator.decision_resolved' for row in rows),
+                'name': 'runtime_log_contains_conversation_outbound',
+                'pass': any(
+                    row.get('event') == 'conversation.outbound'
+                    and bool(row.get('response'))
+                    for row in rows
+                ),
+            },
+            {
+                'name': 'runtime_log_contains_prompt_prepared',
+                'pass': any(row.get('event') == 'conversation.prompt_prepared' for row in rows),
             },
         ]
         emit_report(results)

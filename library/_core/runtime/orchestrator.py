@@ -23,6 +23,66 @@ from library.utils import (
 )
 
 
+def _log_conversation_inbound(*, question: str, store, user_id: str,
+                              entrypoint: str) -> None:
+    log_event(
+        'conversation.inbound',
+        store=store,
+        user_id=user_id,
+        entrypoint=entrypoint,
+        question=question,
+        question_length=len(question or ''),
+    )
+
+
+def _log_conversation_outbound(*, question: str, result: dict, store,
+                               user_id: str, entrypoint: str) -> None:
+    envelope = coerce_envelope(result)
+    response_text = (
+        result.get('response')
+        or envelope.get('final_user_text')
+        or result.get('final_user_text', '')
+        or ''
+    )
+    log_event(
+        'conversation.outbound',
+        store=store,
+        user_id=user_id,
+        entrypoint=entrypoint,
+        question=question,
+        response=response_text,
+        response_length=len(response_text),
+        decision_type=envelope.get('decision_type', ''),
+        domain_status=envelope.get('domain_status', ''),
+        reason_code=envelope.get('reason_code', ''),
+        allow_model_call=bool(envelope.get('allow_model_call')),
+        assistant_id=result.get('assistant_id', ''),
+        knowledge_set_id=result.get('knowledge_set_id', ''),
+    )
+
+
+def _log_prompt_prepared(*, question: str, result: dict, store,
+                         user_id: str, entrypoint: str) -> None:
+    envelope = coerce_envelope(result)
+    log_event(
+        'conversation.prompt_prepared',
+        store=store,
+        user_id=user_id,
+        entrypoint=entrypoint,
+        question=question,
+        final_user_text=envelope.get('final_user_text', ''),
+        final_user_text_length=len(envelope.get('final_user_text', '') or ''),
+        system_length=len(result.get('system', '') or ''),
+        delivery_mode=(result.get('adapter_contract') or {}).get('delivery_mode', ''),
+        decision_type=envelope.get('decision_type', ''),
+        domain_status=envelope.get('domain_status', ''),
+        reason_code=envelope.get('reason_code', ''),
+        allow_model_call=bool(envelope.get('allow_model_call')),
+        assistant_id=result.get('assistant_id', ''),
+        knowledge_set_id=result.get('knowledge_set_id', ''),
+    )
+
+
 def _finalize_result(result: dict, *, trace_id: str, store, user_id: str,
                      entrypoint: str) -> dict:
     attach_adapter_contract(result)
@@ -50,6 +110,12 @@ def orchestrate(question, user_id: str = 'default',
     with ensure_trace_context(user_id=user_id, store=store,
                               purpose='response', question=question):
         trace_id = current_trace_id()
+        _log_conversation_inbound(
+            question=question,
+            store=store,
+            user_id=user_id,
+            entrypoint='orchestrate',
+        )
         log_event('orchestrator.started', store=store, user_id=user_id,
                   entrypoint='orchestrate')
         with timing_context() as timings:
@@ -62,6 +128,13 @@ def orchestrate(question, user_id: str = 'default',
             _finalize_result(
                 result,
                 trace_id=trace_id,
+                store=store,
+                user_id=user_id,
+                entrypoint='orchestrate',
+            )
+            _log_conversation_outbound(
+                question=question,
+                result=result,
                 store=store,
                 user_id=user_id,
                 entrypoint='orchestrate',
@@ -107,6 +180,12 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
     with ensure_trace_context(user_id=user_id, store=store,
                               purpose='prompt', question=question):
         trace_id = current_trace_id()
+        _log_conversation_inbound(
+            question=question,
+            store=store,
+            user_id=user_id,
+            entrypoint='orchestrate_for_llm',
+        )
         log_event('orchestrator.started', store=store, user_id=user_id,
                   entrypoint='orchestrate_for_llm')
         with traced_stage('orchestrator.plan', store=store, user_id=user_id):
@@ -130,6 +209,13 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
             user_id=user_id,
             entrypoint='orchestrate_for_llm',
         )
+        _log_prompt_prepared(
+            question=question,
+            result=result,
+            store=store,
+            user_id=user_id,
+            entrypoint='orchestrate_for_llm',
+        )
         log_event(
             'orchestrator.finished',
             store=store,
@@ -149,6 +235,18 @@ def orchestrate_for_adapter(question: str, user_id: str = 'default',
     """Return the only adapter-safe execution payload for a question."""
     prompt_result = orchestrate_for_llm(question, user_id=user_id, store=store)
     adapter_payload = build_adapter_payload(prompt_result)
+    log_event(
+        'conversation.adapter_payload',
+        store=store or get_default_store(),
+        user_id=canonical_user_id(user_id),
+        question=question or '',
+        message=adapter_payload.get('message', ''),
+        message_length=len(adapter_payload.get('message', '') or ''),
+        delivery_mode=adapter_payload.get('delivery_mode', ''),
+        decision_type=adapter_payload.get('decision_type', ''),
+        domain_status=adapter_payload.get('domain_status', ''),
+        reason_code=adapter_payload.get('reason_code', ''),
+    )
     log_event(
         'orchestrator.adapter_payload_built',
         store=store,
