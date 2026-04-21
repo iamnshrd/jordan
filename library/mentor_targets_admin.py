@@ -125,22 +125,3 @@ def onboarding_report() -> dict:
         'manual_review_users': [x for x in users if x.get('auto_onboard') == 'manual-review' and not x.get('enabled')],
         'users_with_state': [x for x in users if x.get('has_state')],
     }
-
-
-def legacy_default_report() -> dict:
-    root = WORKSPACE
-    legacy_files = []
-    for name in [
-        'mentor_state.json', 'mentor_events.jsonl', 'mentor_delays.json',
-        'continuity.json', 'continuity_summary.json', 'session_state.json',
-        'user_state.json', 'effectiveness_memory.json', 'progress_state.json',
-        'context_graph.json', 'user_reaction_estimate.json', 'commitments.json',
-        'session_checkpoints.jsonl',
-    ]:
-        p = root / name
-        if p.exists():
-            legacy_files.append(name)
-    return {
-        'legacy_default_files': legacy_files,
-        'count': len(legacy_files),
-    }

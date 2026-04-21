@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from _helpers import emit_report
-from library.mentor_targets_admin import normalize_targets, onboarding_report, legacy_default_report, upsert_target
+from library.mentor_targets_admin import normalize_targets, onboarding_report, upsert_target
 
 
 def main() -> None:
@@ -21,10 +21,9 @@ def main() -> None:
         'pass': 'total_users' in report and 'enabled_users' in report,
     })
 
-    legacy = legacy_default_report()
     results.append({
-        'name': 'legacy_report_returns_shape',
-        'pass': 'legacy_default_files' in legacy and 'count' in legacy,
+        'name': 'targets_report_still_available_after_cleanup',
+        'pass': 'manual_review_users' in report and 'users_with_state' in report,
     })
 
     emit_report(results)

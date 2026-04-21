@@ -17,8 +17,10 @@ Continuity is managed through `StateStore` and updated automatically during
 
 ## Storage
 
-The legacy local file path is `workspace/continuity.json`, but callers should
-interact through the store layer rather than the file directly.
+The preferred path for the default user is now `workspace/default/continuity.json`.
+The legacy root-level path `workspace/continuity.json` is still read as a
+fallback during the migration window, but callers should interact through the
+store layer rather than the file directly.
 
 For the main runtime flow, see
 [RUNTIME_WORKFLOW.md](/tmp/jordan/library/RUNTIME_WORKFLOW.md).

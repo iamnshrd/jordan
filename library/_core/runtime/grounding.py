@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from library._core.runtime.decision import attach_adapter_contract, envelope_from_plan
 from library.utils import current_trace_id
 
 
@@ -61,6 +62,8 @@ class GroundingDecision:
             'degradation_mode': self.degradation_mode,
             'backed_fields': list(self.backed_fields),
             'missing_fields': list(self.missing_fields),
+            'allow_answer': self.allow_answer,
+            'allow_llm_prompt': self.allow_llm_prompt,
         }
 
 
@@ -69,6 +72,8 @@ class GroundedAnswerPlan:
     question: str
     user_id: str
     decision: GroundingDecision
+    assistant_id: str = 'jordan'
+    knowledge_set_id: str = 'jordan-kb'
     purpose: str = 'response'
     selection: dict = field(default_factory=dict)
     continuity: dict = field(default_factory=dict)
@@ -103,7 +108,17 @@ class GroundedAnswerPlan:
     def reason(self) -> str:
         return self.decision.reason
 
+    @property
+    def final_user_text(self) -> str:
+        return self.direct_response or self.clarifying_question or ''
+
     def runtime_result(self, response: str = '') -> dict:
+        final_text = response or self.final_user_text
+        envelope = envelope_from_plan(
+            self,
+            trace_id=current_trace_id(),
+            final_user_text=final_text,
+        ).as_dict()
         result = {
             'question': self.question,
             'mode': self.mode,
@@ -117,21 +132,45 @@ class GroundedAnswerPlan:
             'reaction': self.reaction,
             'retrieval_validation': self.retrieval_validation,
             'guardrail': self.guardrail,
-            'response': response or self.direct_response or self.clarifying_question,
+            'response': final_text,
             'direct_response': self.direct_response,
             'clarifying_question': self.clarifying_question,
+            'final_user_text': final_text,
+            'allow_model_call': envelope['allow_model_call'],
+            'decision_type': envelope['decision_type'],
+            'assistant_id': envelope['assistant_id'],
+            'knowledge_set_id': self.knowledge_set_id,
+            'domain_status': envelope['domain_status'],
+            'reason_code': envelope['reason_code'],
+            'decision_envelope': envelope,
             'decision_meta': self.decision.as_dict(),
             'purpose': self.purpose,
             'trace_id': current_trace_id(),
         }
         if self.synthesis is not None:
             result['synthesis'] = self.synthesis
-        return result
+        return attach_adapter_contract(result)
 
     def prompt_result(self) -> dict:
-        return {
-            'system': self.system,
-            'user': self.user or self.question,
+        final_user_text = self.final_user_text
+        envelope = envelope_from_plan(
+            self,
+            trace_id=current_trace_id(),
+            final_user_text=final_user_text,
+        ).as_dict()
+        system = self.system
+        user = self.user or self.question
+        if not envelope['allow_model_call'] and final_user_text:
+            # If an adapter mistakenly sends this to a model instead of honoring
+            # the decision, bias it toward returning the already-approved text.
+            system = (
+                'POLICY DECISION. Do not answer the original user question. '
+                'Return exactly the provided Russian message and nothing else.'
+            )
+            user = final_user_text
+        return attach_adapter_contract({
+            'system': system,
+            'user': user,
             'synthesis': self.synthesis,
             'continuity': self.continuity,
             'mode': self.mode,
@@ -141,11 +180,19 @@ class GroundedAnswerPlan:
             'guardrail': self.guardrail,
             'direct_response': self.direct_response,
             'clarifying_question': self.clarifying_question,
+            'final_user_text': final_user_text,
+            'allow_model_call': envelope['allow_model_call'],
+            'decision_type': envelope['decision_type'],
+            'assistant_id': envelope['assistant_id'],
+            'knowledge_set_id': self.knowledge_set_id,
+            'domain_status': envelope['domain_status'],
+            'reason_code': envelope['reason_code'],
+            'decision_envelope': envelope,
             'retrieval_validation': self.retrieval_validation,
             'decision_meta': self.decision.as_dict(),
             'purpose': self.purpose,
             'trace_id': current_trace_id(),
-        }
+        })
 
 
 def missing_required_grounding(data: dict, mode: str = 'deep') -> list[str]:

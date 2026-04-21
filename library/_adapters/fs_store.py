@@ -1,8 +1,10 @@
 """Filesystem-backed StateStore implementation.
 
 Layout: ``{workspace}/{user_id}/{key}.json`` (or ``.jsonl`` for append-only
-keys).  When *user_id* is ``"default"`` the files live directly in
-``{workspace}/`` for backward compatibility with the pre-multi-tenant layout.
+keys). For ``user_id == "default"``, new writes go to
+``{workspace}/default/`` while reads still fall back to the legacy root-level
+``{workspace}/`` files for backward compatibility with the pre-multi-tenant
+layout.
 """
 from __future__ import annotations
 
@@ -17,6 +19,22 @@ from library.utils import current_trace_meta, now_iso
 log = logging.getLogger('jordan')
 
 _JSONL_KEYS = frozenset({'session_checkpoints', 'trace_events'})
+_LEGACY_DEFAULT_KEYS = (
+    'mentor_state',
+    'mentor_events',
+    'mentor_delays',
+    'continuity',
+    'continuity_summary',
+    'session_state',
+    'user_state',
+    'effectiveness_memory',
+    'progress_state',
+    'context_graph',
+    'user_reaction_estimate',
+    'commitments',
+    'session_checkpoints',
+    'trace_events',
+)
 
 
 class FileSystemStore:
@@ -30,12 +48,16 @@ class FileSystemStore:
 
     def _user_dir(self, user_id: str) -> Path:
         if user_id == 'default':
-            return self._ws
+            return self._ws / 'default'
         return self._ws / user_id
 
     def _path(self, user_id: str, key: str) -> Path:
         ext = '.jsonl' if key in _JSONL_KEYS else '.json'
         return self._user_dir(user_id) / (key + ext)
+
+    def _legacy_path(self, user_id: str, key: str) -> Path:
+        ext = '.jsonl' if key in _JSONL_KEYS else '.json'
+        return self._ws / (key + ext) if user_id == 'default' else self._path(user_id, key)
 
     def _lock_path(self, user_id: str, key: str) -> Path:
         return self._user_dir(user_id) / (key + '.lock')
@@ -53,6 +75,8 @@ class FileSystemStore:
     def get_json(self, user_id: str, key: str,
                  default: dict | None = None) -> dict:
         p = self._path(user_id, key)
+        if user_id == 'default' and not p.exists():
+            p = self._legacy_path(user_id, key)
         if not p.exists():
             return default if default is not None else {}
         try:
@@ -126,6 +150,8 @@ class FileSystemStore:
 
     def read_jsonl(self, user_id: str, key: str) -> list[dict]:
         p = self._user_dir(user_id) / (key + '.jsonl')
+        if user_id == 'default' and not p.exists():
+            p = self._legacy_path(user_id, key)
         if not p.exists():
             return []
         try:
@@ -148,3 +174,27 @@ class FileSystemStore:
                     rows.append(obj)
         self._jsonl_cache[cache_key] = (mtime, rows)
         return rows
+
+    def audit_default_workspace_migration(self) -> dict:
+        """Report legacy-vs-new file placement for the default user."""
+        legacy_files: list[str] = []
+        default_files: list[str] = []
+        default_dir = self._user_dir('default')
+
+        for key in _LEGACY_DEFAULT_KEYS:
+            ext = '.jsonl' if key in _JSONL_KEYS else '.json'
+            legacy_path = self._ws / (key + ext)
+            default_path = default_dir / (key + ext)
+            if legacy_path.exists():
+                legacy_files.append(legacy_path.name)
+            if default_path.exists():
+                default_files.append(str(default_path.relative_to(self._ws)))
+
+        return {
+            'default_dir': str(default_dir),
+            'legacy_root_files': sorted(legacy_files),
+            'default_user_files': sorted(default_files),
+            'legacy_root_count': len(legacy_files),
+            'default_user_count': len(default_files),
+            'migration_in_progress': bool(legacy_files),
+        }

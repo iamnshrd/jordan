@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from library._core.state_store import StateStore
 from library._core.runtime.orchestrator import (
-    orchestrate, orchestrate_for_llm,
+    orchestrate, orchestrate_diagnostics, orchestrate_for_adapter, orchestrate_for_llm,
     detect_mode, should_use_kb,
 )
 
@@ -34,3 +34,12 @@ class AgentRuntime:
 
     def handle_for_llm(self, question: str, user_id: str = 'default') -> dict:
         return orchestrate_for_llm(question, user_id=user_id, store=self.store)
+
+    def handle_for_adapter(self, question: str, user_id: str = 'default') -> dict:
+        return orchestrate_for_adapter(question, user_id=user_id, store=self.store)
+
+    def inspect(self, question: str, user_id: str = 'default',
+                purpose: str = 'prompt') -> dict:
+        return orchestrate_diagnostics(
+            question, user_id=user_id, store=self.store, purpose=purpose,
+        )

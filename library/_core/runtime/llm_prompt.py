@@ -5,29 +5,29 @@ prompt and user context so the response is grounded in KB evidence.
 """
 from __future__ import annotations
 
-from pathlib import Path
 from library.config import get_default_store
+from library._core.registry import get_assistant
 from library._core.state_store import StateStore
 from library.utils import ensure_trace_context, log_event, traced_stage
 
 
-_PERSONA_CACHE: str | None = None
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_PERSONA_CACHE: dict[str, str] = {}
 
 
-def _load_persona() -> str:
-    """Load IDENTITY.md + SOUL.md as the base persona."""
-    global _PERSONA_CACHE
-    if _PERSONA_CACHE is not None:
-        return _PERSONA_CACHE
+def _load_persona(assistant_id: str = 'jordan') -> str:
+    """Load the persona files bound to the configured assistant."""
+    if assistant_id in _PERSONA_CACHE:
+        return _PERSONA_CACHE[assistant_id]
 
+    assistant = get_assistant(assistant_id)
     parts: list[str] = []
-    for fname in ('IDENTITY.md', 'SOUL.md'):
-        path = _PROJECT_ROOT / fname
+    for raw_path in assistant.persona_paths:
+        from pathlib import Path
+        path = Path(raw_path)
         if path.exists():
             parts.append(path.read_text(encoding='utf-8').strip())
-    _PERSONA_CACHE = '\n\n'.join(parts) if parts else ''
-    return _PERSONA_CACHE
+    _PERSONA_CACHE[assistant_id] = '\n\n'.join(parts) if parts else ''
+    return _PERSONA_CACHE[assistant_id]
 
 
 def _format_evidence(chunks: list[dict], max_chunks: int = 5) -> str:
@@ -138,8 +138,10 @@ def build_prompt(question: str, user_id: str = 'default',
                   voice_mode=voice_mode)
         with traced_stage('runtime.prompt_build', store=store, user_id=user_id):
             if plan is None:
-                from library._core.runtime.planner import build_answer_plan
-                plan = build_answer_plan(question, user_id=user_id, store=store, purpose='prompt')
+                from library._core.runtime.orchestrator import build_runtime_plan
+                plan = build_runtime_plan(
+                    question, user_id=user_id, store=store, purpose='prompt',
+                )
             if not plan.decision.allow_llm_prompt:
                 result = plan.prompt_result()
                 log_event(
@@ -172,7 +174,7 @@ def build_prompt(question: str, user_id: str = 'default',
     pattern_sel = raw.get('selected_pattern')
     pattern_name = pattern_sel.get('name', '') if isinstance(pattern_sel, dict) else ''
 
-    persona = _load_persona()
+    persona = _load_persona(getattr(plan, 'assistant_id', 'jordan'))
 
     system_parts: list[str] = []
 
@@ -283,6 +285,8 @@ def build_prompt(question: str, user_id: str = 'default',
     plan.synthesis = data
     plan.continuity = continuity
     result = plan.prompt_result()
+    result['allow_model_call'] = True
+    result['final_user_text'] = result.get('final_user_text', '')
     log_event(
         'prompt.completed',
         store=store,

@@ -8,7 +8,7 @@ safe direct-summary class.
 from __future__ import annotations
 
 from library._core.mentor.render import render_event
-from library._core.runtime.planner import build_answer_plan
+from library._core.runtime.orchestrator import build_runtime_plan
 from library._core.state_store import KEY_MENTOR_EVENTS, StateStore
 from library.config import canonical_user_id, get_default_store
 from library.utils import (
@@ -169,7 +169,7 @@ def prepare_delivery(evaluation: dict, *, user_id: str = 'default',
 
         canonical_question = _build_canonical_question(intent)
         with traced_stage('mentor.delivery.plan', store=store, user_id=user_id):
-            plan = build_answer_plan(
+            plan = build_runtime_plan(
                 canonical_question,
                 user_id=user_id,
                 store=store,

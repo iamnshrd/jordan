@@ -1,0 +1,4 @@
+# Jordan runtime is almost entirely stdlib-based.
+# This optional dependency improves Russian lemmatization for KB extraction
+# and retrieval; without it the project falls back to heuristic stemming.
+pymorphy3>=2.0,<3.0

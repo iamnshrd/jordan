@@ -204,8 +204,10 @@ def respond(question, mode: str | None = None, voice='default',
         log_event('respond.entry', store=store, user_id=user_id,
                   requested_mode=mode or '', voice_mode=voice)
         if plan is None:
-            from library._core.runtime.planner import build_answer_plan
-            plan = build_answer_plan(question, user_id=user_id, store=store, purpose='response')
+            from library._core.runtime.orchestrator import build_runtime_plan
+            plan = build_runtime_plan(
+                question, user_id=user_id, store=store, purpose='response',
+            )
             setattr(plan, 'store', store)
             return render_plan(plan, mode=mode, voice_mode=voice)
 

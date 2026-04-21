@@ -16,10 +16,11 @@ class DefaultFrameSelector:
         self._store = store
 
     def select(self, question: str, user_id: str = 'default') -> dict:
-        from library._core.runtime.planner import build_answer_plan
-        plan = build_answer_plan(question, user_id=user_id,
-                                 store=self._store, purpose='prompt')
-        return plan.selection
+        from library._core.runtime.orchestrator import orchestrate_diagnostics
+        result = orchestrate_diagnostics(
+            question, user_id=user_id, store=self._store, purpose='prompt',
+        )
+        return result.get('selection', {})
 
 
 class DefaultSynthesizer:
@@ -29,10 +30,11 @@ class DefaultSynthesizer:
         self._store = store
 
     def synthesize(self, question: str, user_id: str = 'default') -> dict:
-        from library._core.runtime.planner import build_answer_plan
-        plan = build_answer_plan(question, user_id=user_id,
-                                 store=self._store, purpose='prompt')
-        return plan.synthesis or {}
+        from library._core.runtime.orchestrator import orchestrate_diagnostics
+        result = orchestrate_diagnostics(
+            question, user_id=user_id, store=self._store, purpose='prompt',
+        )
+        return result.get('synthesis') or {}
 
 
 class DefaultRenderer:

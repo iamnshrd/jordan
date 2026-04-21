@@ -2,6 +2,11 @@
 from __future__ import annotations
 
 from library._core.runtime.llm_prompt import build_prompt
+from library._core.runtime.decision import (
+    attach_adapter_contract,
+    build_adapter_payload,
+    coerce_envelope,
+)
 from library._core.runtime.planner import (
     build_answer_plan,
     detect_mode,
@@ -16,6 +21,25 @@ from library.utils import (
     current_trace_id, ensure_trace_context, log_event,
     timing_context, traced_stage,
 )
+
+
+def _finalize_result(result: dict, *, trace_id: str, store, user_id: str,
+                     entrypoint: str) -> dict:
+    attach_adapter_contract(result)
+    result['trace_id'] = trace_id
+    envelope = coerce_envelope(result)
+    log_event(
+        'orchestrator.decision_resolved',
+        store=store,
+        user_id=user_id,
+        entrypoint=entrypoint,
+        decision_type=envelope.get('decision_type', ''),
+        domain_status=envelope.get('domain_status', ''),
+        reason_code=envelope.get('reason_code', ''),
+        allow_model_call=bool(envelope.get('allow_model_call')),
+        final_user_text_present=bool(envelope.get('final_user_text')),
+    )
+    return result
 
 
 def orchestrate(question, user_id: str = 'default',
@@ -35,17 +59,44 @@ def orchestrate(question, user_id: str = 'default',
                 )
             response = render_plan(plan)
             result = plan.runtime_result(response=response)
+            _finalize_result(
+                result,
+                trace_id=trace_id,
+                store=store,
+                user_id=user_id,
+                entrypoint='orchestrate',
+            )
         log_event(
             'orchestrator.finished',
             store=store,
             user_id=user_id,
             action=result.get('action', ''),
             response_length=len(result.get('response', '') or ''),
+            decision_type=result.get('decision_type', ''),
+            domain_status=result.get('domain_status', ''),
+            reason_code=result.get('reason_code', ''),
+            allow_model_call=result.get('allow_model_call', False),
             timings=timings,
         )
     result['_timings'] = timings
-    result['trace_id'] = trace_id
     return result
+
+
+def build_runtime_plan(question: str, *, user_id: str = 'default',
+                       store: StateStore | None = None,
+                       purpose: str = 'prompt',
+                       record_user_reply: bool = True):
+    """Build the canonical runtime plan for internal runtime modules."""
+    question = question or ''
+    user_id = canonical_user_id(user_id)
+    store = store or get_default_store()
+    return build_answer_plan(
+        question,
+        user_id=user_id,
+        store=store,
+        purpose=purpose,
+        record_user_reply=record_user_reply,
+    )
 
 
 def orchestrate_for_llm(question: str, user_id: str = 'default',
@@ -59,7 +110,7 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
         log_event('orchestrator.started', store=store, user_id=user_id,
                   entrypoint='orchestrate_for_llm')
         with traced_stage('orchestrator.plan', store=store, user_id=user_id):
-            plan = build_answer_plan(
+            plan = build_runtime_plan(
                 question, user_id=user_id, store=store, purpose='prompt',
             )
         if plan.decision.allow_llm_prompt:
@@ -72,12 +123,78 @@ def orchestrate_for_llm(question: str, user_id: str = 'default',
             )
         else:
             result = plan.prompt_result()
+        _finalize_result(
+            result,
+            trace_id=trace_id,
+            store=store,
+            user_id=user_id,
+            entrypoint='orchestrate_for_llm',
+        )
         log_event(
             'orchestrator.finished',
             store=store,
             user_id=user_id,
             action=result.get('action', ''),
             system_length=len(result.get('system', '') or ''),
+            decision_type=result.get('decision_type', ''),
+            domain_status=result.get('domain_status', ''),
+            reason_code=result.get('reason_code', ''),
+            allow_model_call=result.get('allow_model_call', False),
         )
-    result['trace_id'] = trace_id
     return result
+
+
+def orchestrate_for_adapter(question: str, user_id: str = 'default',
+                            store: StateStore | None = None) -> dict:
+    """Return the only adapter-safe execution payload for a question."""
+    prompt_result = orchestrate_for_llm(question, user_id=user_id, store=store)
+    adapter_payload = build_adapter_payload(prompt_result)
+    log_event(
+        'orchestrator.adapter_payload_built',
+        store=store,
+        user_id=canonical_user_id(user_id),
+        delivery_mode=adapter_payload.get('delivery_mode', ''),
+        decision_type=adapter_payload.get('decision_type', ''),
+        domain_status=adapter_payload.get('domain_status', ''),
+        reason_code=adapter_payload.get('reason_code', ''),
+    )
+    return adapter_payload
+
+
+def orchestrate_diagnostics(question: str, *, user_id: str = 'default',
+                            store: StateStore | None = None,
+                            purpose: str = 'prompt') -> dict:
+    """Return safe diagnostic data derived from the canonical plan."""
+    question = question or ''
+    user_id = canonical_user_id(user_id)
+    store = store or get_default_store()
+    with ensure_trace_context(user_id=user_id, store=store,
+                              purpose=f'diagnostic:{purpose}', question=question):
+        trace_id = current_trace_id()
+        log_event('orchestrator.started', store=store, user_id=user_id,
+                  entrypoint='orchestrate_diagnostics')
+        with traced_stage('orchestrator.plan', store=store, user_id=user_id):
+            plan = build_runtime_plan(
+                question, user_id=user_id, store=store, purpose=purpose,
+            )
+        result = {
+            'question': question,
+            'assistant_id': plan.assistant_id,
+            'knowledge_set_id': plan.knowledge_set_id,
+            'selection': plan.selection,
+            'bundle': (plan.selection or {}).get('bundle', {}),
+            'synthesis': plan.synthesis,
+            'decision': plan.decision.as_dict(),
+            'guardrail': plan.guardrail,
+            'trace_id': trace_id,
+        }
+        log_event(
+            'orchestrator.finished',
+            store=store,
+            user_id=user_id,
+            entrypoint='orchestrate_diagnostics',
+            action=plan.action,
+            assistant_id=plan.assistant_id,
+            knowledge_set_id=plan.knowledge_set_id,
+        )
+        return result

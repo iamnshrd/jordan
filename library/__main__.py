@@ -41,14 +41,23 @@ def cmd_prompt(args):
             'action': result.get('action', ''),
             'mode': result.get('mode', ''),
             'voice_mode': result.get('voice_mode', ''),
+            'decision_type': result.get('decision_type', ''),
+            'assistant_id': result.get('assistant_id', ''),
+            'knowledge_set_id': result.get('knowledge_set_id', ''),
+            'domain_status': result.get('domain_status', ''),
+            'reason_code': result.get('reason_code', ''),
+            'allow_model_call': result.get('allow_model_call', False),
+            'final_user_text': result.get('final_user_text', ''),
+            'adapter_contract': result.get('adapter_contract', {}),
+            'decision_envelope': result.get('decision_envelope', {}),
             'trace_id': result.get('trace_id', ''),
         }, ensure_ascii=False, indent=2))
 
 
 def cmd_frame(args):
-    from library._core.runtime.planner import build_answer_plan
-    plan = build_answer_plan(args.question, user_id=args.user_id, purpose='prompt')
-    print(json.dumps(plan.selection, ensure_ascii=False, indent=2))
+    from library._core.runtime.orchestrator import orchestrate_diagnostics
+    result = orchestrate_diagnostics(args.question, user_id=args.user_id, purpose='prompt')
+    print(json.dumps(result.get('selection', {}), ensure_ascii=False, indent=2))
 
 
 def cmd_respond(args):
@@ -58,9 +67,9 @@ def cmd_respond(args):
 
 
 def cmd_retrieve(args):
-    from library._core.runtime.planner import build_answer_plan
-    plan = build_answer_plan(args.question, user_id=args.user_id, purpose='prompt')
-    bundle = (plan.selection or {}).get('bundle', {})
+    from library._core.runtime.orchestrator import orchestrate_diagnostics
+    result = orchestrate_diagnostics(args.question, user_id=args.user_id, purpose='prompt')
+    bundle = result.get('bundle', {})
     print(json.dumps(bundle, ensure_ascii=False, indent=2))
 
 
@@ -176,10 +185,7 @@ def cmd_mentor(args):
         from library._core.mentor.render import render_event
         result = evaluate(args.question or '', user_id=args.user_id)
         if args.render:
-            rendered = render_event(
-                result.get('selected_event') or {},
-                unsafe_allow_prompt=True,
-            )
+            rendered = render_event(result.get('selected_event') or {})
             print(rendered)
         else:
             print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -220,9 +226,6 @@ def cmd_mentor(args):
     elif action == 'targets-report':
         from library.mentor_targets_admin import onboarding_report
         print(json.dumps(onboarding_report(), ensure_ascii=False, indent=2))
-    elif action == 'legacy-report':
-        from library.mentor_targets_admin import legacy_default_report
-        print(json.dumps(legacy_default_report(), ensure_ascii=False, indent=2))
     else:
         print(f'Unknown mentor action: {action}', file=sys.stderr)
         sys.exit(1)
@@ -262,6 +265,21 @@ def cmd_trace(args):
     if args.limit:
         rows = rows[-args.limit:] if not args.reverse else rows[:args.limit]
     print(json.dumps(rows, ensure_ascii=False, indent=2))
+
+
+def cmd_state(args):
+    from library.config import get_default_store
+
+    store = get_default_store()
+    if args.state_action == 'audit-default-workspace':
+        print(json.dumps(
+            store.audit_default_workspace_migration(),
+            ensure_ascii=False,
+            indent=2,
+        ))
+    else:
+        print(f'Unknown state action: {args.state_action}', file=sys.stderr)
+        sys.exit(1)
 
 
 def build_parser():
@@ -339,8 +357,12 @@ def build_parser():
     p_trace.add_argument('--reverse', action='store_true')
     p_trace.set_defaults(func=cmd_trace)
 
+    p_state = sub.add_parser('state', help='Inspect workspace state layout')
+    p_state.add_argument('state_action', choices=['audit-default-workspace'])
+    p_state.set_defaults(func=cmd_state)
+
     p_mentor = sub.add_parser('mentor', help='Mentor follow-up triggers')
-    p_mentor.add_argument('mentor_action', choices=['check', 'tick', 'sent', 'reply', 'set-mode', 'targets-list', 'targets-enable', 'targets-disable', 'targets-add', 'targets-remove', 'targets-report', 'legacy-report'])
+    p_mentor.add_argument('mentor_action', choices=['check', 'tick', 'sent', 'reply', 'set-mode', 'targets-list', 'targets-enable', 'targets-disable', 'targets-add', 'targets-remove', 'targets-report'])
     p_mentor.add_argument('--question', default='')
     p_mentor.add_argument('--render', action='store_true', help='Render only the selected follow-up message')
     p_mentor.add_argument('--send', action='store_true', help='Record the selected mentor event as sent')

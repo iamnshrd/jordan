@@ -9,6 +9,8 @@ workspace/MEMORY.md
 __pycache__/
 **/__pycache__/
 *.pyc
+.DS_Store
+**/.DS_Store
 library/tmp/
 library/texts/
 library/ingest_report.json
@@ -22,6 +24,7 @@ library/runtime_audit_report_after_fix.json
 library/runtime_audit_report_after_fix2.json
 library/runtime_audit_report_after_fix3.json
 library/runtime_audit_report_after_fix4.json
+library/runtime_audit_report_after_fix5.json
 library/runtime_regression_report.json
 library/voice_regression_report.json
 workspace/continuity_summary.json

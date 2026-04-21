@@ -7,8 +7,17 @@ from _helpers import run_suite
 def main() -> None:
     run_suite([
         'run_adaptive_guardrail_regression.py',
+        'run_adapter_boundary_regression.py',
+        'run_assistant_boundary_regression.py',
+        'run_default_workspace_audit_regression.py',
+        'run_default_workspace_migration_regression.py',
+        'run_diagnostics_boundary_regression.py',
         'run_domain_guardrail_escalation_regression.py',
         'run_domain_guardrail_regression.py',
+        'run_decision_contract_regression.py',
+        'run_legacy_cleanup_regression.py',
+        'run_planner_api_cleanup_regression.py',
+        'run_policy_scope_regression.py',
         'run_guardrail_tone_regression.py',
     ], 'guardrail')
 
