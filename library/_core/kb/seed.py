@@ -9,6 +9,10 @@ SOURCE_ROUTE_ROWS = [
     ('12-rules', 'basic-discipline', 10, 'best first stabilization source'),
     ('beyond-order', 'career-vocation', 10, 'best mature vocation source'),
     ('beyond-order', 'relationship-maintenance', 10, 'best romance maintenance source'),
+    ('master-relationships', 'relationship-maintenance', 10, 'best live relationship conflict and repair source'),
+    ('romantic-relationship', 'relationship-maintenance', 9, 'best pair-bond and mismatch source'),
+    ('would-you-love-the-same-man', 'relationship-maintenance', 8, 'strong attraction and desire source'),
+    ('evolution-sex-and-desire-david-buss-ep-235', 'relationship-maintenance', 6, 'theory support for desire and mating dynamics'),
     ('maps-of-meaning', 'mythic-meaning-collapse', 10, 'best deep collapse source'),
     ('maps-of-meaning', 'chaos-unknown', 9, 'best symbolic chaos source'),
     ('academy-between-order-chaos', 'career-vocation', 10, 'best planning and vision source'),
@@ -43,7 +47,7 @@ NEXT_STEPS = [
 QUOTE_PACKS = [
     ('career-pack', 'career-vocation', 'academy-between-order-chaos,beyond-order,academy-desire-discipline,12-rules', 'discipline-quote,principle-quote', 'manual v3 seed'),
     ('shame-pack', 'shame-self-contempt', '12-rules,academy-faith-tragedy,maps-of-meaning', 'shame-quote,principle-quote', 'manual v3 seed'),
-    ('relationship-pack', 'relationship-maintenance', 'beyond-order,academy-walled-garden,academy-higher-vision,12-rules', 'relationship-quote,resentment-quote', 'manual v3 seed'),
+    ('relationship-pack', 'relationship-maintenance', 'master-relationships,romantic-relationship,would-you-love-the-same-man,beyond-order,academy-walled-garden,academy-higher-vision,evolution-sex-and-desire-david-buss-ep-235,12-rules', 'relationship-quote,resentment-quote', 'manual v3 transcript expansion'),
 ]
 
 ARCHETYPE_INTERVENTIONS = [
@@ -149,6 +153,10 @@ CONFIDENCE_STEPS = ['one-duty', 'one-repair-act', 'one-hard-conversation']
 SOURCE_ROUTE_UPSERT = [
     ('12-rules', 'career-vocation', 6, 'secondary support for vocation'),
     ('12-rules', 'relationship-maintenance', 7, 'truth/boundary backup source'),
+    ('master-relationships', 'relationship-maintenance', 10, 'live dialogue support for relationship questions'),
+    ('romantic-relationship', 'relationship-maintenance', 9, 'relationship mismatch and pair-bond support'),
+    ('would-you-love-the-same-man', 'relationship-maintenance', 8, 'desire and attraction support'),
+    ('evolution-sex-and-desire-david-buss-ep-235', 'relationship-maintenance', 6, 'sexual strategy support'),
     ('12-rules', 'mythic-meaning-collapse', 3, 'weak symbolic source'),
     ('beyond-order', 'shame-self-contempt', 5, 'secondary shame integration source'),
     ('beyond-order', 'mythic-meaning-collapse', 6, 'secondary symbolic source'),

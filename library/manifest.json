@@ -49,6 +49,31 @@
       "source_pdf": "articles/Peterson Academy — How to Plan Your Life — 6. A Higher Vision.srt",
       "text_path": "texts/peterson-academy-how-to-plan-your-life-6-a-higher-vision.txt",
       "status": "chunked"
+    },
+    {
+      "source_pdf": "articles/master-relationships.txt",
+      "text_path": "texts/Master Relationships.txt",
+      "status": "chunked"
+    },
+    {
+      "source_pdf": "articles/romantic-relationship.txt",
+      "text_path": "texts/romantic relationship.txt",
+      "status": "chunked"
+    },
+    {
+      "source_pdf": "articles/would-you-love-the-same-man.txt",
+      "text_path": "texts/Would You Love the Same Man.txt",
+      "status": "chunked"
+    },
+    {
+      "source_pdf": "articles/evolution-sex-and-desire-david-buss-ep-235.txt",
+      "text_path": "texts/Evolution, Sex & Desire  David Buss  EP 235.txt",
+      "status": "chunked"
+    },
+    {
+      "source_pdf": "articles/w-lex.txt",
+      "text_path": "texts/w_lex.txt",
+      "status": "chunked"
     }
   ]
 }

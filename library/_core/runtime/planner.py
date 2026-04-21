@@ -6,6 +6,7 @@ import logging
 from library._core.mentor.checkins import record_reply
 from library._core.mentor.commitments import maybe_resolve_from_reply
 from library._core.registry import get_default_assistant
+from library._core.runtime.clarify_human import build_clarification
 from library._core.runtime.grounding import (
     GroundedAnswerPlan, GroundingDecision,
     build_strict_clarification, can_render_strict,
@@ -181,7 +182,8 @@ def _build_decision(*,
                     reason: str = '',
                     validation: dict | None = None,
                     selected: dict | None = None,
-                    synthesis: dict | None = None) -> GroundingDecision:
+                    synthesis: dict | None = None,
+                    metadata: dict | None = None) -> GroundingDecision:
     selected = selected or {}
     bundle = selected.get('bundle', {}) if isinstance(selected, dict) else {}
     route_name = selected.get('route_name') or 'general'
@@ -207,7 +209,26 @@ def _build_decision(*,
         degradation_mode=degradation_mode,
         backed_fields=list(grounding.get('backed_fields', [])),
         missing_fields=list(grounding.get('missing_fields', [])),
+        metadata=dict(metadata or {}),
     )
+
+
+def _select_clarification(question: str, *,
+                          selected: dict | None = None,
+                          validation: dict | None = None,
+                          fallback_text: str = '',
+                          stage: str = '') -> tuple[str, dict]:
+    clarification = build_clarification(
+        question,
+        selected=selected,
+        fallback_text=fallback_text,
+    )
+    metadata = dict(clarification.metadata or {})
+    if stage:
+        metadata['clarify_stage'] = stage
+    if validation is not None:
+        metadata.setdefault('clarify_avg_relevance', validation.get('avg_relevance'))
+    return clarification.text, metadata
 
 
 def build_answer_plan(question: str, user_id: str = 'default',
@@ -270,13 +291,18 @@ def build_answer_plan(question: str, user_id: str = 'default',
             )
 
         if not should_use_kb(question):
-            clarification = _build_kb_only_clarification(question)
+            clarification, clarify_metadata = _select_clarification(
+                question,
+                fallback_text=_build_kb_only_clarification(question),
+                stage='kb_rejected',
+            )
             decision = _build_decision(
                 action='ask-clarifying-question',
                 mode=mode,
                 use_kb=True,
                 confidence='low',
                 reason='Question is too underspecified for KB grounding.',
+                metadata=clarify_metadata,
             )
             log_event(
                 'planner.kb_rejected',
@@ -284,6 +310,8 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 user_id=user_id,
                 action=decision.action,
                 reason=decision.reason,
+                clarify_type=clarify_metadata.get('clarify_type', ''),
+                clarify_profile=clarify_metadata.get('clarify_profile', ''),
             )
             return GroundedAnswerPlan(
                 question=question,
@@ -307,13 +335,18 @@ def build_answer_plan(question: str, user_id: str = 'default',
         except Exception as exc:
             log.exception('select_frame failed: %s', exc)
             reason = f'KB retrieval error: {exc}'
-            clarification = _build_kb_only_clarification(question, reason=reason)
+            clarification, clarify_metadata = _select_clarification(
+                question,
+                fallback_text=_build_kb_only_clarification(question, reason=reason),
+                stage='frame_failed',
+            )
             decision = _build_decision(
                 action='ask-clarifying-question',
                 mode=mode,
                 use_kb=True,
                 confidence='low',
                 reason=reason,
+                metadata=clarify_metadata,
             )
             log_event(
                 'planner.frame_failed',
@@ -323,6 +356,8 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 action=decision.action,
                 reason=decision.reason,
                 error=str(exc),
+                clarify_type=clarify_metadata.get('clarify_type', ''),
+                clarify_profile=clarify_metadata.get('clarify_profile', ''),
             )
             return GroundedAnswerPlan(
                 question=question,
@@ -346,8 +381,14 @@ def build_answer_plan(question: str, user_id: str = 'default',
         )
 
         if confidence == 'low' or (not validation['valid'] and confidence != 'high'):
-            clarification = _build_kb_only_clarification(
-                question, validation=validation, selected=selected,
+            clarification, clarify_metadata = _select_clarification(
+                question,
+                selected=selected,
+                validation=validation,
+                fallback_text=_build_kb_only_clarification(
+                    question, validation=validation, selected=selected,
+                ),
+                stage='pre_synthesis',
             )
             reason = (
                 'KB route is weak or retrieval relevance is low '
@@ -362,6 +403,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 reason=reason,
                 validation=validation,
                 selected=selected,
+                metadata=clarify_metadata,
             )
             log_event(
                 'planner.clarified_pre_synthesis',
@@ -370,6 +412,8 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 action=decision.action,
                 reason=decision.reason,
                 avg_relevance=validation.get('avg_relevance'),
+                clarify_type=clarify_metadata.get('clarify_type', ''),
+                clarify_profile=clarify_metadata.get('clarify_profile', ''),
             )
             return GroundedAnswerPlan(
                 question=question,
@@ -392,8 +436,14 @@ def build_answer_plan(question: str, user_id: str = 'default',
             question, selected, validation,
         )
         if force_clarify:
-            clarification = _build_kb_only_clarification(
-                question, validation=validation, selected=selected,
+            clarification, clarify_metadata = _select_clarification(
+                question,
+                selected=selected,
+                validation=validation,
+                fallback_text=_build_kb_only_clarification(
+                    question, validation=validation, selected=selected,
+                ),
+                stage='pre_synthesis_gate',
             )
             decision = _build_decision(
                 action='ask-clarifying-question',
@@ -403,6 +453,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 reason=force_reason,
                 validation=validation,
                 selected=selected,
+                metadata=clarify_metadata,
             )
             log_event(
                 'planner.clarified_by_gate',
@@ -412,6 +463,8 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 reason=decision.reason,
                 route_name=selected.get('route_name') or 'general',
                 avg_relevance=validation.get('avg_relevance'),
+                clarify_type=clarify_metadata.get('clarify_type', ''),
+                clarify_profile=clarify_metadata.get('clarify_profile', ''),
             )
             return GroundedAnswerPlan(
                 question=question,
@@ -455,7 +508,13 @@ def build_answer_plan(question: str, user_id: str = 'default',
             question, selected, validation, synthesis=synthesis_data,
         )
         if force_clarify:
-            clarification = build_strict_clarification(synthesis_data, mode=mode)
+            clarification, clarify_metadata = _select_clarification(
+                question,
+                selected=selected,
+                validation=validation,
+                fallback_text=build_strict_clarification(synthesis_data, mode=mode),
+                stage='post_synthesis_gate',
+            )
             decision = _build_decision(
                 action='ask-clarifying-question',
                 mode=mode,
@@ -465,6 +524,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 validation=validation,
                 selected=selected,
                 synthesis=synthesis_data,
+                metadata=clarify_metadata,
             )
             log_event(
                 'planner.clarified_post_synthesis',
@@ -474,6 +534,8 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 reason=decision.reason,
                 backed_fields=decision.backed_fields,
                 missing_fields=decision.missing_fields,
+                clarify_type=clarify_metadata.get('clarify_type', ''),
+                clarify_profile=clarify_metadata.get('clarify_profile', ''),
             )
             return GroundedAnswerPlan(
                 question=question,
@@ -495,7 +557,13 @@ def build_answer_plan(question: str, user_id: str = 'default',
             )
 
         if not can_render_strict(synthesis_data, mode=mode):
-            clarification = build_strict_clarification(synthesis_data, mode=mode)
+            clarification, clarify_metadata = _select_clarification(
+                question,
+                selected=selected,
+                validation=validation,
+                fallback_text=build_strict_clarification(synthesis_data, mode=mode),
+                stage='strict_render',
+            )
             decision = _build_decision(
                 action='ask-clarifying-question',
                 mode=mode,
@@ -505,6 +573,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 validation=validation,
                 selected=selected,
                 synthesis=synthesis_data,
+                metadata=clarify_metadata,
             )
             log_event(
                 'planner.strict_render_blocked',
@@ -513,6 +582,8 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 action=decision.action,
                 reason=decision.reason,
                 missing_fields=decision.missing_fields,
+                clarify_type=clarify_metadata.get('clarify_type', ''),
+                clarify_profile=clarify_metadata.get('clarify_profile', ''),
             )
             return GroundedAnswerPlan(
                 question=question,

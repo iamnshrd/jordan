@@ -39,6 +39,7 @@ class GroundingDecision:
     degradation_mode: str = 'none'
     backed_fields: list[str] = field(default_factory=list)
     missing_fields: list[str] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
 
     @property
     def allow_answer(self) -> bool:
@@ -62,6 +63,7 @@ class GroundingDecision:
             'degradation_mode': self.degradation_mode,
             'backed_fields': list(self.backed_fields),
             'missing_fields': list(self.missing_fields),
+            'metadata': dict(self.metadata),
             'allow_answer': self.allow_answer,
             'allow_llm_prompt': self.allow_llm_prompt,
         }

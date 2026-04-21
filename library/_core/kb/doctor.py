@@ -47,8 +47,15 @@ def _manifest_report() -> dict:
 def doctor() -> dict:
     """Return KB health report with manifest, DB and FTS status."""
     manifest = _manifest_report()
+    from library._core.kb.voice_patterns import TARGET_SOURCE_NAMES
     with connect() as conn:
         cur = conn.cursor()
+        transcript_voice_documents = cur.execute(
+            'SELECT COUNT(*) FROM documents WHERE source_pdf IN ({})'.format(
+                ', '.join('?' for _ in TARGET_SOURCE_NAMES)
+            ),
+            tuple(f'articles/{name}.txt' for name in sorted(TARGET_SOURCE_NAMES)),
+        ).fetchone()[0]
         counts = {
             'documents': cur.execute('SELECT COUNT(*) FROM documents').fetchone()[0],
             'chunks': cur.execute('SELECT COUNT(*) FROM document_chunks').fetchone()[0],
@@ -66,10 +73,12 @@ def doctor() -> dict:
             'definitions': cur.execute('SELECT COUNT(*) FROM definitions').fetchone()[0],
             'claims': cur.execute('SELECT COUNT(*) FROM claims').fetchone()[0],
             'practices': cur.execute('SELECT COUNT(*) FROM practices').fetchone()[0],
+            'voice_patterns': cur.execute('SELECT COUNT(*) FROM voice_patterns').fetchone()[0],
             'objections': cur.execute('SELECT COUNT(*) FROM objections').fetchone()[0],
             'chapter_summaries': cur.execute('SELECT COUNT(*) FROM chapter_summaries').fetchone()[0],
             'bridges': cur.execute('SELECT COUNT(*) FROM bridge_to_action_templates').fetchone()[0],
             'next_steps': cur.execute('SELECT COUNT(*) FROM next_step_library').fetchone()[0],
+            'transcript_voice_documents': transcript_voice_documents,
         }
 
         fts_ok = True
@@ -89,6 +98,8 @@ def doctor() -> dict:
         issues.append('db-empty-documents')
     if counts['active_chunks'] == 0:
         issues.append('db-empty-chunks')
+    if counts['transcript_voice_documents'] > 0 and counts['voice_patterns'] == 0:
+        issues.append('voice-patterns-empty')
     if not fts_ok:
         issues.append('fts-unavailable')
 

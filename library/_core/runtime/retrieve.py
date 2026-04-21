@@ -33,6 +33,26 @@ _INTENT_SOURCE_SHORTLISTS: list[tuple[list[str], list[str]]] = [
         ],
     ),
     (
+        [
+            'отношен', 'жена', 'муж', 'брак', 'секс', 'сексуал',
+            'интим', 'близост', 'желание', 'не дает', 'не даёт',
+            'не хочет секса', 'не хочет меня', 'отверж', 'измен',
+            'ревност', 'wife', 'husband', 'marriage', 'sex',
+            'sexual', 'intimacy', 'desire', 'rejection', 'betrayal',
+        ],
+        [
+            'master-relationships',
+            'romantic-relationship',
+            'would-you-love-the-same-man',
+            'beyond-order',
+            'academy-walled-garden',
+            'academy-higher-vision',
+            'evolution-sex-and-desire-david-buss-ep-235',
+            '12-rules',
+            'maps-of-meaning',
+        ],
+    ),
+    (
         ['правд', 'точн', 'жалоб', 'разговор', 'complaint', 'narrat', 'truth'],
         [
             'academy-walled-garden',
@@ -752,7 +772,13 @@ def search_quotes_by_keywords(cur, question, selected_names, selected_texts,
                              'не могу начать', 'отклады']):
         route_quote_types = ['discipline-quote', 'principle-quote']
     elif any(x in q for x in ['отношен', 'жена', 'муж', 'партнер', 'конфликт',
-                               'ребен', 'дет', 'воспит', 'родител', 'тирана']):
+                               'ребен', 'дет', 'воспит', 'родител', 'тирана',
+                               'секс', 'сексуал', 'интим', 'близост',
+                               'желание', 'не дает', 'не даёт',
+                               'не хочет секса', 'не хочет меня', 'отверж',
+                               'измен', 'ревност', 'wife', 'husband',
+                               'marriage', 'sexual', 'sex', 'intimacy',
+                               'desire', 'rejection', 'betrayal']):
         route_quote_types = ['relationship-quote', 'resentment-quote',
                              'principle-quote']
     elif any(x in q for x in ['карьер', 'призвание', 'vocation', 'профес',

@@ -88,5 +88,50 @@
     "failure_modes": ["can become too aspirational when the user needs local order first"],
     "tone_bias": "elevated",
     "depth_level": 3
+  },
+  "master-relationships": {
+    "best_for": ["relationship-maintenance", "resentment", "shame-self-contempt"],
+    "worst_for": ["basic-discipline"],
+    "primary_routes": ["relationship-maintenance"],
+    "secondary_routes": ["resentment", "shame-self-contempt", "self-deception"],
+    "failure_modes": ["can skew toward conflict repair when the user needs broader existential framing"],
+    "tone_bias": "conversational-relational",
+    "depth_level": 2
+  },
+  "romantic-relationship": {
+    "best_for": ["relationship-maintenance"],
+    "worst_for": ["basic-discipline"],
+    "primary_routes": ["relationship-maintenance"],
+    "secondary_routes": ["resentment", "self-deception"],
+    "failure_modes": ["can overfocus on pair-bond dynamics when the user needs direct action structure"],
+    "tone_bias": "relational",
+    "depth_level": 2
+  },
+  "would-you-love-the-same-man": {
+    "best_for": ["relationship-maintenance"],
+    "worst_for": ["basic-discipline"],
+    "primary_routes": ["relationship-maintenance"],
+    "secondary_routes": ["resentment"],
+    "failure_modes": ["can tilt toward attraction theory when the user needs conflict repair"],
+    "tone_bias": "exploratory-relational",
+    "depth_level": 2
+  },
+  "evolution-sex-and-desire-david-buss-ep-235": {
+    "best_for": ["relationship-maintenance"],
+    "worst_for": ["basic-discipline"],
+    "primary_routes": [],
+    "secondary_routes": ["relationship-maintenance", "self-deception"],
+    "failure_modes": ["can become too explanatory and theory-heavy when the user needs a precise moral frame"],
+    "tone_bias": "theoretical",
+    "depth_level": 2
+  },
+  "w-lex": {
+    "best_for": ["self-deception", "career-vocation"],
+    "worst_for": ["basic-discipline"],
+    "primary_routes": [],
+    "secondary_routes": ["self-deception", "career-vocation", "relationship-maintenance"],
+    "failure_modes": ["can become too essayistic when the user needs immediate clarification"],
+    "tone_bias": "essayistic-live",
+    "depth_level": 3
   }
 }

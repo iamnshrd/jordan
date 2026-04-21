@@ -12,6 +12,7 @@ Version 3 -> 4: quotes classification columns
 Version 4 -> 5: cases taxonomy columns + section_title on chunks + evidence weight
 Version 8 -> 9: document revisions + active revision pointers
 Version 10 -> 11: structured knowledge + canonical concepts
+Version 11 -> 12: transcript-derived voice patterns
 """
 from __future__ import annotations
 
@@ -530,6 +531,40 @@ def _migrate_v11_structured_knowledge(conn):
     conn.commit()
 
 
+_V12_VOICE_PATTERNS_SQL = '''
+CREATE TABLE IF NOT EXISTS voice_patterns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_name TEXT NOT NULL,
+  document_id INTEGER,
+  chunk_id INTEGER,
+  pattern_type TEXT NOT NULL,
+  theme_name TEXT,
+  profile_hint TEXT,
+  move_name TEXT NOT NULL,
+  pattern_text TEXT NOT NULL,
+  evidence_excerpt TEXT NOT NULL,
+  tags_json TEXT DEFAULT '[]',
+  score INTEGER DEFAULT 0,
+  note TEXT,
+  FOREIGN KEY(document_id) REFERENCES documents(id),
+  FOREIGN KEY(chunk_id) REFERENCES document_chunks(id),
+  UNIQUE(chunk_id, move_name, profile_hint, pattern_text)
+);
+CREATE INDEX IF NOT EXISTS idx_voice_patterns_source
+  ON voice_patterns(source_name);
+CREATE INDEX IF NOT EXISTS idx_voice_patterns_profile
+  ON voice_patterns(profile_hint);
+CREATE INDEX IF NOT EXISTS idx_voice_patterns_move
+  ON voice_patterns(move_name);
+''';
+
+
+def _migrate_v12_voice_patterns(conn):
+    """Add transcript-derived voice pattern storage."""
+    conn.cursor().executescript(_V12_VOICE_PATTERNS_SQL)
+    conn.commit()
+
+
 MIGRATIONS: list[tuple[int, callable]] = [
     (1, _migrate_base),
     (2, _migrate_v3),
@@ -542,6 +577,7 @@ MIGRATIONS: list[tuple[int, callable]] = [
     (9, _migrate_v9_document_revisions),
     (10, _migrate_v10_intervention_source_doc),
     (11, _migrate_v11_structured_knowledge),
+    (12, _migrate_v12_voice_patterns),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0]

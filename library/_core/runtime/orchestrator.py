@@ -37,6 +37,7 @@ def _log_conversation_inbound(*, question: str, store, user_id: str,
 def _log_conversation_outbound(*, question: str, result: dict, store,
                                user_id: str, entrypoint: str) -> None:
     envelope = coerce_envelope(result)
+    metadata = envelope.get('metadata') or {}
     response_text = (
         result.get('response')
         or envelope.get('final_user_text')
@@ -56,12 +57,16 @@ def _log_conversation_outbound(*, question: str, result: dict, store,
         allow_model_call=bool(envelope.get('allow_model_call')),
         assistant_id=result.get('assistant_id', ''),
         knowledge_set_id=result.get('knowledge_set_id', ''),
+        clarify_type=metadata.get('clarify_type', ''),
+        clarify_theme=metadata.get('clarify_theme', ''),
+        clarify_profile=metadata.get('clarify_profile', ''),
     )
 
 
 def _log_prompt_prepared(*, question: str, result: dict, store,
                          user_id: str, entrypoint: str) -> None:
     envelope = coerce_envelope(result)
+    metadata = envelope.get('metadata') or {}
     audit_event(
         'conversation.prompt_prepared',
         user_id=user_id,
@@ -77,6 +82,9 @@ def _log_prompt_prepared(*, question: str, result: dict, store,
         allow_model_call=bool(envelope.get('allow_model_call')),
         assistant_id=result.get('assistant_id', ''),
         knowledge_set_id=result.get('knowledge_set_id', ''),
+        clarify_type=metadata.get('clarify_type', ''),
+        clarify_theme=metadata.get('clarify_theme', ''),
+        clarify_profile=metadata.get('clarify_profile', ''),
     )
 
 
@@ -85,6 +93,7 @@ def _finalize_result(result: dict, *, trace_id: str, store, user_id: str,
     attach_adapter_contract(result)
     result['trace_id'] = trace_id
     envelope = coerce_envelope(result)
+    metadata = envelope.get('metadata') or {}
     log_event(
         'orchestrator.decision_resolved',
         store=store,
@@ -95,6 +104,9 @@ def _finalize_result(result: dict, *, trace_id: str, store, user_id: str,
         reason_code=envelope.get('reason_code', ''),
         allow_model_call=bool(envelope.get('allow_model_call')),
         final_user_text_present=bool(envelope.get('final_user_text')),
+        clarify_type=metadata.get('clarify_type', ''),
+        clarify_theme=metadata.get('clarify_theme', ''),
+        clarify_profile=metadata.get('clarify_profile', ''),
     )
     return result
 

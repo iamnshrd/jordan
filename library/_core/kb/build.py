@@ -43,6 +43,14 @@ def normalize_source_text(text: str) -> str:
         if not line:
             filtered.append('')
             continue
+        line = re.sub(r'^>>\s*', '', line)
+        line = re.sub(r'^\d{1,4}\s+', '', line)
+        line = re.sub(r'^\d{1,3}:\d{2}(?::\d{2})?\s+', '', line)
+        line = re.sub(r'\b\d{1,3}:\d{2}(?::\d{2})?\b', ' ', line)
+        line = re.sub(r'\s+', ' ', line).strip()
+        if not line:
+            filtered.append('')
+            continue
         if line.startswith(('Источник:', 'Название:', 'Тип:', 'Примечание:')):
             continue
         if re.fullmatch(r'\d+', line):
@@ -450,6 +458,10 @@ def _run_enrichment_pipeline():
         seed_v3, seed_v3_links, seed_v3_motifs, seed_v3_quality,
         seed_v3_runtime_links, seed_v3_steps, seed_quote_pack_items,
     )
+    from library._core.kb.voice_patterns import (
+        load_voice_patterns,
+        summarize_voice_patterns,
+    )
 
     return {
         'canonical_concepts': import_canonical_concepts(),
@@ -460,6 +472,8 @@ def _run_enrichment_pipeline():
         'quotes_extract': extract_quotes(),
         'quotes_normalize': normalize_quotes(),
         'quotes_load': load_quotes(),
+        'voice_patterns': load_voice_patterns(),
+        'voice_pattern_summary': summarize_voice_patterns(limit=6),
         'concepts': {
             'beyond_order': import_beyond_order(),
             'maps_of_meaning': import_maps_of_meaning(),
@@ -698,6 +712,9 @@ def build(force: bool = False, allow_partial: bool = False,
                 ).fetchone()[0],
                 'practices': cur.execute(
                     'SELECT COUNT(*) FROM practices'
+                ).fetchone()[0],
+                'voice_patterns': cur.execute(
+                    'SELECT COUNT(*) FROM voice_patterns'
                 ).fetchone()[0],
                 'objections': cur.execute(
                     'SELECT COUNT(*) FROM objections'

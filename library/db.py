@@ -30,6 +30,7 @@ ALLOWED_TABLES = frozenset({
     'canonical_concept_sources',
     'definitions', 'claims', 'practices',
     'objections', 'chapter_summaries',
+    'voice_patterns',
 })
 
 

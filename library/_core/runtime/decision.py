@@ -67,6 +67,7 @@ def envelope_from_plan(plan, *, trace_id: str = '',
             getattr(plan, 'clarifying_question', '') or ''
         )
 
+    decision_metadata = dict(getattr(decision, 'metadata', {}) or {})
     metadata = {
         'mode': getattr(plan, 'mode', ''),
         'confidence': getattr(plan, 'confidence', ''),
@@ -80,6 +81,9 @@ def envelope_from_plan(plan, *, trace_id: str = '',
         'guardrail_kind': guardrail.get('kind', ''),
         'guardrail_source': guardrail.get('policy_source', ''),
     }
+    metadata.update(decision_metadata)
+
+    reason_code = guardrail.get('kind') or decision_metadata.get('clarify_reason_code') or action
 
     return DecisionEnvelope(
         decision_type=infer_decision_type(
@@ -94,7 +98,7 @@ def envelope_from_plan(plan, *, trace_id: str = '',
         action=action,
         reason=getattr(plan, 'reason', '') or '',
         domain_status=guardrail.get('domain_status') or 'in_domain',
-        reason_code=guardrail.get('kind') or action,
+        reason_code=reason_code,
         allow_model_call=allow_model_call,
         allow_retrieval=bool(getattr(plan, 'use_kb', False)),
         final_user_text=final_user_text,

@@ -8,6 +8,16 @@ import sys
 from _helpers import REPO_ROOT, emit_report
 
 
+def _parse_payload(stdout: str) -> dict:
+    lines = [line for line in stdout.splitlines() if line.strip()]
+    for candidate in reversed(lines):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+    return {}
+
+
 def _run_adapter(question: str, user_id: str) -> tuple[int, dict, str]:
     proc = subprocess.run(
         [
@@ -24,10 +34,7 @@ def _run_adapter(question: str, user_id: str) -> tuple[int, dict, str]:
         capture_output=True,
         text=True,
     )
-    payload = {}
-    if proc.stdout.strip():
-        payload = json.loads(proc.stdout)
-    return proc.returncode, payload, proc.stderr.strip()
+    return proc.returncode, _parse_payload(proc.stdout), proc.stderr.strip()
 
 
 def main() -> None:

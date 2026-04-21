@@ -26,6 +26,7 @@ from library.config import canonical_user_id
 def _build_adapter_cli_result(payload: dict) -> dict:
     envelope = payload.get('decision_envelope') or {}
     adapter_contract = payload.get('adapter_contract') or {}
+    decision_metadata = envelope.get('metadata') or {}
     delivery_mode = payload.get('delivery_mode') or adapter_contract.get('delivery_mode', '')
     final_user_text = payload.get('final_user_text') or payload.get('message', '') or ''
     result = {
@@ -41,6 +42,7 @@ def _build_adapter_cli_result(payload: dict) -> dict:
         'allow_model_call': bool(payload.get('delivery_mode') == 'model' or envelope.get('allow_model_call')),
         'delivery_mode': delivery_mode,
         'final_user_text': final_user_text,
+        'decision_metadata': decision_metadata,
     }
     if result['allow_model_call']:
         result['model_prompt'] = {
@@ -109,6 +111,9 @@ def cmd_adapter(args):
         delivery_mode=result.get('delivery_mode', ''),
         final_user_text=result.get('final_user_text', ''),
         trace_id=result.get('trace_id', ''),
+        clarify_type=(result.get('decision_metadata') or {}).get('clarify_type', ''),
+        clarify_theme=(result.get('decision_metadata') or {}).get('clarify_theme', ''),
+        clarify_profile=(result.get('decision_metadata') or {}).get('clarify_profile', ''),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
 

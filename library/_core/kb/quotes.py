@@ -48,9 +48,14 @@ FALLBACK_QUOTE_KEYWORDS = [
     'meaning', 'purpose', 'vision', 'goal', 'ideal', 'responsibility',
     'truth', 'lie', 'order', 'chaos', 'discipline', 'schedule', 'plan',
     'relationship', 'resentment', 'gratitude', 'courage', 'children',
+    'wife', 'husband', 'marriage', 'married', 'romance', 'partner',
+    'love', 'betray', 'boundary', 'boundaries', 'intimacy', 'sexual',
+    'sex', 'desire', 'rejection', 'conflict',
     'смысл', 'цель', 'идеал', 'ответствен', 'правд', 'лож', 'поряд',
     'хаос', 'дисциплин', 'расписан', 'план', 'отношен', 'обид',
     'благодар', 'мужеств', 'дет', 'границ', 'добросовест',
+    'секс', 'сексуал', 'интим', 'близост', 'желание', 'влечен',
+    'отверж', 'измен', 'любов', 'конфликт',
 ]
 
 FALLBACK_MODAL_PATTERNS = [
@@ -59,11 +64,47 @@ FALLBACK_MODAL_PATTERNS = [
     r'\b(?:нужно|надо|следует|должен|можете|попробуй|сделай|определи)\b',
 ]
 
+COMPACT_QUOTE_KEYWORDS = [
+    'relationship', 'wife', 'husband', 'marriage', 'partner', 'romance',
+    'love', 'boundary', 'boundaries', 'resentment', 'betray', 'truth',
+    'intimacy', 'sexual', 'sex', 'desire', 'rejection', 'gratitude',
+    'humility', 'отношен', 'жена', 'муж', 'границ', 'обид', 'любов',
+    'секс', 'сексуал', 'интим', 'желани', 'отверж', 'правд',
+]
+
+COMPACT_QUOTE_PATTERNS = FALLBACK_MODAL_PATTERNS + [
+    r"\byou don't\b",
+    r'\bremember\b',
+    r'\bthat means\b',
+    r'\bthe goal should be\b',
+]
+
 
 def _clean(text):
     text = re.sub(r'\s+', ' ', text).strip()
     text = re.sub(r'\.{2,}', '.', text)
     return text
+
+
+def _looks_compact_but_strong_quote(text: str) -> bool:
+    """Allow short aphoristic lines when they carry clear Jordan-like force."""
+    lower = (text or '').lower()
+    keyword_hits = sum(1 for kw in COMPACT_QUOTE_KEYWORDS if kw in lower)
+    pattern_hits = sum(
+        1 for pat in COMPACT_QUOTE_PATTERNS if re.search(pat, lower)
+    )
+    if not (40 <= len(text) <= 140):
+        return False
+    return keyword_hits >= 1 and pattern_hits >= 1
+
+
+def _has_strong_quote_signals(text: str) -> bool:
+    lower = (text or '').lower()
+    keyword_hits = sum(1 for kw in COMPACT_QUOTE_KEYWORDS if kw in lower)
+    pattern_hits = sum(
+        1 for pat in COMPACT_QUOTE_PATTERNS if re.search(pat, lower)
+    )
+    return keyword_hits + (pattern_hits * 2) >= 3
 
 
 def _match_norm(text):
@@ -150,8 +191,18 @@ def _classify_quote(text):
         return ('discipline-quote', 'order-and-chaos', 'clean-up-what-is-in-front-of-you', 'avoidance-loop')
     if 'не позволяйте детям' in lower or 'do not let your children' in lower:
         return ('relationship-quote', 'responsibility', None, None)
+    if ('обида' in lower or 'горечь' in lower or 'resentment' in lower
+            or 'betray' in lower or 'betrayal' in lower):
+        return ('resentment-quote', 'resentment', None, 'resentment-loop')
     if ('relationship' in lower or 'romance' in lower or 'границ' in lower
-            or 'children' in lower or 'partner' in lower or 'партнер' in lower):
+            or 'children' in lower or 'partner' in lower or 'партнер' in lower
+            or 'wife' in lower or 'husband' in lower or 'marriage' in lower
+            or 'married' in lower or 'intimacy' in lower
+            or 'sexual' in lower or 'sex' in lower or 'desire' in lower
+            or 'rejection' in lower or 'boundary' in lower
+            or 'love' in lower or 'отношен' in lower or 'секс' in lower
+            or 'сексуал' in lower or 'интим' in lower or 'близост' in lower
+            or 'желани' in lower or 'отверж' in lower or 'любов' in lower):
         return ('relationship-quote', 'responsibility', 'tell-the-truth-or-at-least-dont-lie', 'resentment-loop')
     if 'убери' in lower or 'комнат' in lower or 'порядок у себя дома' in lower or 'наведите идеальный порядок у себя дома' in lower or 'clean your room' in lower or 'perfect order in your house' in lower:
         return ('discipline-quote', 'order-and-chaos', 'clean-up-what-is-in-front-of-you', 'avoidance-loop')
@@ -159,8 +210,6 @@ def _classify_quote(text):
         return ('shame-quote', 'suffering', None, 'avoidance-loop')
     if 'gratitude' in lower or 'thankful' in lower or 'благодар' in lower:
         return ('shame-quote', 'suffering', 'tell-the-truth-or-at-least-dont-lie', 'avoidance-loop')
-    if 'обида' in lower or 'горечь' in lower or 'resentment' in lower:
-        return ('resentment-quote', 'resentment', None, 'resentment-loop')
     return ('general-quote', None, None, None)
 
 
@@ -168,7 +217,8 @@ def _keep_quote(item):
     from library.utils import get_threshold
     text = _clean(item.get('quote_text', ''))
     lowered = text.lower()
-    if len(text) < get_threshold('quote_min_length', 60):
+    if (len(text) < get_threshold('quote_min_length', 60)
+            and not _looks_compact_but_strong_quote(text)):
         return False
     if any(b in lowered for b in BAD_SNIPPETS):
         return False
@@ -187,7 +237,8 @@ def _keep_quote(item):
     if text.count(':') >= get_threshold('quote_max_colons', 3):
         return False
     min_periods_len = get_threshold('quote_min_periods_for_long', 180)
-    if text.count('.') <= 0 and len(text) > min_periods_len:
+    if (text.count('.') <= 0 and len(text) > min_periods_len
+            and not _has_strong_quote_signals(text)):
         return False
     if any(x in lowered for x in ['rule i', 'rule ii', 'rule iii', 'rule iv', 'rule v', 'rule vi', 'rule vii', 'rule viii', 'rule ix', 'rule x', 'rule xi', 'rule xii']):
         return False
@@ -205,7 +256,11 @@ def _keep_quote(item):
         'meaningful', 'смысл', 'цель', 'идеал', 'ответствен',
         'responsibility', 'burden', 'schedule', 'расписан', 'discipline',
         'дисциплин', 'relationship', 'romance', 'отношен', 'границ',
-        'gratitude', 'thankful', 'благодар',
+        'gratitude', 'thankful', 'благодар', 'wife', 'husband',
+        'marriage', 'partner', 'love', 'betray', 'boundary',
+        'intimacy', 'sexual', 'sex', 'desire', 'rejection',
+        'секс', 'сексуал', 'интим', 'близост', 'желани', 'отверж',
+        'любов', 'конфликт',
     ]):
         return False
     return True
@@ -214,6 +269,41 @@ def _keep_quote(item):
 def _split_candidate_sentences(text):
     parts = re.split(r'(?<=[.!?])\s+', _clean(text))
     return [p.strip(' "\'«»') for p in parts if p.strip()]
+
+
+def _snippet_around_signal(text: str, max_chars: int = 220) -> str:
+    """Trim long transcript-style sentences around the first strong signal."""
+    text = _clean(text)
+    if len(text) <= max_chars:
+        return text
+
+    lower = text.lower()
+    matches: list[tuple[int, int]] = []
+    for keyword in COMPACT_QUOTE_KEYWORDS + FALLBACK_QUOTE_KEYWORDS:
+        pos = lower.find(keyword)
+        if pos >= 0:
+            matches.append((pos, pos + len(keyword)))
+    for pattern in COMPACT_QUOTE_PATTERNS:
+        hit = re.search(pattern, lower)
+        if hit:
+            matches.append((hit.start(), hit.end()))
+
+    if not matches:
+        return text
+
+    start, end = min(matches, key=lambda item: item[0])
+    window_start = max(0, start - 80)
+    window_end = min(len(text), window_start + max_chars)
+    if end > window_end:
+        window_end = min(len(text), end + 60)
+        window_start = max(0, window_end - max_chars)
+    snippet = text[window_start:window_end].strip(' "\'')
+
+    if window_start > 0 and ' ' in snippet:
+        snippet = snippet.split(' ', 1)[1]
+    if window_end < len(text) and ' ' in snippet:
+        snippet = snippet.rsplit(' ', 1)[0]
+    return snippet.strip(' "\'')
 
 
 def _fallback_quote_score(sentence):
@@ -252,7 +342,9 @@ def _build_fallback_quotes(rows, existing_by_doc, existing_quote_texts,
         if document_id not in docs_needed:
             continue
         for sentence in _split_candidate_sentences(content):
-            if len(sentence) < 60 or len(sentence) > 240:
+            sentence = _snippet_around_signal(sentence)
+            if ((len(sentence) < 60 and not _looks_compact_but_strong_quote(sentence))
+                    or len(sentence) > 240):
                 continue
             if any(bad in sentence.lower() for bad in BAD_SNIPPETS):
                 continue
@@ -330,7 +422,7 @@ def extract_quotes():
                         end = min(len(text), m.end() + 220)
                         if any(_spans_overlap(start, end, s, e) for s, e in used_spans):
                             continue
-                        snippet = text[start:end].strip()
+                        snippet = _snippet_around_signal(text[start:end]).strip()
                         used_spans.append((start, end))
                         out.append({
                             'document_id': document_id,

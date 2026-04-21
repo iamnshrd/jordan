@@ -90,6 +90,8 @@ RUNTIME_REGRESSION_REPORT = ROOT / 'runtime_regression_report.json'
 VOICE_REGRESSION_CASES = ROOT / 'voice_regression_cases.json'
 VOICE_REGRESSION_REPORT = ROOT / 'voice_regression_report.json'
 RUNTIME_AUDIT_REPORT = ROOT / 'runtime_audit_report.json'
+VOICE_EXCERPT_CANDIDATES = ROOT / 'voice_excerpt_candidates.json'
+CLARIFY_VOICE_PATTERNS = ROOT / 'clarify_voice_patterns.json'
 
 # --- Document source hints (document_id -> friendly name) ---
 _DOC_SOURCE_HINTS_STATIC = {
