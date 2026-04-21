@@ -29,6 +29,7 @@ python -m library kb doctor
 - [library/README_KB.md](/tmp/jordan/library/README_KB.md) — canonical KB and CLI reference
 - [library/RUNTIME_WORKFLOW.md](/tmp/jordan/library/RUNTIME_WORKFLOW.md) — runtime pipeline overview
 - [library/README.md](/tmp/jordan/library/README.md) — source material layout
+- [DEPLOY_SYSTEMD.md](/tmp/jordan/DEPLOY_SYSTEMD.md) — VPS/systemd deploy and unified log workflow
 
 ## Notes
 

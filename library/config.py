@@ -9,12 +9,21 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import os
 import re
 
 ROOT = Path(__file__).resolve().parent            # library/
 PROJECT = ROOT.parent                             # jordan/
 WORKSPACE = PROJECT / 'workspace'
+LOGS_DIR = WORKSPACE / 'logs'
 VENDOR = PROJECT / '.vendor'
+
+_runtime_log_override = (os.environ.get('JORDAN_LOG_PATH') or '').strip()
+RUNTIME_LOG = (
+    Path(_runtime_log_override).expanduser()
+    if _runtime_log_override
+    else LOGS_DIR / 'jordan.jsonl'
+)
 
 # --- SQLite knowledge base ---
 DB_PATH = ROOT / 'jordan_knowledge.db'

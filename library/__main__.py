@@ -268,7 +268,7 @@ def cmd_trace(args):
 
 
 def cmd_state(args):
-    from library.config import get_default_store
+    from library.config import RUNTIME_LOG, get_default_store
 
     store = get_default_store()
     if args.state_action == 'audit-default-workspace':
@@ -277,6 +277,10 @@ def cmd_state(args):
             ensure_ascii=False,
             indent=2,
         ))
+    elif args.state_action == 'log-paths':
+        print(json.dumps({
+            'runtime_log': str(RUNTIME_LOG),
+        }, ensure_ascii=False, indent=2))
     else:
         print(f'Unknown state action: {args.state_action}', file=sys.stderr)
         sys.exit(1)
@@ -358,7 +362,7 @@ def build_parser():
     p_trace.set_defaults(func=cmd_trace)
 
     p_state = sub.add_parser('state', help='Inspect workspace state layout')
-    p_state.add_argument('state_action', choices=['audit-default-workspace'])
+    p_state.add_argument('state_action', choices=['audit-default-workspace', 'log-paths'])
     p_state.set_defaults(func=cmd_state)
 
     p_mentor = sub.add_parser('mentor', help='Mentor follow-up triggers')

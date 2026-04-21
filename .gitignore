@@ -36,11 +36,13 @@ workspace/session_state.json
 workspace/user_reaction_estimate.json
 workspace/user_state.json
 workspace/.openclaw/
+workspace/logs/
 library/books/
 workspace/mentor_state.json
 workspace/mentor_events.jsonl
 workspace/mentor_delays.json
 workspace/mentor_targets.json
+workspace/default/
 workspace/telegram:*/
 workspace/audit:db-grounding/
 workspace/audit:*/

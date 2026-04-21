@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Jordan mentor dispatch every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Unit=jordan-mentor-dispatch.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

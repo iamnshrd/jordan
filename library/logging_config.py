@@ -12,6 +12,8 @@ import logging
 import sys
 from datetime import datetime, timezone
 
+from library.config import RUNTIME_LOG
+
 _STANDARD_RECORD_KEYS = frozenset({
     'name', 'msg', 'args', 'levelname', 'levelno', 'pathname', 'filename',
     'module', 'exc_info', 'exc_text', 'stack_info', 'lineno', 'funcName',
@@ -49,11 +51,19 @@ class JsonFormatter(logging.Formatter):
 
 
 def setup(level: int = logging.INFO):
-    """Configure the ``jordan`` root logger with JSON output to stderr."""
+    """Configure the ``jordan`` root logger with JSON output to stderr + file."""
     root = logging.getLogger('jordan')
     if root.handlers:
         return
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(JsonFormatter())
-    root.addHandler(handler)
+    formatter = JsonFormatter()
+
+    stream_handler = logging.StreamHandler(sys.stderr)
+    stream_handler.setFormatter(formatter)
+    root.addHandler(stream_handler)
+
+    RUNTIME_LOG.parent.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(RUNTIME_LOG, encoding='utf-8')
+    file_handler.setFormatter(formatter)
+    root.addHandler(file_handler)
+
     root.setLevel(level)

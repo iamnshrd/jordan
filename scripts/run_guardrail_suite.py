@@ -19,6 +19,7 @@ def main() -> None:
         'run_planner_api_cleanup_regression.py',
         'run_policy_scope_regression.py',
         'run_guardrail_tone_regression.py',
+        'run_unified_logging_regression.py',
     ], 'guardrail')
 
 
