@@ -6,6 +6,7 @@ from _helpers import run_suite
 
 def main() -> None:
     run_suite([
+        'run_adapter_cli_regression.py',
         'run_adaptive_guardrail_regression.py',
         'run_adapter_boundary_regression.py',
         'run_assistant_boundary_regression.py',

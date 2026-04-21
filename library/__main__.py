@@ -23,6 +23,33 @@ from library.logging_config import setup as setup_logging
 from library.config import canonical_user_id
 
 
+def _build_adapter_cli_result(payload: dict) -> dict:
+    envelope = payload.get('decision_envelope') or {}
+    adapter_contract = payload.get('adapter_contract') or {}
+    delivery_mode = payload.get('delivery_mode') or adapter_contract.get('delivery_mode', '')
+    final_user_text = payload.get('final_user_text') or payload.get('message', '') or ''
+    result = {
+        'trace_id': payload.get('trace_id', '') or envelope.get('trace_id', ''),
+        'assistant_id': payload.get('assistant_id', '') or envelope.get('assistant_id', ''),
+        'knowledge_set_id': (
+            payload.get('knowledge_set_id', '')
+            or envelope.get('knowledge_set_id', '')
+        ),
+        'decision_type': payload.get('decision_type', '') or envelope.get('decision_type', ''),
+        'domain_status': payload.get('domain_status', '') or envelope.get('domain_status', ''),
+        'reason_code': payload.get('reason_code', '') or envelope.get('reason_code', ''),
+        'allow_model_call': bool(payload.get('delivery_mode') == 'model' or envelope.get('allow_model_call')),
+        'delivery_mode': delivery_mode,
+        'final_user_text': final_user_text,
+    }
+    if result['allow_model_call']:
+        result['model_prompt'] = {
+            'system': payload.get('system', ''),
+            'user': payload.get('user', ''),
+        }
+    return result
+
+
 def cmd_run(args):
     from library._core.runtime.orchestrator import orchestrate
     print(json.dumps(orchestrate(args.question, user_id=args.user_id),
@@ -52,6 +79,38 @@ def cmd_prompt(args):
             'decision_envelope': result.get('decision_envelope', {}),
             'trace_id': result.get('trace_id', ''),
         }, ensure_ascii=False, indent=2))
+
+
+def cmd_adapter(args):
+    from library._core.runtime.orchestrator import orchestrate_for_adapter
+    from library.utils import audit_event
+
+    question = args.question or ''
+    user_id = canonical_user_id(args.user_id)
+    audit_event(
+        'conversation.adapter_request',
+        user_id=user_id,
+        channel=args.adapter_channel,
+        question=question,
+        question_length=len(question),
+        entrypoint='cli.adapter',
+    )
+    payload = orchestrate_for_adapter(question, user_id=user_id)
+    result = _build_adapter_cli_result(payload)
+    audit_event(
+        'conversation.adapter_result',
+        user_id=user_id,
+        channel=args.adapter_channel,
+        question=question,
+        decision_type=result.get('decision_type', ''),
+        domain_status=result.get('domain_status', ''),
+        reason_code=result.get('reason_code', ''),
+        allow_model_call=result.get('allow_model_call', False),
+        delivery_mode=result.get('delivery_mode', ''),
+        final_user_text=result.get('final_user_text', ''),
+        trace_id=result.get('trace_id', ''),
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
 
 
 def cmd_frame(args):
@@ -316,6 +375,13 @@ def build_parser():
     p_prompt.add_argument('--system-only', dest='system_only', action='store_true',
                           help='Print only the system prompt text')
     p_prompt.set_defaults(func=cmd_prompt)
+
+    p_adapter = sub.add_parser('adapter', help='Build adapter-safe JSON contract')
+    p_adapter.add_argument('adapter_channel', choices=['telegram'])
+    p_adapter.add_argument('question')
+    p_adapter.add_argument('--pretty', action='store_true',
+                           help='Pretty-print adapter JSON payload')
+    p_adapter.set_defaults(func=cmd_adapter)
 
     p_kb = sub.add_parser('kb', help='Knowledge base operations')
     p_kb.add_argument('kb_action', choices=[
