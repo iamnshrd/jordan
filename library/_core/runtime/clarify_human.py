@@ -39,6 +39,11 @@ _SCOPE_PROBE_MARKERS = [
     'какие темы', 'на какие темы', 'с чем к тебе можно',
 ]
 
+_ABSTRACT_FOLLOWUP_MARKERS = [
+    'абстрактно', 'абстрактный', 'в общем', 'в целом',
+    'не конкретно у меня', 'не про меня', 'вообще, не про меня',
+]
+
 _RELATIONSHIP_SCOPE_MARKERS = [
     'сексуальные проблемы', 'sexual problems', 'sexual issue',
     'разбираешь сексуальные', 'про секс', 'про сексуальность',
@@ -259,6 +264,15 @@ _PROFILE_SPECS = {
         'question_lead': 'Назови прямо:',
         'question': 'книгу, цитату, лекцию или один конкретный конфликт, который нужно разобрать.',
         'question_kind': 'source_anchor',
+    },
+    'abstract-followup': {
+        'opening': 'Если ты хочешь говорить не о себе, а в общем виде, всё равно нужно назвать сам предмет разговора.',
+        'fallback_voice': (
+            'Иначе разговор теряет тему и начинает скользить по пустой мета-рамке вместо разбора.',
+        ),
+        'question_lead': 'Скажи прямо:',
+        'question': 'ты хочешь разбирать в общем виде потерю чувств, обиду, угасание желания, предательство или что-то ещё?',
+        'question_kind': 'topic_restate',
     },
     'empty-input': {
         'opening': 'Сначала нужно сформулировать один честный вопрос.',
@@ -499,6 +513,25 @@ def build_clarification(question: str, *,
                 template_id='scope-topics.v1',
                 question_kind='topic_selection',
                 reason_code='scope-topics',
+                voice_moves=voice_meta.get('voice_moves'),
+                framing_moves=voice_meta.get('framing_moves'),
+                narrowing_moves=voice_meta.get('narrowing_moves'),
+                source_refs=voice_meta.get('source_refs'),
+                voice_layer=voice_meta.get('voice_layer'),
+            ),
+        )
+
+    if route_name == 'general' and _contains_any(q, _ABSTRACT_FOLLOWUP_MARKERS):
+        text, voice_meta = _render_profile('abstract-followup')
+        return ClarificationResult(
+            text=text,
+            metadata=_metadata(
+                clarify_type='scope',
+                route_name=route_name,
+                profile='abstract-followup',
+                template_id='abstract-followup.v1',
+                question_kind='topic_restate',
+                reason_code='abstract-followup',
                 voice_moves=voice_meta.get('voice_moves'),
                 framing_moves=voice_meta.get('framing_moves'),
                 narrowing_moves=voice_meta.get('narrowing_moves'),

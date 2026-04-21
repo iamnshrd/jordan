@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from library._core.state_store import StateStore
 
 ASTROLOGY_KEYWORDS = [
@@ -32,9 +34,34 @@ PSEUDO_CERTAINTY_KEYWORDS = [
 
 KEY_DOMAIN_GUARDRAILS = 'domain_guardrails'
 
+_EXACT_TOKEN_GUARDRAIL_KEYWORDS = {
+    'овен', 'телец', 'близнец', 'рак', 'лев', 'дева', 'весы',
+    'скорпион', 'стрелец', 'козерог', 'водолей', 'рыбы',
+    'меркурий', 'венера', 'марс', 'юпитер', 'сатурн',
+}
+
 
 def _contains_any(q: str, keywords: list[str]) -> bool:
-    return any(kw in q for kw in keywords)
+    tokens = [
+        token for token in re.sub(r'[^\w\s-]', ' ', q).split()
+        if token
+    ]
+    token_set = set(tokens)
+    for kw in keywords:
+        needle = (kw or '').lower().strip()
+        if not needle:
+            continue
+        if needle in _EXACT_TOKEN_GUARDRAIL_KEYWORDS:
+            if needle in token_set:
+                return True
+            continue
+        if ' ' in needle:
+            if needle in q:
+                return True
+            continue
+        if needle in q:
+            return True
+    return False
 
 
 def _load_guardrail_state(user_id: str, store: StateStore | None) -> dict:
