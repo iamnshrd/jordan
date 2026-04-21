@@ -268,7 +268,7 @@ def cmd_trace(args):
 
 
 def cmd_state(args):
-    from library.config import RUNTIME_LOG, get_default_store
+    from library.config import CONVERSATION_AUDIT_LOG, RUNTIME_LOG, get_default_store
 
     store = get_default_store()
     if args.state_action == 'audit-default-workspace':
@@ -280,6 +280,7 @@ def cmd_state(args):
     elif args.state_action == 'log-paths':
         print(json.dumps({
             'runtime_log': str(RUNTIME_LOG),
+            'conversation_audit_log': str(CONVERSATION_AUDIT_LOG),
         }, ensure_ascii=False, indent=2))
     else:
         print(f'Unknown state action: {args.state_action}', file=sys.stderr)

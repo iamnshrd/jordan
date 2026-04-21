@@ -25,6 +25,15 @@ RUNTIME_LOG = (
     else LOGS_DIR / 'jordan.jsonl'
 )
 
+_conversation_audit_override = (
+    os.environ.get('JORDAN_CONVERSATION_AUDIT_LOG') or ''
+).strip()
+CONVERSATION_AUDIT_LOG = (
+    Path(_conversation_audit_override).expanduser()
+    if _conversation_audit_override
+    else LOGS_DIR / 'conversation_audit.jsonl'
+)
+
 # --- SQLite knowledge base ---
 DB_PATH = ROOT / 'jordan_knowledge.db'
 

@@ -96,6 +96,35 @@ def _persist_trace_event(event: dict, *, store=None, user_id: str | None = None)
         log.exception('Failed to persist trace event', extra={'event': 'trace.persist_failed'})
 
 
+def _append_jsonl(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(payload, ensure_ascii=False) + '\n')
+
+
+def persist_conversation_audit(event: dict) -> None:
+    try:
+        from library.config import CONVERSATION_AUDIT_LOG
+        _append_jsonl(CONVERSATION_AUDIT_LOG, event)
+    except Exception:
+        log.exception(
+            'Failed to persist conversation audit event',
+            extra={'event': 'conversation.audit.persist_failed'},
+        )
+
+
+def audit_event(event: str, level: int = logging.INFO, **fields) -> dict:
+    payload = {
+        'event': event,
+        'timestamp': now_iso(),
+        **current_trace_meta(),
+        **fields,
+    }
+    persist_conversation_audit(payload)
+    log.log(level, event, extra=payload)
+    return payload
+
+
 def log_event(event: str, level: int = logging.INFO, *,
               store=None, user_id: str | None = None, **fields) -> dict:
     trace = _current_trace() or {}

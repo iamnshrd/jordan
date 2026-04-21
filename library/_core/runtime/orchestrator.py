@@ -18,16 +18,15 @@ from library._core.runtime.respond import render_plan
 from library._core.state_store import StateStore
 from library.config import canonical_user_id, get_default_store
 from library.utils import (
-    current_trace_id, ensure_trace_context, log_event,
+    audit_event, current_trace_id, ensure_trace_context, log_event,
     timing_context, traced_stage,
 )
 
 
 def _log_conversation_inbound(*, question: str, store, user_id: str,
                               entrypoint: str) -> None:
-    log_event(
+    audit_event(
         'conversation.inbound',
-        store=store,
         user_id=user_id,
         entrypoint=entrypoint,
         question=question,
@@ -44,9 +43,8 @@ def _log_conversation_outbound(*, question: str, result: dict, store,
         or result.get('final_user_text', '')
         or ''
     )
-    log_event(
+    audit_event(
         'conversation.outbound',
-        store=store,
         user_id=user_id,
         entrypoint=entrypoint,
         question=question,
@@ -64,9 +62,8 @@ def _log_conversation_outbound(*, question: str, result: dict, store,
 def _log_prompt_prepared(*, question: str, result: dict, store,
                          user_id: str, entrypoint: str) -> None:
     envelope = coerce_envelope(result)
-    log_event(
+    audit_event(
         'conversation.prompt_prepared',
-        store=store,
         user_id=user_id,
         entrypoint=entrypoint,
         question=question,
@@ -235,9 +232,8 @@ def orchestrate_for_adapter(question: str, user_id: str = 'default',
     """Return the only adapter-safe execution payload for a question."""
     prompt_result = orchestrate_for_llm(question, user_id=user_id, store=store)
     adapter_payload = build_adapter_payload(prompt_result)
-    log_event(
+    audit_event(
         'conversation.adapter_payload',
-        store=store or get_default_store(),
         user_id=canonical_user_id(user_id),
         question=question or '',
         message=adapter_payload.get('message', ''),

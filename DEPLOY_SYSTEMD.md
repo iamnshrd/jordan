@@ -3,6 +3,7 @@
 This repository now writes unified structured runtime logs to one canonical file:
 
 - `$JORDAN_HOME/workspace/logs/jordan.jsonl`
+- `$JORDAN_HOME/workspace/logs/conversation_audit.jsonl`
 - `$JORDAN_HOME/workspace/logs/openclaw.log`
 
 Use this file as the primary artifact when copying logs off the server for
@@ -111,6 +112,7 @@ Tail the canonical log file:
 
 ```bash
 tail -f "$JORDAN_HOME/workspace/logs/jordan.jsonl"
+tail -f "$JORDAN_HOME/workspace/logs/conversation_audit.jsonl"
 tail -f "$JORDAN_HOME/workspace/logs/openclaw.log"
 ```
 
@@ -120,7 +122,8 @@ Copy the single canonical log file to your local machine:
 
 ```bash
 scp user@your-vps:$JORDAN_HOME/workspace/logs/jordan.jsonl ./jordan.jsonl
+scp user@your-vps:$JORDAN_HOME/workspace/logs/conversation_audit.jsonl ./conversation_audit.jsonl
 scp user@your-vps:$JORDAN_HOME/workspace/logs/openclaw.log ./openclaw.log
 ```
 
-Then send me `jordan.jsonl`, `openclaw.log`, or the relevant fragments.
+Then send me `conversation_audit.jsonl`, `jordan.jsonl`, `openclaw.log`, or the relevant fragments.
