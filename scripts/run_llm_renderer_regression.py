@@ -410,7 +410,7 @@ def main() -> None:
         try:
             api_rendered = openclaw_api_renderer.render_via_openclaw_api(
                 request=None,
-                prompt={'system': 'sys', 'user': 'usr'},
+                prompt={'system': 'sys', 'user': 'USER'},
                 attempt=1,
                 violations=[],
             )
@@ -482,6 +482,10 @@ def main() -> None:
                 and len(api_calls) == 1
                 and api_calls[0]['url'] == 'https://chatgpt.com/backend-api/codex/responses'
                 and api_calls[0]['body']['model'] == 'gpt-5.4'
+                and isinstance(api_calls[0]['body'].get('input'), list)
+                and api_calls[0]['body']['input'][0]['role'] == 'user'
+                and api_calls[0]['body']['input'][0]['content'][0]['type'] == 'input_text'
+                and api_calls[0]['body']['input'][0]['content'][0]['text'] == 'USER'
                 and api_calls[0]['body']['store'] is False
                 and api_calls[0]['headers'].get('Authorization') == 'Bearer oauth-access'
                 and api_calls[0]['headers'].get('Chatgpt-account-id') == 'acct_test_123'

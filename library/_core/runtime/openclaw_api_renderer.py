@@ -157,10 +157,16 @@ def render_via_openclaw_api(*, request, prompt, attempt, violations):
     if account_id:
         headers['ChatGPT-Account-Id'] = account_id
 
+    user_text = str(prompt.get('user') or '').strip()
     payload = {
         'model': _resolve_model_id(),
         'instructions': prompt.get('system', ''),
-        'input': prompt.get('user', ''),
+        'input': [
+            {
+                'role': 'user',
+                'content': [{'type': 'input_text', 'text': user_text}],
+            }
+        ],
         'store': False,
         'text': {'verbosity': 'low'},
     }
