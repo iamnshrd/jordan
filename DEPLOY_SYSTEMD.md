@@ -148,6 +148,17 @@ This writes a timestamped archive under:
 $JORDAN_HOME/workspace/logs/exports/jordan-logs-<timestamp>.tar.gz
 ```
 
+Each exported directory now also contains:
+
+- `manifest.json`
+- `conversation_audit.jsonl`
+
+If the live `workspace/logs/conversation_audit.jsonl` is empty, the export helper
+reconstructs the exported audit file from `workspace/logs/jordan.jsonl` by
+filtering `conversation.*` and delivery-related events. That makes the archive
+internally consistent even when the standalone audit file was cleared before
+export.
+
 Then copy that archive somewhere outside the repo root on your local machine:
 
 ```bash

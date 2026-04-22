@@ -22,6 +22,9 @@ def main() -> None:
     )
     gitignore = (REPO_ROOT / '.gitignore').read_text(encoding='utf-8')
     deploy_doc = (REPO_ROOT / 'DEPLOY_SYSTEMD.md').read_text(encoding='utf-8')
+    export_helper = (REPO_ROOT / 'deploy' / 'systemd' / 'export-jordan-logs.sh').read_text(
+        encoding='utf-8'
+    )
 
     results = [
         {
@@ -56,6 +59,12 @@ def main() -> None:
             'pass': 'scp user@your-vps:$JORDAN_HOME/workspace/logs/conversation_audit.jsonl ./conversation_audit.jsonl' not in deploy_doc
             and 'scp user@your-vps:$JORDAN_HOME/workspace/logs/openclaw.log ./openclaw.log' not in deploy_doc
             and 'export-jordan-logs.sh' in deploy_doc,
+        },
+        {
+            'name': 'export_helper_reconstructs_empty_audit_from_runtime_log',
+            'pass': 'derived_from_runtime' in export_helper
+            and 'manifest.json' in export_helper
+            and 'conversation_audit_source' in export_helper,
         },
     ]
     emit_report(results)
