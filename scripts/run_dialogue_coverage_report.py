@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-AUDIT_PATH = REPO_ROOT / 'conversation_audit.jsonl'
+from library.config import CONVERSATION_AUDIT_LOG
+
+
+AUDIT_PATH = CONVERSATION_AUDIT_LOG
 
 
 def _load_rows(path: Path) -> list[dict]:
@@ -39,6 +40,9 @@ def main() -> None:
     renderer_banned_openers: Counter[str] = Counter()
     renderer_validation_failures: Counter[str] = Counter()
     renderer_exception_details: Counter[str] = Counter()
+    family_overrides: Counter[str] = Counter()
+    family_rejections: Counter[str] = Counter()
+    family_accepted_source_lookup_avoidance: Counter[str] = Counter()
 
     for row in rows:
         event = row.get('event', '')
@@ -69,6 +73,10 @@ def main() -> None:
         frame_topic = metadata.get('frame_topic') or ''
         renderer_status = str(metadata.get('renderer_status') or '')
         renderer_exception_detail = str(metadata.get('renderer_exception_detail') or '')
+        family_status = str(metadata.get('family_classifier_status') or '')
+        family_topic = str(metadata.get('family_classifier_result_topic') or '')
+        deterministic_topic = str(metadata.get('family_classifier_deterministic_topic') or '')
+        family_rejection_reason = str(metadata.get('family_classifier_rejection_reason') or '')
 
         if reason_code:
             reason_codes[reason_code] += 1
@@ -101,6 +109,12 @@ def main() -> None:
                 renderer_banned_openers[text] += 1
         if renderer_exception_detail:
             renderer_exception_details[renderer_exception_detail] += 1
+        if family_status == 'accepted' and family_topic and deterministic_topic and family_topic != deterministic_topic:
+            family_overrides[f'{deterministic_topic} -> {family_topic}'] += 1
+        if family_rejection_reason:
+            family_rejections[family_rejection_reason] += 1
+        if family_status == 'accepted' and family_topic and reason_code != 'source-lookup' and text:
+            family_accepted_source_lookup_avoidance[text] += 1
 
     report = {
         'audit_path': str(AUDIT_PATH),
@@ -114,6 +128,9 @@ def main() -> None:
         'top_renderer_banned_opener_violations': _top(renderer_banned_openers),
         'top_renderer_validation_failures': _top(renderer_validation_failures),
         'top_renderer_exception_details': _top(renderer_exception_details),
+        'top_family_classifier_overrides': _top(family_overrides),
+        'top_family_classifier_rejections': _top(family_rejections),
+        'top_family_classifier_source_lookup_avoidance': _top(family_accepted_source_lookup_avoidance),
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

@@ -329,9 +329,9 @@ DIALOGUE_FAMILY_REGISTRY: tuple[DialogueFamilySpec, ...] = (
         opening_mode='topic_opening',
         opening_pending_slot='',
         allowed_transitions=('opening',),
-        strong_markers=('привет', 'здравствуйте', 'добрый вечер', 'добрый день', 'доброе утро'),
-        concept_markers=('здравств', 'добрый', 'доброе'),
-        subject_markers=('питерсон', 'доктор'),
+        strong_markers=('привет', 'здарова', 'здорова', 'салют', 'здравствуйте', 'добрый вечер', 'добрый день', 'доброе утро'),
+        concept_markers=('здравств', 'добрый', 'доброе', 'здаров', 'салют'),
+        subject_markers=('питерсон', 'доктор', 'джордан'),
         threshold=2,
     ),
     DialogueFamilySpec(
@@ -351,9 +351,24 @@ DIALOGUE_FAMILY_REGISTRY: tuple[DialogueFamilySpec, ...] = (
         opening_mode='topic_opening',
         opening_pending_slot='',
         allowed_transitions=('opening',),
-        strong_markers=('как ваши дела', 'как у вас дела', 'как дела', 'я тут', 'я здесь', 'на связи', 'вечерочек', 'добрейши вечерочек'),
-        concept_markers=('дела', 'на связи', 'тут', 'здесь', 'вечероч', 'вечерочек'),
-        subject_markers=('как', 'вы', 'ты'),
+        strong_markers=(
+            'как ваши дела',
+            'как у вас дела',
+            'как дела',
+            'шо ты как ты',
+            'я тут',
+            'я здесь',
+            'я тебе пишу сообщение',
+            'проверяем рендерер',
+            'проверка связи',
+            'рас два рас два',
+            'джордан...',
+            'на связи',
+            'вечерочек',
+            'добрейши вечерочек',
+        ),
+        concept_markers=('дела', 'на связи', 'тут', 'здесь', 'вечероч', 'вечерочек', 'рендерер', 'проверя', 'сообщение', 'связь'),
+        subject_markers=('как', 'вы', 'ты', 'джордан', 'пишу'),
         threshold=3,
     ),
     DialogueFamilySpec(
@@ -422,6 +437,34 @@ DIALOGUE_FAMILY_REGISTRY: tuple[DialogueFamilySpec, ...] = (
         concept_markers=('как жить', 'жить дальше', 'изменить жизнь', 'изменить свою жизнь'),
         subject_markers=('жить', 'жизн', 'дальше', 'изменить'),
         self_markers=('мне', 'мою', 'свою', 'я '),
+        threshold=3,
+    ),
+    DialogueFamilySpec(
+        topic='appearance-self-presentation',
+        route='general',
+        stance='personal',
+        goal='clarify',
+        render_specs=(
+            DialogueRenderSpec(
+                goal='clarify',
+                clarify_type='human_problem',
+                profile='appearance-self-presentation',
+                question_kind='narrowing',
+                reason_code='appearance-self-presentation',
+            ),
+        ) + _progression_render_specs('appearance-self-presentation'),
+        opening_mode='human_problem_clarify',
+        opening_pending_slot='narrowing_axis',
+        candidate_axes=('body', 'style', 'confidence', 'discipline', 'social_presence'),
+        strong_markers=(
+            'как стать красивым',
+            'как стать красивой',
+            'как стать привлекательным',
+            'как стать привлекательной',
+        ),
+        concept_markers=('красив', 'привлекатель', 'внешн', 'выгляде', 'презентац'),
+        subject_markers=('стать', 'быть', 'выглядеть'),
+        self_markers=('мне', 'я ', 'себя'),
         threshold=3,
     ),
     DialogueFamilySpec(
@@ -817,23 +860,104 @@ def score_dialogue_family(text: str, spec: DialogueFamilySpec) -> int:
     return score
 
 
-def infer_dialogue_family(question: str) -> dict:
+def build_dialogue_family_candidates(question: str,
+                                     *,
+                                     route_name: str = '',
+                                     active_topic: str = '',
+                                     limit: int = 5) -> list[dict]:
     q = normalize_dialogue_text(question)
     if not q:
-        return {}
+        return []
 
     scored: list[tuple[int, DialogueFamilySpec]] = []
     for spec in DIALOGUE_FAMILY_REGISTRY:
         score = score_dialogue_family(q, spec)
-        if score >= spec.threshold:
+        if score > 0:
             scored.append((score, spec))
 
-    if not scored:
+    scored.sort(key=lambda item: item[0], reverse=True)
+    candidates: list[dict] = []
+    seen_topics: set[str] = set()
+    if scored:
+        best_score = scored[0][0]
+        minimum_score = max(1, best_score - 1)
+        for score, spec in scored:
+            if score < minimum_score and score < spec.threshold:
+                continue
+            if spec.topic in seen_topics:
+                continue
+            candidates.append({
+                'topic_candidate': spec.topic,
+                'route_candidate': spec.route,
+                'stance_shift': spec.stance,
+                'goal_candidate': spec.goal,
+                'score': score,
+                'threshold': spec.threshold,
+                'description': (
+                    f'route={spec.route}; stance={spec.stance}; goal={spec.goal}; '
+                    f'opening_mode={spec.opening_mode}'
+                ),
+            })
+            seen_topics.add(spec.topic)
+            if len(candidates) >= limit:
+                return candidates
+
+    fallback_routes = [route_name, active_topic]
+    for fallback_route in fallback_routes:
+        if not fallback_route:
+            continue
+        for spec in DIALOGUE_FAMILY_REGISTRY:
+            if spec.topic in seen_topics:
+                continue
+            if spec.route != fallback_route and spec.topic != fallback_route:
+                continue
+            candidates.append({
+                'topic_candidate': spec.topic,
+                'route_candidate': spec.route,
+                'stance_shift': spec.stance,
+                'goal_candidate': spec.goal,
+                'score': 0,
+                'threshold': spec.threshold,
+                'description': (
+                    f'route={spec.route}; stance={spec.stance}; goal={spec.goal}; '
+                    f'opening_mode={spec.opening_mode}'
+                ),
+            })
+            seen_topics.add(spec.topic)
+            if len(candidates) >= limit:
+                return candidates
+
+    return candidates
+
+
+def infer_dialogue_family(question: str) -> dict:
+    candidates = build_dialogue_family_candidates(question)
+    if not candidates:
         return {}
 
-    scored.sort(key=lambda item: item[0], reverse=True)
-    best_score, best_spec = scored[0]
-    second_score = scored[1][0] if len(scored) > 1 else 0
+    qualified_candidates: list[dict] = []
+    for candidate in candidates:
+        topic = str(candidate.get('topic_candidate') or '')
+        spec = get_dialogue_family_spec(topic)
+        if spec is None:
+            continue
+        score = int(candidate.get('score', 0) or 0)
+        if score < spec.threshold:
+            continue
+        qualified_candidates.append(candidate)
+
+    if not qualified_candidates:
+        return {}
+
+    best = qualified_candidates[0]
+    best_score = int(best.get('score', 0) or 0)
+    second_score = int(qualified_candidates[1].get('score', 0) or 0) if len(qualified_candidates) > 1 else 0
+    best_topic = str(best.get('topic_candidate') or '')
+    best_spec = get_dialogue_family_spec(best_topic)
+    if best_spec is None:
+        return {}
+    if best_score < best_spec.threshold:
+        return {}
     if second_score and best_score - second_score < 1:
         return {}
 

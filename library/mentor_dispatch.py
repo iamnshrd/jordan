@@ -11,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from library._core.mentor.tick import tick
 from library._core.mentor.checkins import record_sent
 from library.config import (
-    load_tracked_mentor_users,
     save_tracked_mentor_users,
     canonical_user_id,
 )
@@ -19,27 +18,6 @@ from library.mentor_targets_admin import normalize_targets
 
 
 SESSIONS_PATH = Path('/root/.openclaw-jordan-peterson/agents/main/sessions/sessions.json')
-LEGACY_TARGET = canonical_user_id('77571089')
-
-
-def _bootstrap_legacy_user() -> dict:
-    data = load_tracked_mentor_users()
-    users = data.get('users') or []
-    if users:
-        return normalize_targets()
-    data = {
-        'users': [
-            {
-                'user_id': LEGACY_TARGET,
-                'channel': 'telegram',
-                'target': '77571089',
-                'enabled': True,
-                'auto_onboard': 'manual-review',
-            }
-        ]
-    }
-    save_tracked_mentor_users(data)
-    return normalize_targets()
 
 
 def _read_sessions() -> dict:
@@ -86,7 +64,7 @@ def _autoregister_from_sessions(data: dict) -> dict:
 
 
 def main() -> None:
-    data = _bootstrap_legacy_user()
+    data = normalize_targets()
     data = _autoregister_from_sessions(data)
     outputs = []
     for item in data.get('users', []):

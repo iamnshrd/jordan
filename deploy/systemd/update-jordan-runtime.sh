@@ -2,37 +2,24 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-REPO_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
-
-resolve_jordan_home() {
-  if [ -n "${JORDAN_HOME:-}" ]; then
-    printf '%s\n' "$JORDAN_HOME"
-    return 0
+COMMON_SH="$SCRIPT_DIR/common.sh"
+if [ ! -r "$COMMON_SH" ] && [ -r /etc/default/jordan ]; then
+  COMMON_JORDAN_HOME="$(
+    bash -lc 'set -a; . /etc/default/jordan >/dev/null 2>&1; printf %s "${JORDAN_HOME:-}"'
+  )"
+  if [ -n "$COMMON_JORDAN_HOME" ] && [ -r "$COMMON_JORDAN_HOME/deploy/systemd/common.sh" ]; then
+    COMMON_SH="$COMMON_JORDAN_HOME/deploy/systemd/common.sh"
   fi
-
-  if [ -r /etc/default/jordan ]; then
-    local from_defaults
-    from_defaults="$(
-      bash -lc 'set -a; . /etc/default/jordan >/dev/null 2>&1; printf %s "${JORDAN_HOME:-}"'
-    )"
-    if [ -n "$from_defaults" ]; then
-      printf '%s\n' "$from_defaults"
-      return 0
-    fi
-  fi
-
-  if [ -d "$PWD/.git" ] || [ -f "$PWD/.git" ]; then
-    printf '%s\n' "$PWD"
-    return 0
-  fi
-
-  printf '%s\n' "$REPO_ROOT"
-}
+fi
+if [ ! -r "$COMMON_SH" ] && [ -r "$PWD/deploy/systemd/common.sh" ]; then
+  COMMON_SH="$PWD/deploy/systemd/common.sh"
+fi
+. "$COMMON_SH"
 
 JORDAN_HOME="$(resolve_jordan_home)"
 
 log() {
-  printf '[update] %s\n' "$*"
+  jordan_log update "$*"
 }
 
 clear_if_exists() {
@@ -50,9 +37,6 @@ main() {
 
   mkdir -p "$JORDAN_HOME/workspace/logs"
 
-  # Keep both paths in sync while older deployments may still emit the audit
-  # file at the repo root.
-  clear_if_exists "$JORDAN_HOME/conversation_audit.jsonl"
   clear_if_exists "$JORDAN_HOME/workspace/logs/conversation_audit.jsonl"
   clear_if_exists "$JORDAN_HOME/workspace/logs/openclaw.log"
 

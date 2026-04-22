@@ -124,6 +124,18 @@ def main() -> None:
         'Как мне дальше жить',
         f'{user_id}-life-direction',
     )
+    slang_greeting_rc, slang_greeting, slang_greeting_stderr = _run_adapter(
+        'Здарова',
+        f'{user_id}-slang-greeting',
+    )
+    renderer_check_rc, renderer_check, renderer_check_stderr = _run_adapter(
+        'Проверяем рендерер',
+        f'{user_id}-renderer-check',
+    )
+    appearance_rc, appearance, appearance_stderr = _run_adapter(
+        'Как стать красивым',
+        f'{user_id}-appearance',
+    )
 
     seed_meta = seed.get('decision_metadata') or {}
     follow_meta = follow.get('decision_metadata') or {}
@@ -146,6 +158,9 @@ def main() -> None:
     address_meta = address.get('decision_metadata') or {}
     sharing_meta = sharing.get('decision_metadata') or {}
     life_direction_meta = life_direction.get('decision_metadata') or {}
+    slang_greeting_meta = slang_greeting.get('decision_metadata') or {}
+    renderer_check_meta = renderer_check.get('decision_metadata') or {}
+    appearance_meta = appearance.get('decision_metadata') or {}
     seed_frame = seed.get('dialogue_frame') or {}
     follow_frame = follow.get('dialogue_frame') or {}
     foundations_frame = foundations.get('dialogue_frame') or {}
@@ -167,6 +182,9 @@ def main() -> None:
     address_frame = address.get('dialogue_frame') or {}
     sharing_frame = sharing.get('dialogue_frame') or {}
     life_direction_frame = life_direction.get('dialogue_frame') or {}
+    slang_greeting_frame = slang_greeting.get('dialogue_frame') or {}
+    renderer_check_frame = renderer_check.get('dialogue_frame') or {}
+    appearance_frame = appearance.get('dialogue_frame') or {}
 
     results = [
         {
@@ -227,6 +245,23 @@ def main() -> None:
                 and life_direction_meta.get('frame_topic') == 'life-direction-opening'
                 and life_direction_meta.get('clarify_reason_code') == 'life-direction-opening'
                 and life_direction_frame.get('topic') == 'life-direction-opening'
+            ),
+        },
+        {
+            'name': 'remaining_opening_edge_cases_use_controlled_frames',
+            'pass': (
+                slang_greeting_rc == 0
+                and renderer_check_rc == 0
+                and appearance_rc == 0
+                and slang_greeting_meta.get('frame_topic') == 'greeting'
+                and slang_greeting_meta.get('clarify_reason_code') == 'greeting-opening'
+                and slang_greeting_frame.get('topic') == 'greeting'
+                and renderer_check_meta.get('frame_topic') == 'social-small-talk'
+                and renderer_check_meta.get('clarify_reason_code') == 'social-small-talk'
+                and renderer_check_frame.get('topic') == 'social-small-talk'
+                and appearance_meta.get('frame_topic') == 'appearance-self-presentation'
+                and appearance_meta.get('clarify_reason_code') == 'appearance-self-presentation'
+                and appearance_frame.get('topic') == 'appearance-self-presentation'
             ),
         },
         {
@@ -377,6 +412,9 @@ def main() -> None:
             'address': address,
             'sharing': sharing,
             'life_direction': life_direction,
+            'slang_greeting': slang_greeting,
+            'renderer_check': renderer_check,
+            'appearance': appearance,
         },
         stderr={
             'seed': seed_stderr,
@@ -400,6 +438,9 @@ def main() -> None:
             'address': address_stderr,
             'sharing': sharing_stderr,
             'life_direction': life_direction_stderr,
+            'slang_greeting': slang_greeting_stderr,
+            'renderer_check': renderer_check_stderr,
+            'appearance': appearance_stderr,
         },
     )
 

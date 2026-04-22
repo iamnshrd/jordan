@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 
 from library._core.runtime.dialogue_family_registry import (
+    DIALOGUE_FAMILY_REGISTRY,
+    build_dialogue_family_candidates,
     dialogue_contains_any,
     get_dialogue_family_spec,
     infer_dialogue_family,
@@ -15,6 +17,8 @@ from library._core.runtime.dialogue_frame import DialogueFrame, coerce_frame, in
 from library._core.runtime.dialogue_intent_registry import infer_dialogue_intent
 from library._core.runtime.dialogue_intent_registry import question_has_dialogue_intent_marker
 from library._core.runtime.dialogue_acts import extract_dialogue_axis, extract_dialogue_detail
+from library._core.runtime.llm_classifiers import LLMFamilyClassificationRequest, maybe_classify_dialogue_family
+from library._core.runtime.policy import detect_policy_block
 from library._core.runtime.routes import infer_route
 from library._core.runtime.dialogue_state import DialogueState
 from library._core.runtime.dialogue_state import infer_active_topic
@@ -31,6 +35,7 @@ class DialogueUpdate:
     goal_candidate: str = ''
     transition_kind: str = ''
     slot_fill: dict = field(default_factory=dict)
+    classifier_metadata: dict = field(default_factory=dict)
     confidence: float = 0.0
     update_source: str = ''
 
@@ -139,14 +144,214 @@ def _family_opening_pending_slot(topic: str) -> str:
     return spec.opening_pending_slot
 
 
-def _infer_special_topic(question: str, dialogue_act: str) -> tuple[str, str]:
-    semantic_family = infer_dialogue_family(question)
+def _fallback_family_metadata(*, status: str = 'not_applicable', reason: str = '') -> dict:
+    return {
+        'family_classifier_used': False,
+        'family_classifier_backend': 'none',
+        'family_classifier_backend_detail': '',
+        'family_classifier_status': status,
+        'family_classifier_confidence': 0.0,
+        'family_classifier_fallback_used': True,
+        'family_classifier_result_topic': '',
+        'family_classifier_result_goal': '',
+        'family_classifier_deterministic_topic': '',
+        'family_classifier_deterministic_goal': '',
+        'family_classifier_reason': reason,
+        'family_classifier_rejection_reason': '',
+    }
+
+
+def _build_family_shortlist(question: str, *,
+                            state: dict,
+                            frame: DialogueFrame,
+                            deterministic_family: dict | None = None) -> list[dict]:
+    route_name = state.get('active_route', '') or frame.route or infer_route(question)
+    active_topic = frame.topic or state.get('active_topic', '')
+    candidates = build_dialogue_family_candidates(
+        question,
+        route_name=route_name,
+        active_topic=active_topic,
+        limit=5,
+    )
+    seen_topics = {str(candidate.get('topic_candidate', '') or '') for candidate in candidates}
+    if deterministic_family:
+        topic = str(deterministic_family.get('topic_candidate', '') or '')
+        if topic and topic not in seen_topics:
+            candidates.insert(0, {
+                'topic_candidate': topic,
+                'route_candidate': deterministic_family.get('route_candidate', ''),
+                'stance_shift': deterministic_family.get('stance_shift', ''),
+                'goal_candidate': deterministic_family.get('goal_candidate', ''),
+                'score': int((deterministic_family.get('confidence', 0.0) or 0.0) * 10),
+                'threshold': 0,
+                'description': 'deterministic_best_guess',
+            })
+            seen_topics.add(topic)
+    if route_name:
+        for spec in DIALOGUE_FAMILY_REGISTRY:
+            if spec.topic in seen_topics:
+                continue
+            if spec.route != route_name:
+                continue
+            candidates.append({
+                'topic_candidate': spec.topic,
+                'route_candidate': spec.route,
+                'stance_shift': spec.stance,
+                'goal_candidate': spec.goal,
+                'score': 0,
+                'threshold': spec.threshold,
+                'description': (
+                    f'route={spec.route}; stance={spec.stance}; goal={spec.goal}; '
+                    f'opening_mode={spec.opening_mode}'
+                ),
+            })
+            seen_topics.add(spec.topic)
+            if len(candidates) >= 5:
+                break
+    return candidates[:5]
+
+
+def _should_use_llm_family_classifier(question: str, *,
+                                      dialogue_act: str,
+                                      state: dict,
+                                      frame: DialogueFrame,
+                                      slotish_followup: bool,
+                                      deterministic_family: dict | None = None) -> bool:
+    q = _normalize(question)
+    if not q or slotish_followup:
+        return False
+    if detect_policy_block(question) is not None:
+        return False
+    if dialogue_act in {'supply_narrowing_axis', 'supply_concrete_manifestation'}:
+        return False
+    if frame.topic and question_has_dialogue_intent_marker(q):
+        return False
+    deterministic_confidence = float((deterministic_family or {}).get('confidence', 0.0) or 0.0)
+    if deterministic_confidence >= 0.95 and (deterministic_family or {}).get('topic_candidate'):
+        return False
+    if _looks_like_fresh_topic_opening(q):
+        return True
+    if len(q.split()) <= 6:
+        return True
+    if dialogue_act in {
+        'open_topic',
+        'topic_shift',
+        'greeting_opening',
+        'request_menu',
+        'request_conversation_feedback',
+        'request_psychological_portrait',
+        'self_diagnosis_soft',
+    }:
+        return True
+    return False
+
+
+def _resolve_semantic_family(question: str, *,
+                             dialogue_act: str,
+                             state: dict,
+                             frame: DialogueFrame,
+                             slotish_followup: bool = False) -> tuple[dict, dict]:
+    deterministic_family = {} if slotish_followup else infer_dialogue_family(question)
+    deterministic_topic = str(deterministic_family.get('topic_candidate', '') or '')
+    deterministic_goal = str(deterministic_family.get('goal_candidate', '') or '')
+    metadata = _fallback_family_metadata(
+        status='deterministic' if deterministic_family else 'not_configured',
+    )
+    metadata['family_classifier_deterministic_topic'] = deterministic_topic
+    metadata['family_classifier_deterministic_goal'] = deterministic_goal
+    if not _should_use_llm_family_classifier(
+        question,
+        dialogue_act=dialogue_act,
+        state=state,
+        frame=frame,
+        slotish_followup=slotish_followup,
+        deterministic_family=deterministic_family,
+    ):
+        metadata['family_classifier_status'] = 'not_applicable'
+        return deterministic_family, metadata
+    candidates = _build_family_shortlist(
+        question,
+        state=state,
+        frame=frame,
+        deterministic_family=deterministic_family,
+    )
+    if not candidates:
+        metadata['family_classifier_status'] = 'no_candidates'
+        return deterministic_family, metadata
+    result = maybe_classify_dialogue_family(LLMFamilyClassificationRequest(
+        question=question,
+        dialogue_act=dialogue_act,
+        dialogue_state=dict(state or {}),
+        dialogue_frame=frame.as_dict(),
+        deterministic_guess=dict(deterministic_family or {}),
+        candidates=tuple(candidates),
+    ))
+    metadata.update(result.metadata())
+    allowed_topics = {
+        str(candidate.get('topic_candidate', '') or '')
+        for candidate in candidates
+        if candidate.get('topic_candidate')
+    }
+    if not result.used:
+        return deterministic_family, metadata
+    if result.status == 'exception':
+        metadata['family_classifier_rejection_reason'] = 'exception'
+        return deterministic_family, metadata
+    candidate_topic = result.topic_candidate
+    if not candidate_topic or candidate_topic == 'deterministic_fallback':
+        metadata['family_classifier_status'] = 'deterministic_fallback'
+        return deterministic_family, metadata
+    if candidate_topic not in allowed_topics:
+        metadata['family_classifier_status'] = 'rejected'
+        metadata['family_classifier_rejection_reason'] = 'invalid_topic'
+        return deterministic_family, metadata
+    spec = get_dialogue_family_spec(candidate_topic)
+    if spec is None:
+        metadata['family_classifier_status'] = 'rejected'
+        metadata['family_classifier_rejection_reason'] = 'invalid_topic'
+        return deterministic_family, metadata
+    if float(result.confidence or 0.0) < 0.9:
+        metadata['family_classifier_status'] = 'rejected'
+        metadata['family_classifier_rejection_reason'] = 'low_confidence'
+        return deterministic_family, metadata
+    if result.goal_candidate and result.goal_candidate != spec.goal:
+        metadata['family_classifier_status'] = 'rejected'
+        metadata['family_classifier_rejection_reason'] = 'invalid_goal'
+        return deterministic_family, metadata
+    opening = resolve_dialogue_transition(candidate_topic, 'opening')
+    if not opening:
+        metadata['family_classifier_status'] = 'rejected'
+        metadata['family_classifier_rejection_reason'] = 'transition_conflict'
+        return deterministic_family, metadata
+    metadata['family_classifier_status'] = 'accepted'
+    metadata['family_classifier_fallback_used'] = False
+    metadata['family_classifier_result_topic'] = spec.topic
+    metadata['family_classifier_result_goal'] = spec.goal
+    return {
+        'topic_candidate': spec.topic,
+        'route_candidate': spec.route,
+        'stance_shift': spec.stance,
+        'goal_candidate': spec.goal,
+        'confidence': result.confidence,
+        'reason': result.reason,
+    }, metadata
+
+
+def _infer_special_topic(question: str, dialogue_act: str, *, state: dict, frame: DialogueFrame) -> tuple[str, str, dict]:
+    semantic_family, metadata = _resolve_semantic_family(
+        question,
+        dialogue_act=dialogue_act,
+        state=state,
+        frame=frame,
+        slotish_followup=False,
+    )
     if semantic_family:
         return (
             semantic_family.get('topic_candidate', '') or '',
             semantic_family.get('route_candidate', '') or '',
+            metadata,
         )
-    return '', ''
+    return '', '', metadata
 
 
 def _build_update_payload(*,
@@ -160,6 +365,7 @@ def _build_update_payload(*,
                           pending_slot: str,
                           confidence: float,
                           update_source: str,
+                          classifier_metadata: dict | None = None,
                           axis: str = '',
                           detail: str = '') -> dict:
     return {
@@ -171,12 +377,14 @@ def _build_update_payload(*,
         'goal_candidate': goal_candidate,
         'transition_kind': transition_kind,
         'slot_fill': {'axis': axis, 'detail': detail, 'pending_slot': pending_slot},
+        'classifier_metadata': dict(classifier_metadata or {}),
         'confidence': confidence,
         'update_source': update_source,
     }
 
 
 def _infer_update_from_question(question: str, *,
+                                dialogue_act: str,
                                 state: dict,
                                 frame: DialogueFrame,
                                 selected_axis: str = '',
@@ -189,7 +397,12 @@ def _infer_update_from_question(question: str, *,
     previous_pending_slot = state.get('pending_slot', '') or frame.pending_slot
 
     if _contains_any(q, _TOPIC_SHIFT_MARKERS):
-        special_topic, special_route = _infer_special_topic(question, 'topic_shift')
+        special_topic, special_route, classifier_metadata = _infer_special_topic(
+            question,
+            'topic_shift',
+            state=state,
+            frame=frame,
+        )
         topic_candidate = special_topic or infer_active_topic(question, route_name='') or active_topic
         stance_shift, goal_candidate = _family_stance_goal(topic_candidate)
         return _build_update_payload(
@@ -203,10 +416,17 @@ def _infer_update_from_question(question: str, *,
             pending_slot=_family_opening_pending_slot(topic_candidate),
             confidence=0.93,
             update_source='intent_registry',
+            classifier_metadata=classifier_metadata,
         )
 
     slotish_followup = bool(active_topic) and _looks_like_slot_followup_candidate(q) and not _looks_like_fresh_topic_opening(q)
-    semantic_family = None if slotish_followup else infer_dialogue_family(question)
+    semantic_family, classifier_metadata = _resolve_semantic_family(
+        question,
+        dialogue_act=dialogue_act,
+        state=state,
+        frame=frame,
+        slotish_followup=slotish_followup,
+    )
 
     if semantic_family:
         return _build_update_payload(
@@ -219,7 +439,8 @@ def _infer_update_from_question(question: str, *,
             transition_kind='opening',
             pending_slot=_family_opening_pending_slot(semantic_family.get('topic_candidate', '')),
             confidence=float(semantic_family.get('confidence', 0.78) or 0.78),
-            update_source='family_registry',
+            update_source='family_classifier' if classifier_metadata.get('family_classifier_status') == 'accepted' else 'family_registry',
+            classifier_metadata=classifier_metadata,
         )
 
     if active_topic and _looks_like_fresh_topic_opening(q):
@@ -238,6 +459,7 @@ def _infer_update_from_question(question: str, *,
                 pending_slot=_family_opening_pending_slot(topic_guess),
                 confidence=0.89,
                 update_source='fresh_topic_guard',
+                classifier_metadata=classifier_metadata,
             )
 
     inferred_axis = selected_axis or extract_dialogue_axis(question, state)
@@ -365,6 +587,7 @@ def infer_dialogue_update(question: str, *,
 
     direct_update = _infer_update_from_question(
         question,
+        dialogue_act=dialogue_act,
         state=state,
         frame=frame,
         selected_axis=selected_axis,
@@ -381,12 +604,19 @@ def infer_dialogue_update(question: str, *,
             goal_candidate=direct_update.get('goal_candidate', ''),
             transition_kind=direct_update.get('transition_kind', ''),
             slot_fill=dict(direct_update.get('slot_fill') or {}),
+            classifier_metadata=dict(direct_update.get('classifier_metadata') or {}),
             confidence=float(direct_update.get('confidence', 0.0) or 0.0),
             update_source=direct_update.get('update_source', ''),
         )
 
     if dialogue_act in {'open_topic', 'greeting_opening', 'request_menu', 'request_conversation_feedback', 'request_psychological_portrait', 'self_diagnosis_soft'}:
-        semantic_family = infer_dialogue_family(question)
+        semantic_family, classifier_metadata = _resolve_semantic_family(
+            question,
+            dialogue_act=dialogue_act,
+            state=state,
+            frame=frame,
+            slotish_followup=False,
+        )
         if semantic_family:
             topic_candidate = semantic_family.get('topic_candidate', '') or topic_candidate
             route_candidate = semantic_family.get('route_candidate', '') or route_candidate
@@ -398,7 +628,13 @@ def infer_dialogue_update(question: str, *,
         is_new_topic = True
         confidence = 0.82
     elif dialogue_act == 'topic_shift':
-        semantic_family = infer_dialogue_family(question)
+        semantic_family, classifier_metadata = _resolve_semantic_family(
+            question,
+            dialogue_act=dialogue_act,
+            state=state,
+            frame=frame,
+            slotish_followup=False,
+        )
         if semantic_family:
             topic_candidate = semantic_family.get('topic_candidate', '') or topic_candidate
             route_candidate = semantic_family.get('route_candidate', '') or route_candidate
@@ -409,10 +645,14 @@ def infer_dialogue_update(question: str, *,
             route_candidate = frame.route
         is_new_topic = True
         confidence = 0.9
+    else:
+        classifier_metadata = {}
     if is_new_topic:
         family_stance, family_goal = _family_stance_goal(topic_candidate)
         stance_shift = family_stance or _default_stance_for_act(dialogue_act, topic_candidate) or stance_shift
         goal_candidate = family_goal or _default_goal_for_act(dialogue_act, topic_candidate) or goal_candidate
+        if (classifier_metadata or {}).get('family_classifier_status') == 'accepted':
+            update_source = 'family_classifier'
     if dialogue_act in {'abstractify_previous_question', 'confirm_scope', 'request_generalization'}:
         stance_shift = 'general'
         goal_candidate = 'overview'
@@ -451,6 +691,7 @@ def infer_dialogue_update(question: str, *,
             'detail': selected_detail,
             'pending_slot': state.get('pending_slot', '') or frame.pending_slot,
         },
+        classifier_metadata=classifier_metadata,
         confidence=confidence,
         update_source=update_source,
     )

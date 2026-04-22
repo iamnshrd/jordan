@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import sys
+
+sys.dont_write_bytecode = True
+
 from _helpers import run_suite
 
 
@@ -17,6 +21,7 @@ def main() -> None:
         'run_domain_guardrail_regression.py',
         'run_decision_contract_regression.py',
         'run_legacy_cleanup_regression.py',
+        'run_post_refactor_check_regression.py',
         'run_planner_api_cleanup_regression.py',
         'run_policy_scope_regression.py',
         'run_guardrail_tone_regression.py',
@@ -30,6 +35,7 @@ def main() -> None:
         'run_dialogue_frame_regression.py',
         'run_dialogue_frame_update_regression.py',
         'run_dialogue_frame_render_regression.py',
+        'run_llm_classifier_regression.py',
         'run_llm_renderer_regression.py',
         'run_warmup_regression.py',
         'run_human_clarify_regression.py',

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Query the knowledge base: full-text search, quote lookup, evidence ranking."""
+"""Legacy raw/diagnostic KB query surface.
+
+This module is intentionally kept as a low-level inspection tool for CLI and
+audits. The canonical runtime query path used for answer planning is
+``query_v3``.
+"""
 from library.db import connect, row_to_dict, list_table
 
 

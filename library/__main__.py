@@ -7,7 +7,8 @@ Usage examples:
     python -m library respond "вопрос" --mode deep --voice hard
     python -m library warmup
     python -m library kb build
-    python -m library kb query --query "смысл"
+    python -m library kb query --query "смысл"      # raw diagnostic lookup
+    python -m library kb query-v3 --theme meaning   # canonical runtime query
     python -m library kb migrate-v3
     python -m library kb seed-v3
     python -m library ingest auto
@@ -126,6 +127,20 @@ def cmd_adapter(args):
         frame_type=decision_metadata.get('frame_type', ''),
         frame_goal=decision_metadata.get('frame_goal', ''),
         frame_relation=decision_metadata.get('frame_relation_to_previous', ''),
+        family_classifier_used=decision_metadata.get('family_classifier_used', False),
+        family_classifier_backend=decision_metadata.get('family_classifier_backend', ''),
+        family_classifier_status=decision_metadata.get('family_classifier_status', ''),
+        family_classifier_confidence=decision_metadata.get('family_classifier_confidence', 0.0),
+        family_classifier_fallback_used=decision_metadata.get('family_classifier_fallback_used', False),
+        family_classifier_result_topic=decision_metadata.get('family_classifier_result_topic', ''),
+        family_classifier_result_goal=decision_metadata.get('family_classifier_result_goal', ''),
+        family_classifier_deterministic_topic=decision_metadata.get('family_classifier_deterministic_topic', ''),
+        family_classifier_deterministic_goal=decision_metadata.get('family_classifier_deterministic_goal', ''),
+        family_classifier_rejection_reason=decision_metadata.get('family_classifier_rejection_reason', ''),
+        mode_classifier_used=decision_metadata.get('mode_classifier_used', False),
+        mode_classifier_status=decision_metadata.get('mode_classifier_status', ''),
+        kb_classifier_used=decision_metadata.get('kb_classifier_used', False),
+        kb_classifier_status=decision_metadata.get('kb_classifier_status', ''),
         renderer_used=decision_metadata.get('renderer_used', False),
         renderer_mode=decision_metadata.get('renderer_mode', ''),
         renderer_status=decision_metadata.get('renderer_status', ''),

@@ -1,9 +1,15 @@
 .env
 .env.*
 jordan.jsonl
+conversation_audit.jsonl
+openclaw.log
 openclaw.jordan.json
 .vendor/
+openclaw_telegram_audit.patch
+openclaw_telegram_audit_plan.md
 library/jordan_knowledge.db
+library/clarify_voice_patterns.json
+library/voice_excerpt_candidates.json
 workspace/continuity.json
 workspace/*.lock
 workspace/MEMORY.md

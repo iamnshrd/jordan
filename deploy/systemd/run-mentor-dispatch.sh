@@ -2,9 +2,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-REPO_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
+COMMON_SH="$SCRIPT_DIR/common.sh"
+if [ ! -r "$COMMON_SH" ] && [ -r /etc/default/jordan ]; then
+  COMMON_JORDAN_HOME="$(
+    bash -lc 'set -a; . /etc/default/jordan >/dev/null 2>&1; printf %s "${JORDAN_HOME:-}"'
+  )"
+  if [ -n "$COMMON_JORDAN_HOME" ] && [ -r "$COMMON_JORDAN_HOME/deploy/systemd/common.sh" ]; then
+    COMMON_SH="$COMMON_JORDAN_HOME/deploy/systemd/common.sh"
+  fi
+fi
+if [ ! -r "$COMMON_SH" ] && [ -r "$PWD/deploy/systemd/common.sh" ]; then
+  COMMON_SH="$PWD/deploy/systemd/common.sh"
+fi
+. "$COMMON_SH"
 
-export JORDAN_HOME="${JORDAN_HOME:-$REPO_ROOT}"
+export JORDAN_HOME="${JORDAN_HOME:-$(resolve_jordan_home)}"
 export JORDAN_LOG_PATH="${JORDAN_LOG_PATH:-$JORDAN_HOME/workspace/logs/jordan.jsonl}"
 
 cd "$JORDAN_HOME"

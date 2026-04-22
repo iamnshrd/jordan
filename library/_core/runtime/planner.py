@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from library._core.mentor.checkins import record_reply
 from library._core.mentor.commitments import maybe_resolve_from_reply
@@ -30,6 +31,11 @@ from library._core.runtime.dialogue_update import (
 from library._core.runtime.grounding import (
     GroundedAnswerPlan, GroundingDecision,
     build_strict_clarification, can_render_strict,
+)
+from library._core.runtime.llm_classifiers import (
+    classify_kb_with_llm,
+    classify_mode_with_llm,
+    planner_classifiers_available,
 )
 from library._core.runtime.policy import detect_policy_block
 from library._core.runtime.routes import is_broad_question
@@ -67,6 +73,7 @@ _DEEP_TRIGGERS = ['почему', 'разбери', 'объясни', 'помо�
 
 _mode_classifier = None
 _kb_classifier = None
+_classifier_autoload_attempted = False
 
 
 def set_mode_classifier(fn):
@@ -81,38 +88,133 @@ def set_kb_classifier(fn):
     _kb_classifier = fn
 
 
-def detect_mode(question: str) -> str:
+def _autoload_classifier_hooks() -> None:
+    global _classifier_autoload_attempted
+    if _classifier_autoload_attempted:
+        return
+    _classifier_autoload_attempted = True
+    if not planner_classifiers_available():
+        return
+    if _mode_classifier is None and str(os.environ.get('JORDAN_DISABLE_LLM_MODE_CLASSIFIER') or '').strip().lower() not in {
+        '1', 'true', 'yes',
+    }:
+        set_mode_classifier(classify_mode_with_llm)
+    if _kb_classifier is None and str(os.environ.get('JORDAN_DISABLE_LLM_KB_CLASSIFIER') or '').strip().lower() not in {
+        '1', 'true', 'yes',
+    }:
+        set_kb_classifier(classify_kb_with_llm)
+
+
+def detect_mode_with_metadata(question: str) -> tuple[str, dict]:
+    _autoload_classifier_hooks()
+    metadata = {
+        'mode_classifier_used': False,
+        'mode_classifier_status': 'heuristic',
+        'mode_classifier_backend': 'none',
+        'mode_classifier_backend_detail': '',
+        'mode_classifier_confidence': 0.0,
+        'mode_classifier_reason': '',
+    }
     if _mode_classifier is not None:
         try:
-            return _mode_classifier(question)
+            result = _mode_classifier(question)
+            if isinstance(result, dict):
+                mode = str(result.get('mode', '') or '').strip()
+                confidence = float(result.get('confidence', 0.0) or 0.0)
+                metadata.update({
+                    'mode_classifier_used': True,
+                    'mode_classifier_status': 'classified',
+                    'mode_classifier_backend': str(result.get('backend', 'custom_hook') or 'custom_hook'),
+                    'mode_classifier_backend_detail': str(result.get('backend_detail', '') or ''),
+                    'mode_classifier_confidence': confidence,
+                    'mode_classifier_reason': str(result.get('reason', '') or ''),
+                })
+            else:
+                mode = str(result or '').strip()
+                metadata.update({
+                    'mode_classifier_used': True,
+                    'mode_classifier_status': 'classified',
+                    'mode_classifier_backend': 'custom_hook',
+                })
+            if mode in {'practical', 'deep'}:
+                return mode, metadata
+            metadata['mode_classifier_status'] = 'invalid_payload'
         except Exception:
             log.debug('LLM mode classifier failed, using heuristic')
+            metadata.update({
+                'mode_classifier_used': True,
+                'mode_classifier_status': 'exception',
+                'mode_classifier_backend': metadata.get('mode_classifier_backend') or 'custom_hook',
+            })
     q = (question or '').lower()
     if any(x in q for x in _DEEP_TRIGGERS):
-        return 'deep'
+        return 'deep', metadata
     if any(x in q for x in _PRACTICAL_TRIGGERS):
-        return 'practical'
+        return 'practical', metadata
     if len(q) < get_threshold('detect_mode_short_length', 80):
-        return 'practical'
-    return 'deep'
+        return 'practical', metadata
+    return 'deep', metadata
 
 
-def should_use_kb(question: str) -> bool:
+def should_use_kb_with_metadata(question: str) -> tuple[bool, dict]:
     """Return whether this question should enter the KB pipeline at all."""
+    _autoload_classifier_hooks()
+    metadata = {
+        'kb_classifier_used': False,
+        'kb_classifier_status': 'heuristic',
+        'kb_classifier_backend': 'none',
+        'kb_classifier_backend_detail': '',
+        'kb_classifier_confidence': 0.0,
+        'kb_classifier_reason': '',
+    }
     q = (question or '').strip()
     if not q:
-        return False
+        metadata['kb_classifier_status'] = 'empty_question'
+        return False, metadata
     if detect_policy_block(question) is not None:
-        return False
+        metadata['kb_classifier_status'] = 'policy_locked'
+        return False, metadata
     if _kb_classifier is not None:
         try:
             decision = _kb_classifier(question)
+            if isinstance(decision, dict):
+                raw_use_kb = decision.get('use_kb')
+                use_kb = bool(raw_use_kb) if isinstance(raw_use_kb, bool) else str(raw_use_kb).strip().lower() in {
+                    '1', 'true', 'yes',
+                }
+                metadata.update({
+                    'kb_classifier_used': True,
+                    'kb_classifier_status': str(decision.get('status', 'classified') or 'classified'),
+                    'kb_classifier_backend': str(decision.get('backend', 'custom_hook') or 'custom_hook'),
+                    'kb_classifier_backend_detail': str(decision.get('backend_detail', '') or ''),
+                    'kb_classifier_confidence': float(decision.get('confidence', 0.0) or 0.0),
+                    'kb_classifier_reason': str(decision.get('reason', '') or ''),
+                })
+                return use_kb, metadata
+            metadata.update({
+                'kb_classifier_used': True,
+                'kb_classifier_status': 'classified',
+                'kb_classifier_backend': 'custom_hook',
+            })
             if decision is False:
                 log.debug('KB classifier requested direct path, disabling retrieval')
-                return False
+                return False, metadata
         except Exception:
             log.debug('LLM KB classifier failed, using KB-only default')
-    return True
+            metadata.update({
+                'kb_classifier_used': True,
+                'kb_classifier_status': 'exception',
+                'kb_classifier_backend': metadata.get('kb_classifier_backend') or 'custom_hook',
+            })
+    return True, metadata
+
+
+def detect_mode(question: str) -> str:
+    return detect_mode_with_metadata(question)[0]
+
+
+def should_use_kb(question: str) -> bool:
+    return should_use_kb_with_metadata(question)[0]
 
 
 def _build_kb_only_clarification(question: str, *,
@@ -435,7 +537,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
     with ensure_trace_context(user_id=user_id, store=store,
                               purpose=purpose, question=question):
         assistant = get_default_assistant()
-        mode = detect_mode(question)
+        mode, mode_classifier_metadata = detect_mode_with_metadata(question)
         dialogue_state = load_dialogue_state(user_id=user_id, store=store)
         dialogue_frame = load_dialogue_frame(user_id=user_id, store=store)
         dialogue_act = infer_dialogue_act(question, dialogue_state)
@@ -449,6 +551,8 @@ def build_answer_plan(question: str, user_id: str = 'default',
             selected_axis=selected_axis,
             selected_detail=selected_detail,
         )
+        classifier_metadata = dict(getattr(dialogue_update, 'classifier_metadata', {}) or {})
+        classifier_metadata.update(mode_classifier_metadata)
         interpreted_frame = apply_dialogue_update(
             dialogue_frame,
             dialogue_update,
@@ -494,6 +598,18 @@ def build_answer_plan(question: str, user_id: str = 'default',
             frame_confidence=interpreted_frame.get('confidence', ''),
             frame_update_source=interpreted_frame.get('update_source', ''),
         )
+        if classifier_metadata:
+            log_event(
+                'planner.classifier_status',
+                store=store,
+                user_id=user_id,
+                family_classifier_status=classifier_metadata.get('family_classifier_status', ''),
+                family_classifier_result_topic=classifier_metadata.get('family_classifier_result_topic', ''),
+                family_classifier_result_goal=classifier_metadata.get('family_classifier_result_goal', ''),
+                family_classifier_rejection_reason=classifier_metadata.get('family_classifier_rejection_reason', ''),
+                mode_classifier_status=classifier_metadata.get('mode_classifier_status', ''),
+                mode_classifier_reason=classifier_metadata.get('mode_classifier_reason', ''),
+            )
 
         if question.strip() and record_user_reply and purpose == 'response':
             with traced_stage('mentor.reply_record', store=store, user_id=user_id):
@@ -503,7 +619,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
         guardrail = run_policy_stage(question, user_id=user_id, store=store)
         if guardrail:
             dialogue_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
-                {},
+                dict(classifier_metadata),
                 dialogue_state,
                 interpreted_frame,
                 dialogue_act,
@@ -547,7 +663,9 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 user=question,
             ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 
-        if not should_use_kb(question):
+        use_kb, kb_classifier_metadata = should_use_kb_with_metadata(question)
+        classifier_metadata.update(kb_classifier_metadata)
+        if not use_kb:
             clarification, clarify_metadata = _select_clarification(
                 question,
                 fallback_text=_build_kb_only_clarification(question),
@@ -559,7 +677,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 selected_detail=selected_detail,
             )
             clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
-                clarify_metadata,
+                {**classifier_metadata, **clarify_metadata},
                 dialogue_state,
                 interpreted_frame,
                 dialogue_act,
@@ -623,7 +741,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 selected_detail=selected_detail,
             )
             clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
-                clarify_metadata,
+                {**classifier_metadata, **clarify_metadata},
                 dialogue_state,
                 interpreted_frame,
                 dialogue_act,
@@ -692,7 +810,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 selected_detail=selected_detail,
             )
             clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
-                clarify_metadata,
+                {**classifier_metadata, **clarify_metadata},
                 dialogue_state,
                 interpreted_frame,
                 dialogue_act,
@@ -761,7 +879,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 selected_detail=selected_detail,
             )
             clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
-                clarify_metadata,
+                {**classifier_metadata, **clarify_metadata},
                 dialogue_state,
                 interpreted_frame,
                 dialogue_act,
@@ -836,7 +954,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 selected_detail=selected_detail,
             )
             clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
-                clarify_metadata,
+                {**classifier_metadata, **clarify_metadata},
                 dialogue_state,
                 interpreted_frame,
                 dialogue_act,
@@ -926,7 +1044,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 selected_detail=selected_detail,
             )
             clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
-                clarify_metadata,
+                {**classifier_metadata, **clarify_metadata},
                 dialogue_state,
                 interpreted_frame,
                 dialogue_act,
@@ -994,7 +1112,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 selected_detail=selected_detail,
             )
             clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
-                clarify_metadata,
+                {**classifier_metadata, **clarify_metadata},
                 dialogue_state,
                 interpreted_frame,
                 dialogue_act,
@@ -1049,7 +1167,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
             ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 
         answer_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
-            {},
+            dict(classifier_metadata),
             dialogue_state,
             interpreted_frame,
             dialogue_act,

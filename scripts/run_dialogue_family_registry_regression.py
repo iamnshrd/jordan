@@ -30,6 +30,11 @@ def main() -> None:
     sharing = infer_dialogue_family('У меня есть некоторые проблемы, я хочу поделиться')
     life_direction = infer_dialogue_family('Как мне дальше жить')
     menu_base = infer_dialogue_family('А что есть в базе?')
+    slang_greeting = infer_dialogue_family('Здарова')
+    summon = infer_dialogue_family('Джордан...')
+    renderer_check = infer_dialogue_family('Проверяем рендерер')
+    contact_ping = infer_dialogue_family('Я тебе пишу сообщение')
+    appearance = infer_dialogue_family('Как стать красивым')
     self_eval_spec = get_dialogue_family_spec('self-evaluation')
     shame_spec = get_dialogue_family_spec('shame-self-contempt')
     greeting_spec = get_dialogue_family_spec('greeting')
@@ -131,6 +136,16 @@ def main() -> None:
                 and sharing.get('topic_candidate') == 'problem-sharing-opening'
                 and life_direction.get('topic_candidate') == 'life-direction-opening'
                 and menu_base.get('topic_candidate') == 'scope-topics'
+            ),
+        },
+        {
+            'name': 'registry_maps_remaining_opening_edge_cases',
+            'pass': (
+                slang_greeting.get('topic_candidate') == 'greeting'
+                and summon.get('topic_candidate') == 'social-small-talk'
+                and renderer_check.get('topic_candidate') == 'social-small-talk'
+                and contact_ping.get('topic_candidate') == 'social-small-talk'
+                and appearance.get('topic_candidate') == 'appearance-self-presentation'
             ),
         },
         {
@@ -237,6 +252,11 @@ def main() -> None:
             'sharing': sharing,
             'life_direction': life_direction,
             'menu_base': menu_base,
+            'slang_greeting': slang_greeting,
+            'summon': summon,
+            'renderer_check': renderer_check,
+            'contact_ping': contact_ping,
+            'appearance': appearance,
             'self_evaluation_spec': {
                 'opening_mode': self_eval_spec.opening_mode if self_eval_spec else '',
                 'opening_pending_slot': self_eval_spec.opening_pending_slot if self_eval_spec else '',

@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
+
+sys.dont_write_bytecode = True
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -66,13 +69,16 @@ def simulate_dispatch(users: list[dict], decisions: dict[str, dict], *,
 
 def run_suite(script_names: list[str], suite_name: str) -> None:
     results = []
+    env = dict(os.environ)
+    env['PYTHONDONTWRITEBYTECODE'] = '1'
     for name in script_names:
         path = SCRIPT_DIR / name
         proc = subprocess.run(
-            [sys.executable, str(path)],
+            [sys.executable, '-B', str(path)],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
+            env=env,
         )
         try:
             payload = json.loads(proc.stdout) if proc.stdout.strip() else {}

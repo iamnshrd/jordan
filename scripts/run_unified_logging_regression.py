@@ -125,6 +125,15 @@ def main() -> None:
                     and adapter_renderer_rows[0].get('renderer_exception_detail') == ''
                 ),
             },
+            {
+                'name': 'adapter_result_includes_classifier_metadata',
+                'pass': (
+                    len(adapter_renderer_rows) == 1
+                    and adapter_renderer_rows[0].get('family_classifier_status') in {'not_applicable', 'not_configured', 'deterministic'}
+                    and adapter_renderer_rows[0].get('mode_classifier_status') in {'heuristic', 'classified', 'exception', 'invalid_payload'}
+                    and adapter_renderer_rows[0].get('kb_classifier_status') in {'heuristic', 'classified', 'policy_locked', 'exception', 'empty_question'}
+                ),
+            },
         ]
         emit_report(results)
 

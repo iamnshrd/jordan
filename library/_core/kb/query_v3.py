@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""V3 runtime query: bridge-to-action, next steps, quote packs, confidence."""
+"""Canonical runtime KB query surface.
+
+This module owns the structured retrieval bundle used by the runtime planner
+and synthesis path. Older raw/inspection-style queries stay in ``query.py``.
+"""
 from library.db import connect
 
 

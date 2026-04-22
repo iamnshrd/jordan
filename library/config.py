@@ -68,17 +68,6 @@ QUOTES_CANDIDATES = ROOT / 'quotes_candidates.json'
 QUOTES_NORMALIZED = ROOT / 'quotes_normalized.json'
 INGEST_REPORT = ROOT / 'ingest_report.json'
 
-# --- Workspace JSON state files (legacy, kept for backward-compat) ---
-CONTINUITY = WORKSPACE / 'continuity.json'
-SESSION_STATE = WORKSPACE / 'session_state.json'
-USER_STATE = WORKSPACE / 'user_state.json'
-EFFECTIVENESS = WORKSPACE / 'effectiveness_memory.json'
-CHECKPOINTS = WORKSPACE / 'session_checkpoints.jsonl'
-PROGRESS_STATE = WORKSPACE / 'progress_state.json'
-CONTEXT_GRAPH = WORKSPACE / 'context_graph.json'
-CONTINUITY_SUMMARY = WORKSPACE / 'continuity_summary.json'
-REACTION_ESTIMATE = WORKSPACE / 'user_reaction_estimate.json'
-
 # --- Runtime thresholds (tunable) ---
 THRESHOLDS = ROOT / 'thresholds.json'
 
