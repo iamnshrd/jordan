@@ -31,6 +31,7 @@ def main() -> None:
         'run_dialogue_frame_update_regression.py',
         'run_dialogue_frame_render_regression.py',
         'run_llm_renderer_regression.py',
+        'run_warmup_regression.py',
         'run_human_clarify_regression.py',
         'run_unified_logging_regression.py',
     ], 'guardrail')

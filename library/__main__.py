@@ -5,6 +5,7 @@ Usage examples:
     python -m library run "вопрос"
     python -m library frame "вопрос"
     python -m library respond "вопрос" --mode deep --voice hard
+    python -m library warmup
     python -m library kb build
     python -m library kb query --query "смысл"
     python -m library kb migrate-v3
@@ -371,6 +372,16 @@ def cmd_state(args):
         sys.exit(1)
 
 
+def cmd_warmup(args):
+    from library._core.runtime.warmup import warm_runtime
+
+    result = warm_runtime(
+        timeout_seconds=args.timeout_seconds,
+        retry_interval=args.retry_interval,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog='python -m library', description='Jordan Peterson Agent CLI')
     parser.add_argument('--user-id', dest='user_id', default='default',
@@ -407,6 +418,11 @@ def build_parser():
     p_adapter.add_argument('--pretty', action='store_true',
                            help='Pretty-print adapter JSON payload')
     p_adapter.set_defaults(func=cmd_adapter)
+
+    p_warmup = sub.add_parser('warmup', help='Warm Jordan bridge and renderer after restart')
+    p_warmup.add_argument('--timeout-seconds', type=float, default=45.0)
+    p_warmup.add_argument('--retry-interval', type=float, default=2.0)
+    p_warmup.set_defaults(func=cmd_warmup)
 
     p_kb = sub.add_parser('kb', help='Knowledge base operations')
     p_kb.add_argument('kb_action', choices=[

@@ -9,6 +9,25 @@ log() {
   printf '[restart] %s\n' "$*"
 }
 
+run_jordan_warmup() {
+  local python_bin module
+  python_bin="${OPENCLAW_JORDAN_BRIDGE_PYTHON:-}"
+  module="${OPENCLAW_JORDAN_BRIDGE_MODULE:-library}"
+  if [ -z "$python_bin" ] && [ -x "$JORDAN_HOME/.venv/bin/python3" ]; then
+    python_bin="$JORDAN_HOME/.venv/bin/python3"
+  fi
+  if [ -z "$python_bin" ]; then
+    python_bin="python3"
+  fi
+
+  log "warming Jordan runtime"
+  if (cd "$JORDAN_HOME" && "$python_bin" -m "$module" warmup --timeout-seconds 60 --retry-interval 2); then
+    log "Jordan warmup complete"
+  else
+    log "Jordan warmup failed; continuing"
+  fi
+}
+
 _user_uid() {
   id -u
 }
@@ -112,6 +131,7 @@ main() {
   if user_bus_available; then
     _user_systemctl --no-pager --full status openclaw-gateway-jordan-peterson.service || true
   fi
+  run_jordan_warmup
 }
 
 main "$@"
