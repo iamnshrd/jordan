@@ -49,8 +49,10 @@ sudo cp deploy/systemd/jordan-mentor-dispatch.service /etc/systemd/system/
 sudo cp deploy/systemd/jordan-mentor-dispatch.timer /etc/systemd/system/
 sudo cp deploy/systemd/configure-openclaw-logging.sh /usr/local/bin/configure-openclaw-logging
 sudo cp deploy/systemd/restart-jordan-runtime.sh /usr/local/bin/restart-jordan-runtime
+sudo cp deploy/systemd/update-jordan-runtime.sh /usr/local/bin/update-jordan-runtime
 sudo chmod +x /usr/local/bin/configure-openclaw-logging
 sudo chmod +x /usr/local/bin/restart-jordan-runtime
+sudo chmod +x /usr/local/bin/update-jordan-runtime
 sudo systemctl daemon-reload
 sudo systemctl enable --now jordan-mentor-dispatch.timer
 ```
@@ -82,11 +84,23 @@ Restart Jordan + OpenClaw after `git pull`:
 sudo /usr/local/bin/restart-jordan-runtime
 ```
 
+Pull latest code, clear fresh logs, and restart everything in one step:
+
+```bash
+/usr/local/bin/update-jordan-runtime
+```
+
 If OpenClaw is installed as a user service, prefer running the helper without
 `sudo` so it can reach the user bus cleanly:
 
 ```bash
 /usr/local/bin/restart-jordan-runtime
+```
+
+The one-shot update helper also prefers running without `sudo`:
+
+```bash
+/usr/local/bin/update-jordan-runtime
 ```
 
 If your OpenClaw gateway is installed as a user service, the helper also tries
