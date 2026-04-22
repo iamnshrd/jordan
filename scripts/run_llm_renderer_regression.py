@@ -13,11 +13,15 @@ if str(REPO_ROOT) not in sys.path:
 from _helpers import emit_report
 from library._core.runtime.clarify_human import build_clarification
 from library._core.runtime.llm_renderer import reset_llm_renderer, set_llm_renderer
+from library._core.runtime import openclaw_gateway_renderer
 
 
 def main() -> None:
     original_disable = os.environ.get('JORDAN_DISABLE_OPENCLAW_GATEWAY_RENDERER')
     original_hook = os.environ.get('JORDAN_LLM_RENDERER_HOOK')
+    original_gateway_token = os.environ.get('OPENCLAW_GATEWAY_TOKEN')
+    original_jordan_model = os.environ.get('JORDAN_MODEL')
+    original_renderer_model = os.environ.get('JORDAN_LLM_RENDERER_MODEL')
     os.environ['JORDAN_DISABLE_OPENCLAW_GATEWAY_RENDERER'] = '1'
     os.environ.pop('JORDAN_LLM_RENDERER_HOOK', None)
     reset_llm_renderer()
@@ -229,6 +233,42 @@ def main() -> None:
     )
     reset_llm_renderer()
 
+    gateway_calls: list[dict] = []
+    original_urlopen = openclaw_gateway_renderer.request_module.urlopen
+    os.environ['OPENCLAW_GATEWAY_TOKEN'] = 'test-token'
+    os.environ['JORDAN_MODEL'] = 'openai-codex/gpt-5.4'
+    os.environ.pop('JORDAN_LLM_RENDERER_MODEL', None)
+
+    class _FakeGatewayResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({'output_text': 'Тогда держись главного узла и назови его прямо.'}).encode('utf-8')
+
+    def _fake_urlopen(req, timeout=0):
+        gateway_calls.append({
+            'timeout': timeout,
+            'headers': dict(req.header_items()),
+            'body': json.loads(req.data.decode('utf-8')),
+            'url': req.full_url,
+        })
+        return _FakeGatewayResponse()
+
+    openclaw_gateway_renderer.request_module.urlopen = _fake_urlopen
+    try:
+        gateway_rendered = openclaw_gateway_renderer.render_via_openclaw_gateway(
+            request=None,
+            prompt={'system': 'sys', 'user': 'usr'},
+            attempt=1,
+            violations=[],
+        )
+    finally:
+        openclaw_gateway_renderer.request_module.urlopen = original_urlopen
+
     success_meta = success.metadata or {}
     not_configured_meta = not_configured.metadata or {}
     env_hook_meta = env_hook.metadata or {}
@@ -237,6 +277,15 @@ def main() -> None:
     fallback_meta = fallback.metadata or {}
 
     results = [
+        {
+            'name': 'gateway_renderer_uses_jordan_model_override_header',
+            'pass': (
+                gateway_rendered == 'Тогда держись главного узла и назови его прямо.'
+                and len(gateway_calls) == 1
+                and gateway_calls[0]['body']['model'] == 'openclaw'
+                and gateway_calls[0]['headers'].get('X-openclaw-model') == 'openai-codex/gpt-5.4'
+            ),
+        },
         {
             'name': 'renderer_not_configured_does_not_count_as_runtime_fallback',
             'pass': (
@@ -314,6 +363,18 @@ def main() -> None:
         os.environ.pop('JORDAN_LLM_RENDERER_HOOK', None)
     else:
         os.environ['JORDAN_LLM_RENDERER_HOOK'] = original_hook
+    if original_gateway_token is None:
+        os.environ.pop('OPENCLAW_GATEWAY_TOKEN', None)
+    else:
+        os.environ['OPENCLAW_GATEWAY_TOKEN'] = original_gateway_token
+    if original_jordan_model is None:
+        os.environ.pop('JORDAN_MODEL', None)
+    else:
+        os.environ['JORDAN_MODEL'] = original_jordan_model
+    if original_renderer_model is None:
+        os.environ.pop('JORDAN_LLM_RENDERER_MODEL', None)
+    else:
+        os.environ['JORDAN_LLM_RENDERER_MODEL'] = original_renderer_model
 
     emit_report(
         results,

@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 from urllib import error, parse, request
 
+from library.config import resolve_jordan_model_ref
+
 
 _DEFAULT_GATEWAY_URL = 'http://127.0.0.1:18789'
 _DEFAULT_MODEL = 'openclaw'
@@ -105,7 +107,17 @@ def is_available() -> bool:
 
 def describe_gateway_backend() -> str:
     gateway_url, source = resolve_gateway_url_with_source()
+    jordan_model = resolve_renderer_model_ref()
+    if jordan_model:
+        return f'{source}:{gateway_url.rstrip("/")}/v1/responses model={jordan_model}'
     return f'{source}:{gateway_url.rstrip("/")}/v1/responses'
+
+
+def resolve_renderer_model_ref() -> str:
+    explicit = (os.environ.get('JORDAN_LLM_RENDERER_MODEL') or '').strip()
+    if explicit:
+        return explicit
+    return resolve_jordan_model_ref().strip()
 
 
 def _extract_output_text(payload: Any) -> str:
@@ -139,8 +151,16 @@ def render_via_openclaw_gateway(*, request, prompt, attempt, violations):
     secret = resolve_gateway_secret()
     if not secret:
         raise RuntimeError('OpenClaw gateway auth token/password is not configured.')
+    requested_model = resolve_renderer_model_ref()
+    gateway_model = requested_model if requested_model.startswith('openclaw') else _DEFAULT_MODEL
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {secret}',
+    }
+    if requested_model and not requested_model.startswith('openclaw'):
+        headers['x-openclaw-model'] = requested_model
     body = {
-        'model': (os.environ.get('JORDAN_LLM_RENDERER_MODEL') or _DEFAULT_MODEL).strip() or _DEFAULT_MODEL,
+        'model': gateway_model,
         'instructions': prompt.get('system', ''),
         'input': prompt.get('user', ''),
         'store': False,
@@ -148,10 +168,7 @@ def render_via_openclaw_gateway(*, request, prompt, attempt, violations):
     req = request_module.Request(
         f'{gateway_url}/v1/responses',
         data=json.dumps(body).encode('utf-8'),
-        headers={
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {secret}',
-        },
+        headers=headers,
         method='POST',
     )
     timeout = float((os.environ.get('JORDAN_LLM_RENDERER_TIMEOUT_SECONDS') or '20').strip() or '20')

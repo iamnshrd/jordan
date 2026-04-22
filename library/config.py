@@ -235,6 +235,31 @@ def canonical_user_id(raw: str | None = None, *, channel: str = 'telegram') -> s
     return value
 
 
+def resolve_jordan_model_ref() -> str:
+    """Return Jordan's configured provider/model ref.
+
+    Prefer the active OpenClaw profile/agent model first so renderer/model
+    paths stay aligned with the actual Jordan runtime selection. Keep
+    Jordan-local env vars only as a manual fallback/override escape hatch when
+    no active agent model is configured.
+    """
+    try:
+        from library._core.runtime.openclaw_gateway_renderer import _load_openclaw_config
+        from library._core.runtime.openclaw_gateway_renderer import _get_nested
+
+        cfg = _load_openclaw_config()
+        primary = _get_nested(cfg, ('agents', 'defaults', 'model', 'primary'))
+        if isinstance(primary, str) and primary.strip():
+            return primary.strip()
+    except Exception:
+        pass
+    for env_key in ('JORDAN_MODEL_REF', 'JORDAN_MODEL'):
+        raw = (os.environ.get(env_key) or '').strip()
+        if raw:
+            return raw
+    return ''
+
+
 def tracked_mentor_users_path() -> Path:
     return WORKSPACE / 'mentor_targets.json'
 
