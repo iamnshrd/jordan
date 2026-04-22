@@ -19,6 +19,7 @@ def main() -> None:
         env['JORDAN_LOG_PATH'] = str(runtime_log)
         env['JORDAN_CONVERSATION_AUDIT_LOG'] = str(conversation_audit_log)
         env['JORDAN_DISABLE_OPENCLAW_GATEWAY_RENDERER'] = '1'
+        env['JORDAN_DISABLE_OPENCLAW_CLI_RENDERER'] = '1'
 
         run_proc = subprocess.run(
             [sys.executable, '-m', 'library', 'run', 'Я застрял и не понимаю, с чего начать'],

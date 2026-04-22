@@ -5,6 +5,7 @@ import json
 import io
 import os
 import sys
+import tempfile
 from urllib import error
 from pathlib import Path
 
@@ -15,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from _helpers import emit_report
 from library._core.runtime.clarify_human import build_clarification
 from library._core.runtime.llm_renderer import reset_llm_renderer, set_llm_renderer
+from library._core.runtime import openclaw_cli_renderer
 from library._core.runtime import openclaw_gateway_renderer
 
 
@@ -24,7 +26,11 @@ def main() -> None:
     original_gateway_token = os.environ.get('OPENCLAW_GATEWAY_TOKEN')
     original_jordan_model = os.environ.get('JORDAN_MODEL')
     original_renderer_model = os.environ.get('JORDAN_LLM_RENDERER_MODEL')
+    original_disable_cli = os.environ.get('JORDAN_DISABLE_OPENCLAW_CLI_RENDERER')
+    original_openclaw_config_path = os.environ.get('OPENCLAW_CONFIG_PATH')
+    original_openclaw_cli_bin = os.environ.get('OPENCLAW_CLI_BIN')
     os.environ['JORDAN_DISABLE_OPENCLAW_GATEWAY_RENDERER'] = '1'
+    os.environ['JORDAN_DISABLE_OPENCLAW_CLI_RENDERER'] = '1'
     os.environ.pop('JORDAN_LLM_RENDERER_HOOK', None)
     reset_llm_renderer()
     not_configured = build_clarification(
@@ -349,6 +355,44 @@ def main() -> None:
     finally:
         openclaw_gateway_renderer.request_module.urlopen = original_urlopen
 
+    with tempfile.TemporaryDirectory(prefix='jordan-openclaw-cli-renderer-') as temp_dir:
+        config_path = Path(temp_dir) / 'openclaw.json'
+        config_path.write_text(
+            json.dumps({'agents': {'defaults': {'model': {'primary': 'openai-codex/gpt-5.4'}}}}, ensure_ascii=False),
+            encoding='utf-8',
+        )
+        os.environ['OPENCLAW_CONFIG_PATH'] = str(config_path)
+        os.environ['OPENCLAW_CLI_BIN'] = '/usr/bin/openclaw'
+        os.environ['JORDAN_DISABLE_OPENCLAW_CLI_RENDERER'] = '0'
+
+        cli_calls: list[dict] = []
+        original_subprocess_run = openclaw_cli_renderer.subprocess_module.run
+
+        class _FakeCompleted:
+            def __init__(self, stdout: str, stderr: str = '', returncode: int = 0):
+                self.stdout = stdout
+                self.stderr = stderr
+                self.returncode = returncode
+
+        def _fake_subprocess_run(command, *, capture_output, text, env, timeout, check):
+            cli_calls.append({
+                'command': list(command),
+                'env_config_path': env.get('OPENCLAW_CONFIG_PATH'),
+                'timeout': timeout,
+            })
+            return _FakeCompleted(json.dumps({'payloads': [{'text': 'Привет.'}], 'meta': {}}))
+
+        openclaw_cli_renderer.subprocess_module.run = _fake_subprocess_run
+        try:
+            cli_rendered = openclaw_cli_renderer.render_via_openclaw_cli(
+                request=None,
+                prompt={'system': 'SYSTEM', 'user': 'USER'},
+                attempt=1,
+                violations=[],
+            )
+        finally:
+            openclaw_cli_renderer.subprocess_module.run = original_subprocess_run
+
     success_meta = success.metadata or {}
     not_configured_meta = not_configured.metadata or {}
     env_hook_meta = env_hook.metadata or {}
@@ -376,6 +420,24 @@ def main() -> None:
                 and gateway_fallback_calls[1]['url'].endswith('/v1/chat/completions')
                 and gateway_fallback_calls[1]['body']['model'] == 'openclaw'
                 and gateway_fallback_calls[1]['headers'].get('X-openclaw-model') == 'openai-codex/gpt-5.4'
+            ),
+        },
+        {
+            'name': 'openclaw_cli_renderer_uses_local_agent_json_path',
+            'pass': (
+                cli_rendered == 'Привет.'
+                and len(cli_calls) == 1
+                and cli_calls[0]['command'] == [
+                    '/usr/bin/openclaw',
+                    'agent',
+                    '--agent',
+                    'main',
+                    '--message',
+                    'USER',
+                    '--local',
+                    '--json',
+                ]
+                and cli_calls[0]['env_config_path'] != str(config_path)
             ),
         },
         {
@@ -477,6 +539,18 @@ def main() -> None:
         os.environ.pop('JORDAN_LLM_RENDERER_MODEL', None)
     else:
         os.environ['JORDAN_LLM_RENDERER_MODEL'] = original_renderer_model
+    if original_disable_cli is None:
+        os.environ.pop('JORDAN_DISABLE_OPENCLAW_CLI_RENDERER', None)
+    else:
+        os.environ['JORDAN_DISABLE_OPENCLAW_CLI_RENDERER'] = original_disable_cli
+    if original_openclaw_config_path is None:
+        os.environ.pop('OPENCLAW_CONFIG_PATH', None)
+    else:
+        os.environ['OPENCLAW_CONFIG_PATH'] = original_openclaw_config_path
+    if original_openclaw_cli_bin is None:
+        os.environ.pop('OPENCLAW_CLI_BIN', None)
+    else:
+        os.environ['OPENCLAW_CLI_BIN'] = original_openclaw_cli_bin
 
     emit_report(
         results,
