@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from _helpers import emit_report
 from library._core.runtime.clarify_human import build_clarification
 from library._core.runtime.llm_renderer import reset_llm_renderer, set_llm_renderer
+from library._core.runtime import anthropic_api_renderer
 from library._core.runtime import openclaw_api_renderer
 from library._core.runtime import openclaw_cli_renderer
 from library._core.runtime import openclaw_gateway_renderer
@@ -29,12 +30,17 @@ def main() -> None:
     original_renderer_model = os.environ.get('JORDAN_LLM_RENDERER_MODEL')
     original_disable_cli = os.environ.get('JORDAN_DISABLE_OPENCLAW_CLI_RENDERER')
     original_disable_api = os.environ.get('JORDAN_DISABLE_OPENCLAW_API_RENDERER')
+    original_disable_anthropic = os.environ.get('JORDAN_DISABLE_ANTHROPIC_API_RENDERER')
+    original_anthropic_api_key = os.environ.get('ANTHROPIC_API_KEY')
+    original_jordan_anthropic_api_key = os.environ.get('JORDAN_ANTHROPIC_API_KEY')
+    original_anthropic_model = os.environ.get('JORDAN_ANTHROPIC_MODEL')
     original_openclaw_config_path = os.environ.get('OPENCLAW_CONFIG_PATH')
     original_openclaw_state_dir = os.environ.get('OPENCLAW_STATE_DIR')
     original_openclaw_cli_bin = os.environ.get('OPENCLAW_CLI_BIN')
     os.environ['JORDAN_DISABLE_OPENCLAW_GATEWAY_RENDERER'] = '1'
     os.environ['JORDAN_DISABLE_OPENCLAW_CLI_RENDERER'] = '1'
     os.environ['JORDAN_DISABLE_OPENCLAW_API_RENDERER'] = '1'
+    os.environ['JORDAN_DISABLE_ANTHROPIC_API_RENDERER'] = '1'
     os.environ.pop('JORDAN_LLM_RENDERER_HOOK', None)
     reset_llm_renderer()
     not_configured = build_clarification(
@@ -279,8 +285,10 @@ def main() -> None:
     gateway_calls: list[dict] = []
     gateway_fallback_calls: list[dict] = []
     api_calls: list[dict] = []
+    anthropic_calls: list[dict] = []
     original_urlopen = openclaw_gateway_renderer.request_module.urlopen
     original_api_urlopen = openclaw_api_renderer.request_module.urlopen
+    original_anthropic_urlopen = anthropic_api_renderer.request_module.urlopen
     os.environ['OPENCLAW_GATEWAY_TOKEN'] = 'test-token'
     os.environ['JORDAN_MODEL'] = 'openai-codex/gpt-5.4'
     os.environ.pop('JORDAN_LLM_RENDERER_MODEL', None)
@@ -330,6 +338,36 @@ def main() -> None:
             'url': req.full_url,
         })
         return _FakeApiResponse()
+
+    class _FakeAnthropicResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({
+                'id': 'msg_test_123',
+                'type': 'message',
+                'role': 'assistant',
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': 'Скажи прямо, какой узел ты хочешь разобрать первым?',
+                    },
+                ],
+                'model': 'claude-sonnet-4-6',
+            }).encode('utf-8')
+
+    def _fake_anthropic_urlopen(req, timeout=0):
+        anthropic_calls.append({
+            'timeout': timeout,
+            'headers': dict(req.header_items()),
+            'body': json.loads(req.data.decode('utf-8')),
+            'url': req.full_url,
+        })
+        return _FakeAnthropicResponse()
 
     class _FakeChatCompletionResponse:
         def __enter__(self):
@@ -414,6 +452,52 @@ def main() -> None:
         finally:
             openclaw_api_renderer.request_module.urlopen = original_api_urlopen
 
+    os.environ['ANTHROPIC_API_KEY'] = 'anthropic-test-key'
+    os.environ['JORDAN_DISABLE_ANTHROPIC_API_RENDERER'] = '0'
+    os.environ['JORDAN_MODEL'] = 'anthropic/claude-sonnet-4-6'
+    anthropic_api_renderer.request_module.urlopen = _fake_anthropic_urlopen
+    try:
+        anthropic_rendered = anthropic_api_renderer.render_via_anthropic_api(
+            request=None,
+            prompt={'system': 'sys', 'user': 'USER'},
+            attempt=1,
+            violations=[],
+        )
+        reset_llm_renderer()
+        os.environ['JORDAN_DISABLE_OPENCLAW_API_RENDERER'] = '1'
+        os.environ['JORDAN_DISABLE_OPENCLAW_CLI_RENDERER'] = '1'
+        os.environ['JORDAN_DISABLE_OPENCLAW_GATEWAY_RENDERER'] = '1'
+        anthropic_autoload = build_clarification(
+            'Добрый вечер, Джордан',
+            dialogue_state={
+                'active_topic': '',
+                'active_route': 'general',
+                'abstraction_level': 'general',
+                'pending_slot': '',
+                'active_axis': '',
+                'active_detail': '',
+            },
+            dialogue_frame={
+                'topic': 'greeting',
+                'route': 'general',
+                'frame_type': 'greeting',
+                'stance': 'general',
+                'goal': 'opening',
+                'axis': '',
+                'detail': '',
+                'pending_slot': '',
+                'relation_to_previous': 'new',
+                'transition_kind': 'opening',
+                'confidence': '0.9',
+            },
+            dialogue_act='greeting_opening',
+        )
+    finally:
+        anthropic_api_renderer.request_module.urlopen = original_anthropic_urlopen
+        reset_llm_renderer()
+
+    os.environ['JORDAN_MODEL'] = 'openai-codex/gpt-5.4'
+
     openclaw_gateway_renderer.request_module.urlopen = _fake_urlopen_with_fallback
     try:
         gateway_fallback_rendered = openclaw_gateway_renderer.render_via_openclaw_gateway(
@@ -470,8 +554,31 @@ def main() -> None:
     retry_meta = retry.metadata or {}
     fallback_meta = fallback.metadata or {}
     exception_meta = exception_case.metadata or {}
+    anthropic_autoload_meta = anthropic_autoload.metadata or {}
 
     results = [
+        {
+            'name': 'anthropic_api_renderer_uses_official_messages_api',
+            'pass': (
+                anthropic_rendered == 'Скажи прямо, какой узел ты хочешь разобрать первым?'
+                and len(anthropic_calls) >= 1
+                and anthropic_calls[0]['url'] == 'https://api.anthropic.com/v1/messages'
+                and anthropic_calls[0]['body']['model'] == 'claude-sonnet-4-6'
+                and anthropic_calls[0]['body']['messages'][0]['role'] == 'user'
+                and anthropic_calls[0]['body']['messages'][0]['content'] == 'USER'
+                and anthropic_calls[0]['headers'].get('X-api-key') == 'anthropic-test-key'
+                and anthropic_calls[0]['headers'].get('Anthropic-version') == '2023-06-01'
+            ),
+        },
+        {
+            'name': 'renderer_autoload_prefers_anthropic_when_key_is_present',
+            'pass': (
+                anthropic_autoload_meta.get('renderer_used') is True
+                and anthropic_autoload_meta.get('renderer_backend') == 'anthropic_api'
+                and anthropic_autoload_meta.get('renderer_status') == 'ok'
+                and anthropic_autoload_meta.get('renderer_fallback_used') is False
+            ),
+        },
         {
             'name': 'openclaw_api_renderer_uses_oauth_profile_and_codex_backend',
             'pass': (
@@ -634,6 +741,22 @@ def main() -> None:
         os.environ.pop('JORDAN_DISABLE_OPENCLAW_API_RENDERER', None)
     else:
         os.environ['JORDAN_DISABLE_OPENCLAW_API_RENDERER'] = original_disable_api
+    if original_disable_anthropic is None:
+        os.environ.pop('JORDAN_DISABLE_ANTHROPIC_API_RENDERER', None)
+    else:
+        os.environ['JORDAN_DISABLE_ANTHROPIC_API_RENDERER'] = original_disable_anthropic
+    if original_anthropic_api_key is None:
+        os.environ.pop('ANTHROPIC_API_KEY', None)
+    else:
+        os.environ['ANTHROPIC_API_KEY'] = original_anthropic_api_key
+    if original_jordan_anthropic_api_key is None:
+        os.environ.pop('JORDAN_ANTHROPIC_API_KEY', None)
+    else:
+        os.environ['JORDAN_ANTHROPIC_API_KEY'] = original_jordan_anthropic_api_key
+    if original_anthropic_model is None:
+        os.environ.pop('JORDAN_ANTHROPIC_MODEL', None)
+    else:
+        os.environ['JORDAN_ANTHROPIC_MODEL'] = original_anthropic_model
     if original_openclaw_config_path is None:
         os.environ.pop('OPENCLAW_CONFIG_PATH', None)
     else:
@@ -656,6 +779,7 @@ def main() -> None:
         retry_metadata=retry_meta,
         fallback_metadata=fallback_meta,
         exception_metadata=exception_meta,
+        anthropic_autoload_metadata=anthropic_autoload_meta,
     )
 
 

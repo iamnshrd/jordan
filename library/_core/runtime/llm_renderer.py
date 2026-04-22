@@ -168,6 +168,20 @@ def _autoload_renderer_from_env() -> None:
         or ''
     ).strip()
     if not hook_ref or ':' not in hook_ref:
+        if str(os.environ.get('JORDAN_DISABLE_ANTHROPIC_API_RENDERER') or '').strip().lower() not in {
+            '1', 'true', 'yes',
+        }:
+            try:
+                from library._core.runtime.anthropic_api_renderer import (
+                    is_available as anthropic_renderer_available,
+                    render_via_anthropic_api,
+                )
+            except Exception:
+                pass
+            else:
+                if anthropic_renderer_available():
+                    _set_renderer(render_via_anthropic_api, backend='anthropic_api')
+                    return
         if str(os.environ.get('JORDAN_DISABLE_OPENCLAW_API_RENDERER') or '').strip().lower() not in {
             '1', 'true', 'yes',
         }:

@@ -7,6 +7,7 @@ import json
 import os
 from typing import Any, Callable
 
+from library._core.runtime import anthropic_api_renderer
 from library._core.runtime import openclaw_api_renderer
 
 
@@ -122,6 +123,9 @@ def _autoload_family_classifier() -> None:
             _set_family_classifier(candidate, backend='custom_hook')
             return
     if not _runtime_classifier_enabled():
+        return
+    if anthropic_api_renderer.is_available():
+        _set_family_classifier(classify_dialogue_family_with_anthropic, backend='anthropic_api')
         return
     if openclaw_api_renderer.is_available():
         _set_family_classifier(classify_dialogue_family_with_llm, backend='openclaw_api')
@@ -283,6 +287,24 @@ def classify_dialogue_family_with_llm(*, request: LLMFamilyClassificationRequest
 
 
 classify_dialogue_family_with_llm.__jordan_classifier_backend_detail__ = describe_api_classifier_backend
+
+
+def describe_anthropic_classifier_backend() -> str:
+    return anthropic_api_renderer.describe_anthropic_backend()
+
+
+def classify_dialogue_family_with_anthropic(*, request: LLMFamilyClassificationRequest) -> dict[str, Any]:
+    timeout = float((os.environ.get('JORDAN_LLM_CLASSIFIER_TIMEOUT_SECONDS') or '2.5').strip() or '2.5')
+    return anthropic_api_renderer.call_anthropic_json(
+        prompt=_build_family_prompt(request),
+        timeout_seconds=timeout,
+        max_tokens=220,
+    )
+
+
+classify_dialogue_family_with_anthropic.__jordan_classifier_backend_detail__ = (
+    describe_anthropic_classifier_backend
+)
 
 
 def maybe_classify_dialogue_family(request: LLMFamilyClassificationRequest) -> LLMFamilyClassificationResult:
