@@ -20,12 +20,21 @@ def main() -> None:
         'pass': local.get('status') == 'ok' and bool(local.get('clarify_profile')) and bool(local.get('text_preview')),
     })
 
-    original_available = warmup_module.is_gateway_renderer_available
-    warmup_module.is_gateway_renderer_available = lambda: False
+    original_renderer = getattr(warmup_module.llm_renderer_module, '_llm_renderer', None)
+    original_backend = getattr(warmup_module.llm_renderer_module, '_llm_renderer_backend', 'none')
+    original_detail = getattr(warmup_module.llm_renderer_module, '_llm_renderer_backend_detail', '')
+    original_autoload = warmup_module.llm_renderer_module._autoload_renderer_from_env
+    warmup_module.llm_renderer_module._llm_renderer = None
+    warmup_module.llm_renderer_module._llm_renderer_backend = 'none'
+    warmup_module.llm_renderer_module._llm_renderer_backend_detail = ''
+    warmup_module.llm_renderer_module._autoload_renderer_from_env = lambda: None
     try:
         unavailable = warmup_module.warm_renderer_path(timeout_seconds=0.01, retry_interval=0)
     finally:
-        warmup_module.is_gateway_renderer_available = original_available
+        warmup_module.llm_renderer_module._llm_renderer = original_renderer
+        warmup_module.llm_renderer_module._llm_renderer_backend = original_backend
+        warmup_module.llm_renderer_module._llm_renderer_backend_detail = original_detail
+        warmup_module.llm_renderer_module._autoload_renderer_from_env = original_autoload
     results.append({
         'name': 'warm_renderer_path_skips_when_unavailable',
         'pass': unavailable.get('status') == 'not_available' and unavailable.get('attempt_count') == 0,

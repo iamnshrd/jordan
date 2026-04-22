@@ -7,10 +7,7 @@ from typing import Any, Callable
 
 from library._core.runtime.clarify_human import build_clarification
 from library._core.runtime.llm_renderer import reset_llm_renderer
-from library._core.runtime.openclaw_gateway_renderer import (
-    is_available as is_gateway_renderer_available,
-    render_via_openclaw_gateway,
-)
+from library._core.runtime import llm_renderer as llm_renderer_module
 from library.utils import log_event
 
 
@@ -79,7 +76,10 @@ def warm_renderer_path(
     sleep_fn: Callable[[float], None] = time.sleep,
     now_fn: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
-    if not is_gateway_renderer_available():
+    reset_llm_renderer()
+    llm_renderer_module._autoload_renderer_from_env()
+    renderer = render_fn or getattr(llm_renderer_module, '_llm_renderer', None)
+    if not callable(renderer):
         payload = {
             'status': 'not_available',
             'attempt_count': 0,
@@ -88,8 +88,6 @@ def warm_renderer_path(
         }
         log_event('runtime.warmup_renderer_skipped', stage='warmup', **payload)
         return payload
-
-    renderer = render_fn or render_via_openclaw_gateway
     deadline = now_fn() + max(timeout_seconds, 0.0)
     attempt_count = 0
     exception_detail = ''

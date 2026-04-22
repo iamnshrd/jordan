@@ -247,7 +247,8 @@ def render_via_openclaw_api(*, request, prompt, attempt, violations):
     except error.URLError as exc:
         raise RuntimeError(f'OpenClaw API renderer connection failed: {exc}') from exc
 
-    if 'text/event-stream' in content_type or raw.lstrip().startswith('data:'):
+    stripped = raw.lstrip()
+    if 'text/event-stream' in content_type or stripped.startswith('data:') or stripped.startswith('event:'):
         text = _extract_output_text_from_sse(raw)
         if not text:
             raise RuntimeError(
