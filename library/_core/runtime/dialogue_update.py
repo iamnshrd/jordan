@@ -9,6 +9,7 @@ from library._core.runtime.dialogue_family_registry import (
     infer_dialogue_family,
     is_dialogue_transition_allowed,
     normalize_dialogue_text,
+    resolve_dialogue_transition,
 )
 from library._core.runtime.dialogue_frame import DialogueFrame, coerce_frame, infer_frame_type, relation_from_act
 from library._core.runtime.dialogue_intent_registry import infer_dialogue_intent
@@ -307,6 +308,8 @@ def _infer_update_from_question(question: str, *,
 def _default_stance_for_act(dialogue_act: str, topic_candidate: str = '') -> str:
     if dialogue_act in {'request_menu', 'greeting_opening'}:
         return 'general'
+    if dialogue_act == 'request_conversation_feedback':
+        return 'personal'
     if dialogue_act in {
         'open_topic',
         'topic_shift',
@@ -323,6 +326,8 @@ def _default_goal_for_act(dialogue_act: str, topic_candidate: str = '') -> str:
     if dialogue_act == 'greeting_opening':
         return 'opening'
     if dialogue_act == 'request_menu':
+        return 'menu'
+    if dialogue_act == 'request_conversation_feedback':
         return 'menu'
     if dialogue_act in {'request_psychological_portrait', 'self_diagnosis_soft'}:
         return 'clarify'
@@ -380,7 +385,7 @@ def infer_dialogue_update(question: str, *,
             update_source=direct_update.get('update_source', ''),
         )
 
-    if dialogue_act in {'open_topic', 'greeting_opening', 'request_menu', 'request_psychological_portrait', 'self_diagnosis_soft'}:
+    if dialogue_act in {'open_topic', 'greeting_opening', 'request_menu', 'request_conversation_feedback', 'request_psychological_portrait', 'self_diagnosis_soft'}:
         semantic_family = infer_dialogue_family(question)
         if semantic_family:
             topic_candidate = semantic_family.get('topic_candidate', '') or topic_candidate
@@ -472,6 +477,11 @@ def apply_dialogue_update(current_frame: dict | DialogueFrame | None,
         frame.axis = ''
         frame.detail = ''
         frame.pending_slot = ''
+        opening = resolve_dialogue_transition(frame.topic, 'opening')
+        if opening:
+            frame.goal = opening.get('goal', '') or payload.get('goal_candidate', '') or frame.goal
+            frame.stance = opening.get('stance', '') or payload.get('stance_shift', '') or frame.stance
+            frame.pending_slot = opening.get('pending_slot', '') or frame.pending_slot
     if payload.get('stance_shift'):
         frame.stance = payload.get('stance_shift') or frame.stance
     elif payload.get('is_new_topic'):
@@ -488,6 +498,29 @@ def apply_dialogue_update(current_frame: dict | DialogueFrame | None,
     frame.pending_slot = slot_fill.get('pending_slot', '') or state.get('pending_slot', '') or frame.pending_slot
     frame.confidence = str(payload.get('confidence', frame.confidence) or frame.confidence)
     frame.update_source = payload.get('update_source', '') or frame.update_source
+
+    transition_kind = payload.get('transition_kind', '') or frame.transition_kind
+    if frame.topic and transition_kind and transition_kind != 'opening':
+        transition = resolve_dialogue_transition(
+            frame.topic,
+            transition_kind,
+            goal=state.get('dialogue_goal', '') or frame.goal,
+            dialogue_mode=state.get('dialogue_mode', ''),
+            pending_slot=state.get('pending_slot', '') or frame.pending_slot,
+            abstraction_level=state.get('abstraction_level', '') or frame.stance,
+        )
+        if transition:
+            frame.goal = transition.get('goal', '') or frame.goal
+            frame.stance = transition.get('stance', '') or frame.stance
+            frame.pending_slot = transition.get('pending_slot', '') or frame.pending_slot
+            if transition.get('clear_axis'):
+                frame.axis = ''
+            if transition.get('clear_detail'):
+                frame.detail = ''
+            if slot_fill.get('axis', ''):
+                frame.axis = slot_fill.get('axis', '')
+            if slot_fill.get('detail', ''):
+                frame.detail = slot_fill.get('detail', '')
 
     if not frame.topic:
         frame.topic = state.get('active_topic', '') or ''

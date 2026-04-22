@@ -13,6 +13,14 @@ class DialogueRenderSpec:
     reason_code: str
     render_kind: str = 'profile'
     response_mode: str = 'frame'
+    needs_ack: bool = True
+    ends_with_question: bool = False
+    max_sentences: int = 4
+    allow_list: bool = False
+    tone_variant: str = 'jordan_concise'
+    forbidden_openers: tuple[str, ...] = ()
+    hard_bans: tuple[str, ...] = ()
+    prompt_notes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -39,6 +47,8 @@ def _progression_render_specs(topic: str) -> tuple[DialogueRenderSpec, ...]:
             question_kind='cause_list',
             reason_code=f'{topic}-cause-list',
             render_kind='cause_list',
+            max_sentences=5,
+            allow_list=True,
         ),
         DialogueRenderSpec(
             goal='mini_analysis',
@@ -55,6 +65,7 @@ def _progression_render_specs(topic: str) -> tuple[DialogueRenderSpec, ...]:
             question_kind='practical_next_step',
             reason_code=f'{topic}-next-step',
             render_kind='next_step',
+            max_sentences=4,
         ),
         DialogueRenderSpec(
             goal='example',
@@ -63,6 +74,7 @@ def _progression_render_specs(topic: str) -> tuple[DialogueRenderSpec, ...]:
             question_kind='illustrative_example',
             reason_code=f'{topic}-example',
             render_kind='example',
+            max_sentences=4,
         ),
     )
 
@@ -262,6 +274,15 @@ def _default_transition_specs_for(spec: DialogueFamilySpec) -> tuple[DialogueTra
                 to_mode=spec.next_step_mode,
                 to_pending_slot=spec.next_step_pending_slot,
             ),
+            DialogueTransitionSpec(
+                transition='next_step',
+                from_goals=('clarify',),
+                from_modes=tuple(mode for mode in (spec.axis_mode, spec.detail_mode) if mode),
+                from_pending_slots=tuple(slot for slot in (spec.axis_pending_slot, spec.detail_pending_slot) if slot),
+                to_goal='next_step',
+                to_mode=spec.next_step_mode,
+                to_pending_slot=spec.next_step_pending_slot,
+            ),
         ))
     if 'example' in spec.allowed_transitions:
         specs.extend((
@@ -424,6 +445,29 @@ DIALOGUE_FAMILY_REGISTRY: tuple[DialogueFamilySpec, ...] = (
         concept_markers=('о чем', 'о чём', 'какие темы', 'какие вопросы', 'что мы можем', 'что можно'),
         subject_markers=('поговорить', 'обсудить', 'разобрать', 'говорить'),
         self_markers=('с тобой', 'ты', 'у тебя'),
+        threshold=3,
+    ),
+    DialogueFamilySpec(
+        topic='conversation-feedback',
+        route='general',
+        stance='personal',
+        goal='menu',
+        render_specs=(
+            DialogueRenderSpec(
+                goal='menu',
+                clarify_type='scope',
+                profile='conversation-feedback',
+                question_kind='topic_selection',
+                reason_code='conversation-feedback',
+            ),
+        ),
+        opening_mode='scope_clarify',
+        opening_pending_slot='topic_selection',
+        allowed_transitions=('opening',),
+        strong_markers=('ты задаёшь слишком много вопросов', 'не задавай столько вопросов'),
+        concept_markers=('слишком много', 'меньше вопросов', 'не задавай столько'),
+        subject_markers=('вопрос', 'спрашиваешь', 'задаёшь'),
+        self_markers=('ты ',),
         threshold=3,
     ),
     DialogueFamilySpec(
@@ -795,6 +839,9 @@ def get_dialogue_render_hints(topic: str, goal: str) -> dict:
         return {}
     for render_spec in spec.render_specs:
         if render_spec.goal == goal:
+            default_question = render_spec.render_kind in {'profile', 'axis_followup', 'detail_followup'}
+            if render_spec.question_kind in {'topic_selection', 'narrowing', 'pattern_selection', 'symptom_narrowing', 'topic_variant', 'concrete_manifestation'}:
+                default_question = True
             return {
                 'render_kind': render_spec.render_kind,
                 'clarify_type': render_spec.clarify_type,
@@ -803,6 +850,19 @@ def get_dialogue_render_hints(topic: str, goal: str) -> dict:
                 'question_kind': render_spec.question_kind,
                 'reason_code': render_spec.reason_code,
                 'response_mode': render_spec.response_mode,
+                'renderer_hints': {
+                    'needs_ack': render_spec.needs_ack,
+                    'ends_with_question': render_spec.ends_with_question or default_question,
+                    'max_sentences': render_spec.max_sentences,
+                    'allow_list': render_spec.allow_list,
+                    'tone_variant': render_spec.tone_variant,
+                    'forbidden_openers': list(render_spec.forbidden_openers or ('хорошо', 'хорошо,', 'хорошо.')),
+                    'hard_bans': list(render_spec.hard_bans or (
+                        'цитат', 'цитата', 'книга', 'книг', 'источник',
+                        'источники', 'подкаст', 'лекци', 'resentment',
+                    )),
+                    'prompt_notes': list(render_spec.prompt_notes),
+                },
             }
     return {}
 

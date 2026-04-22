@@ -1,7 +1,7 @@
 """Frame-first clarification planning for dialogue-driven rendering."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from library._core.runtime.dialogue_family_registry import get_dialogue_render_hints
 
@@ -21,6 +21,34 @@ class FrameRenderPlan:
     axis: str = ''
     detail: str = ''
     source_act: str = ''
+    llm_enabled: bool = False
+    renderer_hints: dict = field(default_factory=dict)
+
+
+def _generic_renderer_hints(render_kind: str) -> dict:
+    if render_kind == 'axis_followup':
+        return {
+            'needs_ack': True,
+            'ends_with_question': True,
+            'max_sentences': 3,
+            'allow_list': False,
+            'tone_variant': 'jordan_concise',
+            'forbidden_openers': ['хорошо', 'хорошо,', 'хорошо.'],
+            'hard_bans': ['цитат', 'цитата', 'книга', 'книг', 'источник', 'источники', 'подкаст', 'лекци', 'resentment'],
+            'prompt_notes': [],
+        }
+    if render_kind == 'detail_followup':
+        return {
+            'needs_ack': True,
+            'ends_with_question': False,
+            'max_sentences': 3,
+            'allow_list': False,
+            'tone_variant': 'jordan_concise',
+            'forbidden_openers': ['хорошо', 'хорошо,', 'хорошо.'],
+            'hard_bans': ['цитат', 'цитата', 'книга', 'книг', 'источник', 'источники', 'подкаст', 'лекци', 'resentment'],
+            'prompt_notes': [],
+        }
+    return {}
 
 
 _PORTRAIT_REQUEST_MARKERS = (
@@ -79,6 +107,8 @@ def plan_frame_render(*,
             stance=frame_stance,
             axis=selected_axis,
             source_act=dialogue_act,
+            llm_enabled=True,
+            renderer_hints=_generic_renderer_hints('axis_followup'),
         )
 
     if (
@@ -101,6 +131,8 @@ def plan_frame_render(*,
             axis=state.get('active_axis', ''),
             detail=selected_detail,
             source_act=dialogue_act,
+            llm_enabled=True,
+            renderer_hints=_generic_renderer_hints('detail_followup'),
         )
 
     render_hints = get_dialogue_render_hints(frame_topic, frame_goal) if frame_topic else {}
@@ -121,6 +153,8 @@ def plan_frame_render(*,
             axis=active_axis,
             detail=active_detail,
             source_act=dialogue_act,
+            llm_enabled=True,
+            renderer_hints=dict(render_hints.get('renderer_hints') or {}),
         )
 
     return None
@@ -254,6 +288,20 @@ def plan_act_fallback_render(*,
             response_mode='act',
             topic='scope-topics',
             stance='general',
+            source_act=dialogue_act,
+        )
+    if dialogue_act == 'request_conversation_feedback':
+        return FrameRenderPlan(
+            render_kind='profile',
+            clarify_type='scope',
+            route_name='general',
+            profile='conversation-feedback',
+            template_id='conversation-feedback.v1',
+            question_kind='topic_selection',
+            reason_code='conversation-feedback',
+            response_mode='act',
+            topic='conversation-feedback',
+            stance='personal',
             source_act=dialogue_act,
         )
     if dialogue_act == 'greeting_opening':

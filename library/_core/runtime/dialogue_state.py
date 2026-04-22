@@ -311,6 +311,8 @@ def infer_active_topic(question: str, *, route_name: str = '',
             return 'shame-self-contempt'
         if clarify_profile == 'scope-topics':
             return 'scope-topics'
+        if clarify_profile == 'conversation-feedback':
+            return 'conversation-feedback'
     semantic_family = infer_dialogue_family(q)
     if semantic_family:
         return semantic_family.get('topic_candidate', '') or ''

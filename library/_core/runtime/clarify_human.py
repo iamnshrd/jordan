@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from library._core.kb.voice_patterns import load_profile_voice_bundle
 from library._core.runtime.dialogue_family_registry import get_dialogue_acknowledgement_hint
 from library._core.runtime.dialogue_frame_renderer import plan_act_fallback_render, plan_frame_render
+from library._core.runtime.llm_renderer import LLMRenderRequest, maybe_render_with_llm
 from library._core.runtime.routes import infer_route
 
 
@@ -274,10 +275,19 @@ _PROFILE_SPECS = {
     'scope-topics': {
         'opening': 'Я могу быть полезен там, где человек начинает себе лгать и распадаться.',
         'fallback_voice': (
-            'Это смысл и направление, дисциплина и самообман, resentment и обида, отношения и близость, страх, стыд и добровольно принятое бремя.',
+            'Это смысл и направление, дисциплина и самообман, обида и скрытый конфликт, отношения и близость, страх, стыд и добровольно принятое бремя.',
         ),
         'question_lead': 'Не тащи сюда всю жизнь сразу.',
         'question': 'Выбери один узел и назови его прямо.',
+        'question_kind': 'topic_selection',
+    },
+    'conversation-feedback': {
+        'opening': 'Справедливо.',
+        'fallback_voice': (
+            'Тогда не будем превращать разговор в допрос и не станем тащить сюда всю твою жизнь сразу.',
+        ),
+        'question_lead': 'Возьмём один шаг за раз.',
+        'question': 'Назови один узел, который сейчас важнее всего: смысл, отношения, стыд, страх, обида или самообман.',
         'question_kind': 'topic_selection',
     },
     'greeting-opening': {
@@ -1033,11 +1043,11 @@ def _render_cause_list(active_topic: str, abstraction_level: str = 'personal') -
         'Главный вопрос не в ярлыке, а в том, какая из этих линий сильнее всего описывает твой опыт сейчас.'
     )
     portrait_text = (
-        'Если говорить о характере честно, то слабое место обычно лежит в одном из пяти узлов: дисциплина, близость, resentment, избегание или самообман. '
+        'Если говорить о характере честно, то слабое место обычно лежит в одном из пяти узлов: дисциплина, близость, обида, избегание или самообман. '
         'Дальше важно не каталогизировать себя, а назвать, какой из этих паттернов повторяется у тебя чаще всего и дороже всего обходится.'
     )
     self_evaluation_text = (
-        'Если задавать вопрос честно и без самоприговоров, то обычно приходится смотреть на те же пять узлов: дисциплина, близость, resentment, избегание и самообман. '
+        'Если задавать вопрос честно и без самоприговоров, то обычно приходится смотреть на те же пять узлов: дисциплина, близость, обида, избегание и самообман. '
         'Полезный ход здесь не в том, чтобы решить, что с тобой “не так” вообще, а в том, чтобы назвать, какой из этих паттернов повторяется у тебя чаще всего и дороже всего обходится.'
     )
     topic_map = {
@@ -1144,6 +1154,38 @@ def _render_from_frame_plan(plan, *,
     )
     if response_move:
         meta['response_move'] = response_move
+    if plan.llm_enabled:
+        frame_goal = (dialogue_frame or {}).get('goal', '') or ''
+        if not frame_goal:
+            if plan.render_kind in {'axis_followup', 'detail_followup'}:
+                frame_goal = 'clarify'
+            elif plan.render_kind != 'profile':
+                frame_goal = plan.render_kind
+        request = LLMRenderRequest(
+            frame_topic=plan.topic,
+            frame_goal=frame_goal,
+            frame_relation_to_previous=(dialogue_frame or {}).get('relation_to_previous', ''),
+            transition_kind=(dialogue_frame or {}).get('transition_kind', ''),
+            route_name=plan.route_name or route_name,
+            profile=plan.profile,
+            stance=plan.stance,
+            axis=plan.axis,
+            detail=plan.detail,
+            question_kind=plan.question_kind,
+            render_kind=plan.render_kind,
+            fallback_text=text,
+            needs_ack=bool((plan.renderer_hints or {}).get('needs_ack', False)),
+            ends_with_question=bool((plan.renderer_hints or {}).get('ends_with_question', False)),
+            max_sentences=int((plan.renderer_hints or {}).get('max_sentences', 4) or 4),
+            allow_list=bool((plan.renderer_hints or {}).get('allow_list', False)),
+            tone_variant=(plan.renderer_hints or {}).get('tone_variant', 'jordan_concise') or 'jordan_concise',
+            forbidden_openers=tuple((plan.renderer_hints or {}).get('forbidden_openers', [])),
+            hard_bans=tuple((plan.renderer_hints or {}).get('hard_bans', [])),
+            prompt_notes=tuple((plan.renderer_hints or {}).get('prompt_notes', [])),
+        )
+        render_result = maybe_render_with_llm(request)
+        meta.update(render_result.metadata())
+        text = render_result.rendered_text
     return ClarificationResult(text=text, metadata=meta)
 
 

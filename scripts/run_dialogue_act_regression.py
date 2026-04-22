@@ -41,9 +41,11 @@ def _run_adapter(question: str, user_id: str) -> tuple[int, dict, str]:
 def main() -> None:
     portrait_user = f'telegram:dialogue-portrait-{uuid.uuid4().hex[:8]}'
     diagnosis_user = f'telegram:dialogue-diagnosis-{uuid.uuid4().hex[:8]}'
+    diagnosis_early_next_step_user = f'telegram:dialogue-diagnosis-earlynext-{uuid.uuid4().hex[:8]}'
     menu_user = f'telegram:dialogue-menu-{uuid.uuid4().hex[:8]}'
     self_eval_user = f'telegram:dialogue-selfeval-{uuid.uuid4().hex[:8]}'
     shame_user = f'telegram:dialogue-shame-{uuid.uuid4().hex[:8]}'
+    feedback_user = f'telegram:dialogue-feedback-{uuid.uuid4().hex[:8]}'
 
     portrait_rc, portrait, portrait_stderr = _run_adapter(
         'Хорошо, давай тогда составим мой психологический портрет',
@@ -56,6 +58,18 @@ def main() -> None:
     diagnosis_followup_rc, diagnosis_followup, diagnosis_followup_stderr = _run_adapter(
         'скорее пустота',
         diagnosis_user,
+    )
+    diagnosis_early_seed_rc, diagnosis_early_seed, diagnosis_early_seed_stderr = _run_adapter(
+        'я подозреваю, что у меня ангедония',
+        diagnosis_early_next_step_user,
+    )
+    diagnosis_early_followup_rc, diagnosis_early_followup, diagnosis_early_followup_stderr = _run_adapter(
+        'скорее пустота',
+        diagnosis_early_next_step_user,
+    )
+    diagnosis_early_next_step_rc, diagnosis_early_next_step, diagnosis_early_next_step_stderr = _run_adapter(
+        'и что с этим делать?',
+        diagnosis_early_next_step_user,
     )
     diagnosis_detail_rc, diagnosis_detail, diagnosis_detail_stderr = _run_adapter(
         'скорее отчуждение от людей',
@@ -92,6 +106,10 @@ def main() -> None:
     shame_followup_rc, shame_followup, shame_followup_stderr = _run_adapter(
         'скорее унижение',
         shame_user,
+    )
+    feedback_rc, feedback, feedback_stderr = _run_adapter(
+        'ты задаёшь слишком много вопросов',
+        feedback_user,
     )
     portrait_followup_rc, portrait_followup, portrait_followup_stderr = _run_adapter(
         'скорее избегание',
@@ -173,6 +191,9 @@ def main() -> None:
     portrait_meta = portrait.get('decision_metadata') or {}
     diagnosis_meta = diagnosis.get('decision_metadata') or {}
     diagnosis_followup_meta = diagnosis_followup.get('decision_metadata') or {}
+    diagnosis_early_seed_meta = diagnosis_early_seed.get('decision_metadata') or {}
+    diagnosis_early_followup_meta = diagnosis_early_followup.get('decision_metadata') or {}
+    diagnosis_early_next_step_meta = diagnosis_early_next_step.get('decision_metadata') or {}
     diagnosis_detail_meta = diagnosis_detail.get('decision_metadata') or {}
     diagnosis_analysis_meta = diagnosis_analysis.get('decision_metadata') or {}
     diagnosis_next_step_meta = diagnosis_next_step.get('decision_metadata') or {}
@@ -182,6 +203,7 @@ def main() -> None:
     self_eval_followup_meta = self_eval_followup.get('decision_metadata') or {}
     shame_meta = shame.get('decision_metadata') or {}
     shame_followup_meta = shame_followup.get('decision_metadata') or {}
+    feedback_meta = feedback.get('decision_metadata') or {}
     portrait_followup_meta = portrait_followup.get('decision_metadata') or {}
     portrait_detail_meta = portrait_detail.get('decision_metadata') or {}
     portrait_analysis_meta = portrait_analysis.get('decision_metadata') or {}
@@ -242,6 +264,23 @@ def main() -> None:
             ),
         },
         {
+            'name': 'self_diagnosis_early_next_step_keeps_frame_and_legacy_metadata_in_sync',
+            'pass': (
+                diagnosis_early_seed_rc == 0
+                and diagnosis_early_seed_meta.get('active_topic') == 'self-diagnosis'
+                and diagnosis_early_followup_rc == 0
+                and diagnosis_early_followup_meta.get('active_topic') == 'self-diagnosis'
+                and diagnosis_early_next_step_rc == 0
+                and diagnosis_early_next_step.get('reason_code') == 'self-diagnosis-next-step'
+                and diagnosis_early_next_step_meta.get('dialogue_act') == 'request_next_step'
+                and diagnosis_early_next_step_meta.get('dialogue_mode') == 'practical_next_step'
+                and diagnosis_early_next_step_meta.get('active_topic') == 'self-diagnosis'
+                and diagnosis_early_next_step_meta.get('pending_slot') == 'example_or_shift'
+                and diagnosis_early_next_step_meta.get('frame_topic') == 'self-diagnosis'
+                and diagnosis_early_next_step_meta.get('frame_goal') == 'next_step'
+            ),
+        },
+        {
             'name': 'self_evaluation_becomes_pattern_clarify',
             'pass': (
                 self_eval_rc == 0
@@ -281,6 +320,17 @@ def main() -> None:
                 and shame_followup_meta.get('active_topic') == 'shame-self-contempt'
                 and shame_followup_meta.get('dialogue_mode') == 'followup_narrowing'
                 and shame_followup_meta.get('active_axis') == 'humiliation'
+            ),
+        },
+        {
+            'name': 'conversation_feedback_becomes_meta_scope_instead_of_source_lookup',
+            'pass': (
+                feedback_rc == 0
+                and feedback.get('reason_code') == 'conversation-feedback'
+                and feedback_meta.get('dialogue_act') == 'request_conversation_feedback'
+                and feedback_meta.get('active_topic') == 'conversation-feedback'
+                and feedback_meta.get('dialogue_mode') == 'scope_clarify'
+                and 'не будем превращать разговор в допрос' in (feedback.get('final_user_text') or '').lower()
             ),
         },
         {
@@ -583,6 +633,9 @@ def main() -> None:
             'portrait': portrait,
             'self_diagnosis': diagnosis,
             'self_diagnosis_followup': diagnosis_followup,
+            'self_diagnosis_early_seed': diagnosis_early_seed,
+            'self_diagnosis_early_followup': diagnosis_early_followup,
+            'self_diagnosis_early_next_step': diagnosis_early_next_step,
             'self_diagnosis_detail': diagnosis_detail,
             'self_diagnosis_analysis': diagnosis_analysis,
             'self_diagnosis_next_step': diagnosis_next_step,
@@ -592,6 +645,7 @@ def main() -> None:
             'self_evaluation_followup': self_eval_followup,
             'shame': shame,
             'shame_followup': shame_followup,
+            'feedback': feedback,
             'portrait_followup': portrait_followup,
             'portrait_detail': portrait_detail,
             'portrait_analysis': portrait_analysis,
@@ -615,6 +669,9 @@ def main() -> None:
             'portrait': portrait_stderr,
             'self_diagnosis': diagnosis_stderr,
             'self_diagnosis_followup': diagnosis_followup_stderr,
+            'self_diagnosis_early_seed': diagnosis_early_seed_stderr,
+            'self_diagnosis_early_followup': diagnosis_early_followup_stderr,
+            'self_diagnosis_early_next_step': diagnosis_early_next_step_stderr,
             'self_diagnosis_detail': diagnosis_detail_stderr,
             'self_diagnosis_analysis': diagnosis_analysis_stderr,
             'self_diagnosis_next_step': diagnosis_next_step_stderr,
@@ -624,6 +681,7 @@ def main() -> None:
             'self_evaluation_followup': self_eval_followup_stderr,
             'shame': shame_stderr,
             'shame_followup': shame_followup_stderr,
+            'feedback': feedback_stderr,
             'portrait_followup': portrait_followup_stderr,
             'portrait_detail': portrait_detail_stderr,
             'portrait_analysis': portrait_analysis_stderr,

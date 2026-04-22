@@ -17,6 +17,7 @@ def main() -> None:
     self_eval = infer_dialogue_family('Почему я сам себе всё ломаю?')
     shame = infer_dialogue_family('Мне омерзительно смотреть на себя')
     menu = infer_dialogue_family('Что мы можем обсудить с тобой?')
+    feedback = infer_dialogue_family('ты задаёшь слишком много вопросов')
     greeting = infer_dialogue_family('Добрый вечер, доктор Питерсон')
     resentment = infer_dialogue_family('Я коплю обиду и не могу её отпустить')
     self_deception = infer_dialogue_family('Я всё время вру себе о своих мотивах')
@@ -76,6 +77,7 @@ def main() -> None:
                 'relationship-foundations',
                 'lost-and-aimless',
                 'scope-topics',
+                'conversation-feedback',
                 'self-evaluation',
                 'shame-self-contempt',
                 'greeting',
@@ -101,6 +103,7 @@ def main() -> None:
                 self_eval.get('topic_candidate') == 'self-evaluation'
                 and shame.get('topic_candidate') == 'shame-self-contempt'
                 and menu.get('topic_candidate') == 'scope-topics'
+                and feedback.get('topic_candidate') == 'conversation-feedback'
                 and greeting.get('topic_candidate') == 'greeting'
             ),
         },
@@ -206,6 +209,7 @@ def main() -> None:
             'self_evaluation': self_eval,
             'shame': shame,
             'menu': menu,
+            'feedback': feedback,
             'greeting': greeting,
             'resentment': resentment,
             'self_deception': self_deception,

@@ -14,8 +14,11 @@ from library._core.runtime.dialogue_acts import (
 )
 from library._core.runtime.dialogue_frame import (
     build_frame_metadata,
+    dialogue_act_from_frame,
     frame_from_state,
+    mode_from_goal,
 )
+from library._core.runtime.dialogue_family_registry import resolve_dialogue_transition
 from library._core.runtime.dialogue_state import (
     advance_dialogue_state,
     build_dialogue_metadata,
@@ -295,13 +298,6 @@ def _merge_dialogue_metadata(metadata: dict | None,
         selected_axis=selected_axis,
         selected_detail=selected_detail,
     )
-    payload.update(
-        build_dialogue_metadata(
-            next_state,
-            dialogue_act=dialogue_act,
-            topic_reused=topic_reused,
-        ),
-    )
     next_frame = frame_from_state(next_state, dialogue_act=dialogue_act).as_dict()
     next_frame.update(
         apply_dialogue_update(
@@ -316,6 +312,40 @@ def _merge_dialogue_metadata(metadata: dict | None,
             ),
             fallback_state=next_state,
         ).as_dict(),
+    )
+    transition = {}
+    if next_frame.get('topic', '') and next_frame.get('transition_kind', ''):
+        transition = resolve_dialogue_transition(
+            next_frame.get('topic', ''),
+            next_frame.get('transition_kind', ''),
+            goal=frame_from_state(dialogue_state, dialogue_act=dialogue_act).goal if dialogue_state else '',
+            dialogue_mode=(dialogue_state or {}).get('dialogue_mode', ''),
+            pending_slot=(dialogue_state or {}).get('pending_slot', ''),
+            abstraction_level=(dialogue_state or {}).get('abstraction_level', ''),
+        )
+    if transition:
+        next_frame['goal'] = transition.get('goal', '') or next_frame.get('goal', '')
+        next_frame['stance'] = transition.get('stance', '') or next_frame.get('stance', '')
+        next_frame['pending_slot'] = transition.get('pending_slot', '') or next_frame.get('pending_slot', '')
+        if transition.get('clear_axis'):
+            next_frame['axis'] = ''
+        if transition.get('clear_detail'):
+            next_frame['detail'] = ''
+    next_state.active_topic = next_frame.get('topic', '') or next_state.active_topic
+    next_state.active_route = next_frame.get('route', '') or next_state.active_route
+    next_state.abstraction_level = next_frame.get('stance', '') or next_state.abstraction_level
+    next_state.pending_slot = next_frame.get('pending_slot', '') or next_state.pending_slot
+    next_state.dialogue_mode = transition.get('dialogue_mode', '') or mode_from_goal(next_frame.get('goal', '') or '')
+    next_state.active_axis = next_frame.get('axis', '') or next_state.active_axis
+    next_state.active_detail = next_frame.get('detail', '') or next_state.active_detail
+    next_state.topic_confidence = next_frame.get('confidence', '') or next_state.topic_confidence
+    synchronized_act = dialogue_act_from_frame(next_frame, fallback=dialogue_act)
+    payload.update(
+        build_dialogue_metadata(
+            next_state,
+            dialogue_act=synchronized_act,
+            topic_reused=topic_reused,
+        ),
     )
     payload.update(build_frame_metadata(next_frame))
     if selected_axis:

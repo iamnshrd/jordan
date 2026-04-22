@@ -106,6 +106,13 @@ _SELF_DIAGNOSIS_MARKERS = [
     'похоже, что у меня',
 ]
 
+_CONVERSATION_FEEDBACK_MARKERS = [
+    'ты задаёшь слишком много вопросов',
+    'слишком много вопросов',
+    'не задавай столько вопросов',
+    'меньше вопросов',
+]
+
 _MINI_ANALYSIS_MARKERS = [
     'и что это значит',
     'что это значит',
@@ -286,6 +293,9 @@ def infer_dialogue_act(question: str, state: dict | None = None) -> str:
 
     if _contains_any(q, _SELF_DIAGNOSIS_MARKERS):
         return 'self_diagnosis_soft'
+
+    if _contains_any(q, _CONVERSATION_FEEDBACK_MARKERS):
+        return 'request_conversation_feedback'
 
     if (
         state.get('active_topic')

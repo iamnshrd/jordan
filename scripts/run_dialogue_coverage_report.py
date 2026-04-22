@@ -35,6 +35,9 @@ def main() -> None:
     respond_kb: Counter[str] = Counter()
     generic_clarify: Counter[str] = Counter()
     unmatched_openings: Counter[str] = Counter()
+    renderer_fallbacks: Counter[str] = Counter()
+    renderer_banned_openers: Counter[str] = Counter()
+    renderer_validation_failures: Counter[str] = Counter()
 
     for row in rows:
         event = row.get('event', '')
@@ -55,8 +58,15 @@ def main() -> None:
             or metadata.get('decision_type')
             or ''
         )
+        clarify_type = (
+            row.get('clarify_type')
+            or row.get('clarifyType')
+            or metadata.get('clarify_type')
+            or ''
+        )
         text = (row.get('question') or row.get('text') or '').strip()
         frame_topic = metadata.get('frame_topic') or ''
+        renderer_status = str(metadata.get('renderer_status') or '')
 
         if reason_code:
             reason_codes[reason_code] += 1
@@ -64,10 +74,29 @@ def main() -> None:
             source_lookup[text] += 1
         if decision_type == 'respond_kb' and text:
             respond_kb[text] += 1
-        if reason_code == 'ask-clarifying-question' and text:
+        if (
+            decision_type == 'clarify'
+            and text
+            and (
+                reason_code == 'ask-clarifying-question'
+                or clarify_type == 'human_problem'
+                or not frame_topic
+                or frame_topic == 'general'
+            )
+        ):
             generic_clarify[text] += 1
         if text and (not frame_topic or frame_topic == 'general'):
             unmatched_openings[text] += 1
+        if (
+            metadata.get('renderer_fallback_used')
+            and renderer_status != 'not_configured'
+            and text
+        ):
+            renderer_fallbacks[text] += 1
+        for failure in metadata.get('renderer_validation_failures') or []:
+            renderer_validation_failures[str(failure)] += 1
+            if str(failure) == 'forbidden_opener' and text:
+                renderer_banned_openers[text] += 1
 
     report = {
         'audit_path': str(AUDIT_PATH),
@@ -77,6 +106,9 @@ def main() -> None:
         'top_respond_kb': _top(respond_kb),
         'top_generic_ask_clarifying_question': _top(generic_clarify),
         'top_unmatched_open_topic_phrasings': _top(unmatched_openings),
+        'top_renderer_fallbacks': _top(renderer_fallbacks),
+        'top_renderer_banned_opener_violations': _top(renderer_banned_openers),
+        'top_renderer_validation_failures': _top(renderer_validation_failures),
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

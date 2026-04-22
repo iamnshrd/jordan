@@ -40,6 +40,30 @@ _GOAL_BY_MODE = {
     'kb_answer': 'analyze',
 }
 
+_MODE_BY_GOAL = {
+    'opening': 'topic_opening',
+    'menu': 'scope_clarify',
+    'clarify': 'human_problem_clarify',
+    'overview': 'followup_reframe',
+    'mini_analysis': 'mini_analysis',
+    'next_step': 'practical_next_step',
+    'example': 'example_illustration',
+    'cause_list': 'cause_list',
+    'analyze': 'kb_answer',
+}
+
+_ACT_BY_TRANSITION = {
+    'reframe_general': 'abstractify_previous_question',
+    'reframe_personal': 'personalize_previous_question',
+    'reject_scope': 'reject_scope',
+    'axis_answer': 'supply_narrowing_axis',
+    'detail_answer': 'supply_concrete_manifestation',
+    'mini_analysis': 'request_mini_analysis',
+    'next_step': 'request_next_step',
+    'example': 'request_example',
+    'cause_list': 'request_cause_list',
+}
+
 
 @dataclass
 class DialogueFrame:
@@ -92,6 +116,8 @@ def infer_frame_type(topic: str, stance: str) -> str:
         return 'self_diagnosis_soft'
     if topic == 'scope-topics':
         return 'scope_menu'
+    if topic == 'conversation-feedback':
+        return 'conversation_feedback'
     if topic == 'greeting':
         return 'greeting'
     return topic or ''
@@ -103,6 +129,36 @@ def relation_from_act(dialogue_act: str) -> str:
 
 def goal_from_mode(dialogue_mode: str) -> str:
     return _GOAL_BY_MODE.get(dialogue_mode or '', 'opening')
+
+
+def mode_from_goal(goal: str) -> str:
+    return _MODE_BY_GOAL.get(goal or '', 'topic_opening')
+
+
+def dialogue_act_from_frame(frame: dict | DialogueFrame | None, *, fallback: str = '') -> str:
+    coerced = frame if isinstance(frame, DialogueFrame) else coerce_frame(frame)
+    transition_kind = coerced.transition_kind or ''
+    if transition_kind == 'opening':
+        if coerced.relation_to_previous == 'shift':
+            return 'topic_shift'
+        if coerced.topic == 'scope-topics':
+            return 'request_menu'
+        if coerced.topic == 'greeting':
+            return 'greeting_opening'
+        if coerced.topic == 'psychological-portrait':
+            return 'request_psychological_portrait'
+        if coerced.topic == 'self-diagnosis':
+            return 'self_diagnosis_soft'
+        if coerced.topic == 'conversation-feedback':
+            return 'request_conversation_feedback'
+        return 'open_topic'
+    if transition_kind == 'reframe_general' and fallback in {
+        'confirm_scope',
+        'abstractify_previous_question',
+        'request_generalization',
+    }:
+        return fallback
+    return _ACT_BY_TRANSITION.get(transition_kind, fallback or 'open_topic')
 
 
 def coerce_frame(data: dict | None) -> DialogueFrame:
