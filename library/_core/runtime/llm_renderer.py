@@ -92,6 +92,7 @@ class LLMRenderResult:
     renderer_status: str
     attempt_count: int
     validation_flags: list[str] = field(default_factory=list)
+    exception_detail: str = ''
     renderer_used: bool = False
     fallback_used: bool = False
     renderer_backend: str = 'none'
@@ -107,7 +108,13 @@ class LLMRenderResult:
             'renderer_attempt_count': self.attempt_count,
             'renderer_fallback_used': self.fallback_used,
             'renderer_validation_failures': list(self.validation_flags),
+            'renderer_exception_detail': self.exception_detail,
         }
+
+
+def _format_renderer_exception(exc: Exception) -> str:
+    detail = f'{type(exc).__name__}: {exc}'.strip()
+    return detail[:500]
 
 
 def _renderer_detail_for(fn: Callable[..., Any] | None) -> str:
@@ -314,6 +321,7 @@ def maybe_render_with_llm(request: LLMRenderRequest) -> LLMRenderResult:
             renderer_attempt_count=result.attempt_count,
             renderer_fallback_used=result.fallback_used,
             renderer_validation_failures=list(result.validation_flags),
+            renderer_exception_detail=result.exception_detail,
         )
         return result
 
@@ -334,7 +342,8 @@ def maybe_render_with_llm(request: LLMRenderRequest) -> LLMRenderResult:
         try:
             prompt = build_render_prompt(request, violations=violations if attempt > 1 else None)
             candidate = _llm_renderer(request=request, prompt=prompt, attempt=attempt, violations=list(violations))
-        except Exception:
+        except Exception as exc:
+            exception_detail = _format_renderer_exception(exc)
             log_event(
                 'renderer.attempt_failed',
                 stage='llm_renderer',
@@ -345,6 +354,7 @@ def maybe_render_with_llm(request: LLMRenderRequest) -> LLMRenderResult:
                 renderer_backend_detail=_llm_renderer_backend_detail,
                 attempt=attempt,
                 failure='renderer_exception',
+                exception_detail=exception_detail,
                 prior_violations=list(violations),
             )
             if attempt == 2:
@@ -353,6 +363,7 @@ def maybe_render_with_llm(request: LLMRenderRequest) -> LLMRenderResult:
                     renderer_status='exception_fallback',
                     attempt_count=attempt,
                     validation_flags=violations or ['renderer_exception'],
+                    exception_detail=exception_detail,
                     renderer_used=True,
                     fallback_used=True,
                     renderer_backend=_llm_renderer_backend,
@@ -371,6 +382,7 @@ def maybe_render_with_llm(request: LLMRenderRequest) -> LLMRenderResult:
                     renderer_attempt_count=result.attempt_count,
                     renderer_fallback_used=result.fallback_used,
                     renderer_validation_failures=list(result.validation_flags),
+                    renderer_exception_detail=result.exception_detail,
                 )
                 return result
             violations = ['renderer_exception']
@@ -401,6 +413,7 @@ def maybe_render_with_llm(request: LLMRenderRequest) -> LLMRenderResult:
                 renderer_attempt_count=result.attempt_count,
                 renderer_fallback_used=result.fallback_used,
                 renderer_validation_failures=list(result.validation_flags),
+                renderer_exception_detail=result.exception_detail,
             )
             return result
         log_event(
@@ -414,6 +427,7 @@ def maybe_render_with_llm(request: LLMRenderRequest) -> LLMRenderResult:
             attempt=attempt,
             failure='validation_failed',
             validation_failures=list(last_flags),
+            renderer_exception_detail='',
         )
         violations = list(last_flags)
 
@@ -440,5 +454,6 @@ def maybe_render_with_llm(request: LLMRenderRequest) -> LLMRenderResult:
         renderer_attempt_count=result.attempt_count,
         renderer_fallback_used=result.fallback_used,
         renderer_validation_failures=list(result.validation_flags),
+        renderer_exception_detail=result.exception_detail,
     )
     return result

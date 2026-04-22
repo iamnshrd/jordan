@@ -108,6 +108,22 @@ def main() -> None:
         'Добрый вечер, доктор Питерсон',
         f'{user_id}-greeting',
     )
+    small_talk_rc, small_talk, small_talk_stderr = _run_adapter(
+        'Как ваши дела?',
+        f'{user_id}-small-talk',
+    )
+    address_rc, address, address_stderr = _run_adapter(
+        'Доктор Питерсон, как к вам обращаться?',
+        f'{user_id}-address',
+    )
+    sharing_rc, sharing, sharing_stderr = _run_adapter(
+        'У меня есть некоторые проблемы, я хочу поделиться',
+        f'{user_id}-sharing',
+    )
+    life_direction_rc, life_direction, life_direction_stderr = _run_adapter(
+        'Как мне дальше жить',
+        f'{user_id}-life-direction',
+    )
 
     seed_meta = seed.get('decision_metadata') or {}
     follow_meta = follow.get('decision_metadata') or {}
@@ -126,6 +142,10 @@ def main() -> None:
     self_eval_semantic_meta = self_eval_semantic.get('decision_metadata') or {}
     shame_semantic_meta = shame_semantic.get('decision_metadata') or {}
     greeting_meta = greeting.get('decision_metadata') or {}
+    small_talk_meta = small_talk.get('decision_metadata') or {}
+    address_meta = address.get('decision_metadata') or {}
+    sharing_meta = sharing.get('decision_metadata') or {}
+    life_direction_meta = life_direction.get('decision_metadata') or {}
     seed_frame = seed.get('dialogue_frame') or {}
     follow_frame = follow.get('dialogue_frame') or {}
     foundations_frame = foundations.get('dialogue_frame') or {}
@@ -143,6 +163,10 @@ def main() -> None:
     self_eval_semantic_frame = self_eval_semantic.get('dialogue_frame') or {}
     shame_semantic_frame = shame_semantic.get('dialogue_frame') or {}
     greeting_frame = greeting.get('dialogue_frame') or {}
+    small_talk_frame = small_talk.get('dialogue_frame') or {}
+    address_frame = address.get('dialogue_frame') or {}
+    sharing_frame = sharing.get('dialogue_frame') or {}
+    life_direction_frame = life_direction.get('dialogue_frame') or {}
 
     results = [
         {
@@ -182,6 +206,27 @@ def main() -> None:
                 and greeting_meta.get('clarify_reason_code') == 'greeting-opening'
                 and greeting_frame.get('topic') == 'greeting'
                 and greeting_frame.get('goal') == 'opening'
+            ),
+        },
+        {
+            'name': 'conversational_openings_use_controlled_frames',
+            'pass': (
+                small_talk_rc == 0
+                and address_rc == 0
+                and sharing_rc == 0
+                and life_direction_rc == 0
+                and small_talk_meta.get('frame_topic') == 'social-small-talk'
+                and small_talk_meta.get('clarify_reason_code') == 'social-small-talk'
+                and small_talk_frame.get('topic') == 'social-small-talk'
+                and address_meta.get('frame_topic') == 'how-to-address'
+                and address_meta.get('clarify_reason_code') == 'how-to-address'
+                and address_frame.get('topic') == 'how-to-address'
+                and sharing_meta.get('frame_topic') == 'problem-sharing-opening'
+                and sharing_meta.get('clarify_reason_code') == 'problem-sharing-opening'
+                and sharing_frame.get('topic') == 'problem-sharing-opening'
+                and life_direction_meta.get('frame_topic') == 'life-direction-opening'
+                and life_direction_meta.get('clarify_reason_code') == 'life-direction-opening'
+                and life_direction_frame.get('topic') == 'life-direction-opening'
             ),
         },
         {
@@ -328,6 +373,10 @@ def main() -> None:
             'self_eval_semantic': self_eval_semantic,
             'shame_semantic': shame_semantic,
             'greeting': greeting,
+            'small_talk': small_talk,
+            'address': address,
+            'sharing': sharing,
+            'life_direction': life_direction,
         },
         stderr={
             'seed': seed_stderr,
@@ -347,6 +396,10 @@ def main() -> None:
             'self_eval_semantic': self_eval_semantic_stderr,
             'shame_semantic': shame_semantic_stderr,
             'greeting': greeting_stderr,
+            'small_talk': small_talk_stderr,
+            'address': address_stderr,
+            'sharing': sharing_stderr,
+            'life_direction': life_direction_stderr,
         },
     )
 

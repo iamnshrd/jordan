@@ -25,6 +25,11 @@ def main() -> None:
     loneliness = infer_dialogue_family('Меня не выбирают и я чувствую себя совсем один')
     parenting = infer_dialogue_family('Мой ребёнок не слушается и я слишком мягкая')
     tragedy = infer_dialogue_family('Я не могу пережить утрату и начинаю озлобляться')
+    small_talk = infer_dialogue_family('Как ваши дела?')
+    address = infer_dialogue_family('Доктор Питерсон, как к вам обращаться?')
+    sharing = infer_dialogue_family('У меня есть некоторые проблемы, я хочу поделиться')
+    life_direction = infer_dialogue_family('Как мне дальше жить')
+    menu_base = infer_dialogue_family('А что есть в базе?')
     self_eval_spec = get_dialogue_family_spec('self-evaluation')
     shame_spec = get_dialogue_family_spec('shame-self-contempt')
     greeting_spec = get_dialogue_family_spec('greeting')
@@ -116,6 +121,16 @@ def main() -> None:
                 and loneliness.get('topic_candidate') == 'loneliness-rejection'
                 and parenting.get('topic_candidate') == 'parenting-boundaries'
                 and tragedy.get('topic_candidate') == 'tragedy-bitterness'
+            ),
+        },
+        {
+            'name': 'registry_maps_new_conversational_openings',
+            'pass': (
+                small_talk.get('topic_candidate') == 'social-small-talk'
+                and address.get('topic_candidate') == 'how-to-address'
+                and sharing.get('topic_candidate') == 'problem-sharing-opening'
+                and life_direction.get('topic_candidate') == 'life-direction-opening'
+                and menu_base.get('topic_candidate') == 'scope-topics'
             ),
         },
         {
@@ -217,6 +232,11 @@ def main() -> None:
             'loneliness': loneliness,
             'parenting': parenting,
             'tragedy': tragedy,
+            'small_talk': small_talk,
+            'address': address,
+            'sharing': sharing,
+            'life_direction': life_direction,
+            'menu_base': menu_base,
             'self_evaluation_spec': {
                 'opening_mode': self_eval_spec.opening_mode if self_eval_spec else '',
                 'opening_pending_slot': self_eval_spec.opening_pending_slot if self_eval_spec else '',

@@ -120,6 +120,7 @@ def main() -> None:
                     and adapter_renderer_rows[0].get('renderer_backend') == 'none'
                     and adapter_renderer_rows[0].get('renderer_used') is False
                     and adapter_renderer_rows[0].get('renderer_fallback_used') is False
+                    and adapter_renderer_rows[0].get('renderer_exception_detail') == ''
                 ),
             },
         ]

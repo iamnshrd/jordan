@@ -235,6 +235,37 @@ def main() -> None:
     )
     reset_llm_renderer()
 
+    def exploding_renderer(*, request, prompt, attempt, violations):
+        raise RuntimeError('simulated gateway failure')
+
+    set_llm_renderer(exploding_renderer)
+    exception_case = build_clarification(
+        'Добрый вечер, Джордан',
+        dialogue_state={
+            'active_topic': '',
+            'active_route': 'general',
+            'abstraction_level': 'general',
+            'pending_slot': '',
+            'active_axis': '',
+            'active_detail': '',
+        },
+        dialogue_frame={
+            'topic': 'greeting',
+            'route': 'general',
+            'frame_type': 'greeting',
+            'stance': 'general',
+            'goal': 'opening',
+            'axis': '',
+            'detail': '',
+            'pending_slot': '',
+            'relation_to_previous': 'new',
+            'transition_kind': 'opening',
+            'confidence': '0.9',
+        },
+        dialogue_act='greeting_opening',
+    )
+    reset_llm_renderer()
+
     gateway_calls: list[dict] = []
     gateway_fallback_calls: list[dict] = []
     original_urlopen = openclaw_gateway_renderer.request_module.urlopen
@@ -324,6 +355,7 @@ def main() -> None:
     axis_meta = axis_followup.metadata or {}
     retry_meta = retry.metadata or {}
     fallback_meta = fallback.metadata or {}
+    exception_meta = exception_case.metadata or {}
 
     results = [
         {
@@ -413,6 +445,16 @@ def main() -> None:
                 and fallback_meta.get('clarify_reason_code') == 'self-diagnosis-next-step'
             ),
         },
+        {
+            'name': 'renderer_exception_detail_reaches_metadata',
+            'pass': (
+                exception_meta.get('renderer_status') == 'exception_fallback'
+                and exception_meta.get('renderer_fallback_used') is True
+                and 'RuntimeError: simulated gateway failure' in (
+                    exception_meta.get('renderer_exception_detail') or ''
+                )
+            ),
+        },
     ]
 
     if original_disable is None:
@@ -444,6 +486,7 @@ def main() -> None:
         axis_metadata=axis_meta,
         retry_metadata=retry_meta,
         fallback_metadata=fallback_meta,
+        exception_metadata=exception_meta,
     )
 
 

@@ -133,6 +133,7 @@ def cmd_adapter(args):
         renderer_attempt_count=decision_metadata.get('renderer_attempt_count', 0),
         renderer_fallback_used=decision_metadata.get('renderer_fallback_used', False),
         renderer_validation_failures=decision_metadata.get('renderer_validation_failures', []),
+        renderer_exception_detail=decision_metadata.get('renderer_exception_detail', ''),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
 
