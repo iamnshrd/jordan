@@ -4,7 +4,32 @@ set -euo pipefail
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 REPO_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
 
-JORDAN_HOME="${JORDAN_HOME:-$REPO_ROOT}"
+resolve_jordan_home() {
+  if [ -n "${JORDAN_HOME:-}" ]; then
+    printf '%s\n' "$JORDAN_HOME"
+    return 0
+  fi
+
+  if [ -r /etc/default/jordan ]; then
+    local from_defaults
+    from_defaults="$(
+      bash -lc 'set -a; . /etc/default/jordan >/dev/null 2>&1; printf %s "${JORDAN_HOME:-}"'
+    )"
+    if [ -n "$from_defaults" ]; then
+      printf '%s\n' "$from_defaults"
+      return 0
+    fi
+  fi
+
+  if [ -d "$PWD/.git" ] || [ -f "$PWD/.git" ]; then
+    printf '%s\n' "$PWD"
+    return 0
+  fi
+
+  printf '%s\n' "$REPO_ROOT"
+}
+
+JORDAN_HOME="$(resolve_jordan_home)"
 OPENCLAW_PROFILE="${OPENCLAW_PROFILE:-jordan-peterson}"
 OPENCLAW_CONFIG_PATH="${OPENCLAW_CONFIG_PATH:-$HOME/.openclaw-$OPENCLAW_PROFILE/openclaw.json}"
 OPENCLAW_LOG_PATH="${OPENCLAW_LOG_PATH:-$JORDAN_HOME/workspace/logs/openclaw.log}"
