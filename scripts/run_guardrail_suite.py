@@ -21,6 +21,8 @@ def main() -> None:
         'run_policy_scope_regression.py',
         'run_guardrail_tone_regression.py',
         'run_guardrail_false_positive_regression.py',
+        'run_dialogue_followup_regression.py',
+        'run_dialogue_act_regression.py',
         'run_human_clarify_regression.py',
         'run_unified_logging_regression.py',
     ], 'guardrail')

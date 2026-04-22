@@ -114,6 +114,11 @@ def cmd_adapter(args):
         clarify_type=(result.get('decision_metadata') or {}).get('clarify_type', ''),
         clarify_theme=(result.get('decision_metadata') or {}).get('clarify_theme', ''),
         clarify_profile=(result.get('decision_metadata') or {}).get('clarify_profile', ''),
+        dialogue_act=(result.get('decision_metadata') or {}).get('dialogue_act', ''),
+        dialogue_mode=(result.get('decision_metadata') or {}).get('dialogue_mode', ''),
+        active_topic=(result.get('decision_metadata') or {}).get('active_topic', ''),
+        abstraction_level=(result.get('decision_metadata') or {}).get('abstraction_level', ''),
+        pending_slot=(result.get('decision_metadata') or {}).get('pending_slot', ''),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
 

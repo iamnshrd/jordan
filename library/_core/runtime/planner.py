@@ -7,6 +7,15 @@ from library._core.mentor.checkins import record_reply
 from library._core.mentor.commitments import maybe_resolve_from_reply
 from library._core.registry import get_default_assistant
 from library._core.runtime.clarify_human import build_clarification
+from library._core.runtime.dialogue_acts import (
+    extract_dialogue_detail,
+    extract_dialogue_axis,
+    infer_dialogue_act,
+)
+from library._core.runtime.dialogue_state import (
+    advance_dialogue_state,
+    build_dialogue_metadata,
+)
 from library._core.runtime.grounding import (
     GroundedAnswerPlan, GroundingDecision,
     build_strict_clarification, can_render_strict,
@@ -24,6 +33,10 @@ from library._core.runtime.stages import (
     run_voice_stage,
 )
 from library._core.session.continuity import load as load_continuity
+from library._core.session.dialogue import (
+    load as load_dialogue_state,
+    save as save_dialogue_state,
+)
 from library._core.state_store import StateStore
 from library.config import canonical_user_id, get_default_store
 from library.utils import (
@@ -217,11 +230,19 @@ def _select_clarification(question: str, *,
                           selected: dict | None = None,
                           validation: dict | None = None,
                           fallback_text: str = '',
-                          stage: str = '') -> tuple[str, dict]:
+                          stage: str = '',
+                          dialogue_state: dict | None = None,
+                          dialogue_act: str = '',
+                          selected_axis: str = '',
+                          selected_detail: str = '') -> tuple[str, dict]:
     clarification = build_clarification(
         question,
         selected=selected,
         fallback_text=fallback_text,
+        dialogue_state=dialogue_state,
+        dialogue_act=dialogue_act,
+        selected_axis=selected_axis,
+        selected_detail=selected_detail,
     )
     metadata = dict(clarification.metadata or {})
     if stage:
@@ -229,6 +250,57 @@ def _select_clarification(question: str, *,
     if validation is not None:
         metadata.setdefault('clarify_avg_relevance', validation.get('avg_relevance'))
     return clarification.text, metadata
+
+
+def _merge_dialogue_metadata(metadata: dict | None,
+                             dialogue_state: dict | None,
+                             dialogue_act: str,
+                             *,
+                             question: str,
+                             route_name: str = '',
+                             decision_type: str = '',
+                             reason_code: str = '',
+                             final_user_text: str = '',
+                             topic_reused: bool = False,
+                             confidence: str = '',
+                             selected_axis: str = '',
+                             selected_detail: str = '') -> tuple[dict, dict]:
+    payload = dict(metadata or {})
+    next_state = advance_dialogue_state(
+        dialogue_state,
+        question=question,
+        dialogue_act=dialogue_act,
+        route_name=route_name,
+        clarify_profile=payload.get('clarify_profile', ''),
+        reason_code=reason_code or payload.get('clarify_reason_code', ''),
+        decision_type=decision_type,
+        final_user_text=final_user_text,
+        question_kind=payload.get('clarify_question_kind', ''),
+        confidence=confidence,
+        selected_axis=selected_axis,
+        selected_detail=selected_detail,
+    )
+    payload.update(
+        build_dialogue_metadata(
+            next_state,
+            dialogue_act=dialogue_act,
+            topic_reused=topic_reused,
+        ),
+    )
+    if selected_axis:
+        payload['selected_axis'] = selected_axis
+    if selected_detail:
+        payload['selected_detail'] = selected_detail
+    return payload, next_state.as_dict()
+
+
+def _finalize_plan(plan: GroundedAnswerPlan, *,
+                   dialogue_state: dict,
+                   user_id: str,
+                   store: StateStore | None = None) -> GroundedAnswerPlan:
+    plan.dialogue_state = dict(dialogue_state or {})
+    save_dialogue_state(plan.dialogue_state, user_id=user_id, store=store)
+    return plan
 
 
 def build_answer_plan(question: str, user_id: str = 'default',
@@ -243,6 +315,25 @@ def build_answer_plan(question: str, user_id: str = 'default',
                               purpose=purpose, question=question):
         assistant = get_default_assistant()
         mode = detect_mode(question)
+        dialogue_state = load_dialogue_state(user_id=user_id, store=store)
+        dialogue_act = infer_dialogue_act(question, dialogue_state)
+        selected_axis = extract_dialogue_axis(question, dialogue_state)
+        selected_detail = extract_dialogue_detail(question, dialogue_state)
+        topic_reused = bool(
+            dialogue_state.get('active_topic')
+            and dialogue_act in {
+                'abstractify_previous_question',
+                'confirm_scope',
+                'personalize_previous_question',
+                'reject_scope',
+                'supply_narrowing_axis',
+                'supply_concrete_manifestation',
+                'request_mini_analysis',
+                'request_next_step',
+                'request_example',
+                'request_cause_list',
+            }
+        )
         log_event(
             'planner.request_received',
             store=store,
@@ -253,6 +344,19 @@ def build_answer_plan(question: str, user_id: str = 'default',
             assistant_id=assistant.assistant_id,
             knowledge_set_id=assistant.knowledge_set_id,
         )
+        log_event(
+            'planner.dialogue_interpreted',
+            store=store,
+            user_id=user_id,
+            dialogue_act=dialogue_act,
+            active_topic=dialogue_state.get('active_topic', ''),
+            active_route=dialogue_state.get('active_route', ''),
+            abstraction_level=dialogue_state.get('abstraction_level', ''),
+            pending_slot=dialogue_state.get('pending_slot', ''),
+            selected_axis=selected_axis,
+            selected_detail=selected_detail,
+            topic_reused=topic_reused,
+        )
 
         if question.strip() and record_user_reply and purpose == 'response':
             with traced_stage('mentor.reply_record', store=store, user_id=user_id):
@@ -261,12 +365,27 @@ def build_answer_plan(question: str, user_id: str = 'default',
 
         guardrail = run_policy_stage(question, user_id=user_id, store=store)
         if guardrail:
+            dialogue_metadata, next_dialogue_state = _merge_dialogue_metadata(
+                {},
+                dialogue_state,
+                dialogue_act,
+                question=question,
+                route_name=dialogue_state.get('active_route', ''),
+                decision_type='respond_policy_text',
+                reason_code=guardrail['kind'],
+                final_user_text=guardrail['message'],
+                topic_reused=topic_reused,
+                confidence='high',
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
+            )
             decision = _build_decision(
                 action='answer-directly',
                 mode=mode,
                 use_kb=False,
                 confidence='high',
                 reason=guardrail['kind'],
+                metadata=dialogue_metadata,
             )
             log_event(
                 'planner.policy_blocked',
@@ -277,7 +396,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 policy_kind=guardrail['kind'],
                 policy_source=guardrail.get('policy_source', ''),
             )
-            return GroundedAnswerPlan(
+            return _finalize_plan(GroundedAnswerPlan(
                 question=question,
                 user_id=user_id,
                 decision=decision,
@@ -288,13 +407,31 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 guardrail=guardrail,
                 direct_response=guardrail['message'],
                 user=question,
-            )
+            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
 
         if not should_use_kb(question):
             clarification, clarify_metadata = _select_clarification(
                 question,
                 fallback_text=_build_kb_only_clarification(question),
                 stage='kb_rejected',
+                dialogue_state=dialogue_state,
+                dialogue_act=dialogue_act,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
+            )
+            clarify_metadata, next_dialogue_state = _merge_dialogue_metadata(
+                clarify_metadata,
+                dialogue_state,
+                dialogue_act,
+                question=question,
+                route_name=dialogue_state.get('active_route', ''),
+                decision_type='clarify',
+                reason_code=clarify_metadata.get('clarify_reason_code', ''),
+                final_user_text=clarification,
+                topic_reused=topic_reused,
+                confidence='low',
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
             )
             decision = _build_decision(
                 action='ask-clarifying-question',
@@ -313,7 +450,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 clarify_type=clarify_metadata.get('clarify_type', ''),
                 clarify_profile=clarify_metadata.get('clarify_profile', ''),
             )
-            return GroundedAnswerPlan(
+            return _finalize_plan(GroundedAnswerPlan(
                 question=question,
                 user_id=user_id,
                 decision=decision,
@@ -324,7 +461,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 direct_response=clarification,
                 clarifying_question=clarification,
                 user=question,
-            )
+            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
 
         run_profile_context_stage(user_id=user_id, store=store)
 
@@ -339,6 +476,23 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 question,
                 fallback_text=_build_kb_only_clarification(question, reason=reason),
                 stage='frame_failed',
+                dialogue_state=dialogue_state,
+                dialogue_act=dialogue_act,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
+            )
+            clarify_metadata, next_dialogue_state = _merge_dialogue_metadata(
+                clarify_metadata,
+                dialogue_state,
+                dialogue_act,
+                question=question,
+                decision_type='clarify',
+                reason_code=clarify_metadata.get('clarify_reason_code', ''),
+                final_user_text=clarification,
+                topic_reused=topic_reused,
+                confidence='low',
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
             )
             decision = _build_decision(
                 action='ask-clarifying-question',
@@ -359,7 +513,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 clarify_type=clarify_metadata.get('clarify_type', ''),
                 clarify_profile=clarify_metadata.get('clarify_profile', ''),
             )
-            return GroundedAnswerPlan(
+            return _finalize_plan(GroundedAnswerPlan(
                 question=question,
                 user_id=user_id,
                 decision=decision,
@@ -370,7 +524,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 direct_response=clarification,
                 clarifying_question=clarification,
                 user=question,
-            )
+            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
 
         confidence = selected.get('confidence', 'low')
         continuity, progress, reaction = run_user_state_stage(
@@ -389,6 +543,24 @@ def build_answer_plan(question: str, user_id: str = 'default',
                     question, validation=validation, selected=selected,
                 ),
                 stage='pre_synthesis',
+                dialogue_state=dialogue_state,
+                dialogue_act=dialogue_act,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
+            )
+            clarify_metadata, next_dialogue_state = _merge_dialogue_metadata(
+                clarify_metadata,
+                dialogue_state,
+                dialogue_act,
+                question=question,
+                route_name=selected.get('route_name') or '',
+                decision_type='clarify',
+                reason_code=clarify_metadata.get('clarify_reason_code', ''),
+                final_user_text=clarification,
+                topic_reused=topic_reused,
+                confidence=confidence,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
             )
             reason = (
                 'KB route is weak or retrieval relevance is low '
@@ -415,7 +587,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 clarify_type=clarify_metadata.get('clarify_type', ''),
                 clarify_profile=clarify_metadata.get('clarify_profile', ''),
             )
-            return GroundedAnswerPlan(
+            return _finalize_plan(GroundedAnswerPlan(
                 question=question,
                 user_id=user_id,
                 decision=decision,
@@ -430,7 +602,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 direct_response=clarification,
                 clarifying_question=clarification,
                 user=question,
-            )
+            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
 
         force_clarify, force_reason = _should_force_clarification(
             question, selected, validation,
@@ -444,6 +616,24 @@ def build_answer_plan(question: str, user_id: str = 'default',
                     question, validation=validation, selected=selected,
                 ),
                 stage='pre_synthesis_gate',
+                dialogue_state=dialogue_state,
+                dialogue_act=dialogue_act,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
+            )
+            clarify_metadata, next_dialogue_state = _merge_dialogue_metadata(
+                clarify_metadata,
+                dialogue_state,
+                dialogue_act,
+                question=question,
+                route_name=selected.get('route_name') or '',
+                decision_type='clarify',
+                reason_code=clarify_metadata.get('clarify_reason_code', ''),
+                final_user_text=clarification,
+                topic_reused=topic_reused,
+                confidence=confidence,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
             )
             decision = _build_decision(
                 action='ask-clarifying-question',
@@ -466,7 +656,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 clarify_type=clarify_metadata.get('clarify_type', ''),
                 clarify_profile=clarify_metadata.get('clarify_profile', ''),
             )
-            return GroundedAnswerPlan(
+            return _finalize_plan(GroundedAnswerPlan(
                 question=question,
                 user_id=user_id,
                 decision=decision,
@@ -481,7 +671,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 direct_response=clarification,
                 clarifying_question=clarification,
                 user=question,
-            )
+            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
 
         voice_mode = run_voice_stage(
             question, selected=selected, progress=progress,
@@ -514,6 +704,24 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 validation=validation,
                 fallback_text=build_strict_clarification(synthesis_data, mode=mode),
                 stage='post_synthesis_gate',
+                dialogue_state=dialogue_state,
+                dialogue_act=dialogue_act,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
+            )
+            clarify_metadata, next_dialogue_state = _merge_dialogue_metadata(
+                clarify_metadata,
+                dialogue_state,
+                dialogue_act,
+                question=question,
+                route_name=selected.get('route_name') or '',
+                decision_type='clarify',
+                reason_code=clarify_metadata.get('clarify_reason_code', ''),
+                final_user_text=clarification,
+                topic_reused=topic_reused,
+                confidence=confidence,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
             )
             decision = _build_decision(
                 action='ask-clarifying-question',
@@ -537,7 +745,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 clarify_type=clarify_metadata.get('clarify_type', ''),
                 clarify_profile=clarify_metadata.get('clarify_profile', ''),
             )
-            return GroundedAnswerPlan(
+            return _finalize_plan(GroundedAnswerPlan(
                 question=question,
                 user_id=user_id,
                 decision=decision,
@@ -554,7 +762,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 direct_response=clarification,
                 clarifying_question=clarification,
                 user=question,
-            )
+            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
 
         if not can_render_strict(synthesis_data, mode=mode):
             clarification, clarify_metadata = _select_clarification(
@@ -563,6 +771,24 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 validation=validation,
                 fallback_text=build_strict_clarification(synthesis_data, mode=mode),
                 stage='strict_render',
+                dialogue_state=dialogue_state,
+                dialogue_act=dialogue_act,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
+            )
+            clarify_metadata, next_dialogue_state = _merge_dialogue_metadata(
+                clarify_metadata,
+                dialogue_state,
+                dialogue_act,
+                question=question,
+                route_name=selected.get('route_name') or '',
+                decision_type='clarify',
+                reason_code=clarify_metadata.get('clarify_reason_code', ''),
+                final_user_text=clarification,
+                topic_reused=topic_reused,
+                confidence=confidence,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
             )
             decision = _build_decision(
                 action='ask-clarifying-question',
@@ -585,7 +811,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 clarify_type=clarify_metadata.get('clarify_type', ''),
                 clarify_profile=clarify_metadata.get('clarify_profile', ''),
             )
-            return GroundedAnswerPlan(
+            return _finalize_plan(GroundedAnswerPlan(
                 question=question,
                 user_id=user_id,
                 decision=decision,
@@ -602,8 +828,21 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 direct_response=clarification,
                 clarifying_question=clarification,
                 user=question,
-            )
+            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
 
+        answer_metadata, next_dialogue_state = _merge_dialogue_metadata(
+            {},
+            dialogue_state,
+            dialogue_act,
+            question=question,
+            route_name=selected.get('route_name') or '',
+            decision_type='respond_kb',
+            reason_code='respond-with-kb',
+            topic_reused=topic_reused,
+            confidence=confidence,
+            selected_axis=selected_axis,
+            selected_detail=selected_detail,
+        )
         decision = _build_decision(
             action='respond-with-kb',
             mode=mode,
@@ -613,6 +852,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
             validation=validation,
             selected=selected,
             synthesis=synthesis_data,
+            metadata=answer_metadata,
         )
         log_event(
             'planner.answer_allowed',
@@ -624,7 +864,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
             backed_fields=decision.backed_fields,
             voice_mode=voice_mode,
         )
-        return GroundedAnswerPlan(
+        return _finalize_plan(GroundedAnswerPlan(
             question=question,
             user_id=user_id,
             decision=decision,
@@ -639,4 +879,4 @@ def build_answer_plan(question: str, user_id: str = 'default',
             synthesis=synthesis_data,
             voice_mode=voice_mode,
             user=question,
-        )
+        ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)

@@ -60,6 +60,11 @@ def _log_conversation_outbound(*, question: str, result: dict, store,
         clarify_type=metadata.get('clarify_type', ''),
         clarify_theme=metadata.get('clarify_theme', ''),
         clarify_profile=metadata.get('clarify_profile', ''),
+        dialogue_act=metadata.get('dialogue_act', ''),
+        dialogue_mode=metadata.get('dialogue_mode', ''),
+        active_topic=metadata.get('active_topic', ''),
+        abstraction_level=metadata.get('abstraction_level', ''),
+        pending_slot=metadata.get('pending_slot', ''),
     )
 
 
@@ -85,6 +90,11 @@ def _log_prompt_prepared(*, question: str, result: dict, store,
         clarify_type=metadata.get('clarify_type', ''),
         clarify_theme=metadata.get('clarify_theme', ''),
         clarify_profile=metadata.get('clarify_profile', ''),
+        dialogue_act=metadata.get('dialogue_act', ''),
+        dialogue_mode=metadata.get('dialogue_mode', ''),
+        active_topic=metadata.get('active_topic', ''),
+        abstraction_level=metadata.get('abstraction_level', ''),
+        pending_slot=metadata.get('pending_slot', ''),
     )
 
 
@@ -107,6 +117,11 @@ def _finalize_result(result: dict, *, trace_id: str, store, user_id: str,
         clarify_type=metadata.get('clarify_type', ''),
         clarify_theme=metadata.get('clarify_theme', ''),
         clarify_profile=metadata.get('clarify_profile', ''),
+        dialogue_act=metadata.get('dialogue_act', ''),
+        dialogue_mode=metadata.get('dialogue_mode', ''),
+        active_topic=metadata.get('active_topic', ''),
+        abstraction_level=metadata.get('abstraction_level', ''),
+        pending_slot=metadata.get('pending_slot', ''),
     )
     return result
 
