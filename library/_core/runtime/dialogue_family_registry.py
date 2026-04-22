@@ -195,14 +195,26 @@ def _default_transition_specs_for(spec: DialogueFamilySpec) -> tuple[DialogueTra
     if 'axis_answer' in spec.allowed_transitions:
         specs.append(DialogueTransitionSpec(
             transition='axis_answer',
-            from_goals=('clarify', 'overview', 'cause_list'),
-            from_modes=tuple(mode for mode in (spec.opening_mode, spec.reframe_general_mode, spec.cause_list_mode) if mode),
+            from_goals=('clarify', 'overview', 'cause_list', 'next_step', 'example'),
+            from_modes=tuple(
+                mode
+                for mode in (
+                    spec.opening_mode,
+                    spec.reframe_general_mode,
+                    spec.cause_list_mode,
+                    spec.next_step_mode,
+                    spec.example_mode,
+                )
+                if mode
+            ),
             from_pending_slots=tuple(
                 slot
                 for slot in (
                     spec.opening_pending_slot,
                     spec.reframe_general_pending_slot,
                     spec.cause_list_pending_slot,
+                    spec.next_step_pending_slot,
+                    spec.example_pending_slot,
                 )
                 if slot
             ),
@@ -351,7 +363,17 @@ DIALOGUE_FAMILY_REGISTRY: tuple[DialogueFamilySpec, ...] = (
         ) + _progression_render_specs('relationship-foundations'),
         opening_mode='human_problem_clarify',
         opening_pending_slot='pattern_family',
-        allowed_transitions=('reframe_personal', 'reject_scope', 'cause_list', 'next_step', 'example'),
+        example_pending_slot='pattern_family',
+        allowed_transitions=(
+            'reframe_personal',
+            'reject_scope',
+            'cause_list',
+            'axis_answer',
+            'detail_answer',
+            'mini_analysis',
+            'next_step',
+            'example',
+        ),
         candidate_axes=('truth', 'respect', 'shared_burden', 'desire', 'repair'),
         strong_markers=('крепкий брак', 'крепкие отношения', 'здоровые отношения', 'что делает отношения крепкими'),
         concept_markers=('смысл', 'суть', 'основа', 'держится', 'строится', 'делает крепкими', 'удерживает', 'крепкими'),
@@ -792,46 +814,91 @@ def get_dialogue_acknowledgement_hint(*,
                                       stance: str,
                                       has_detail: bool = False,
                                       dialogue_act: str = '') -> str:
+    def _sentence_case(text: str) -> str:
+        if not text:
+            return ''
+        return text[:1].upper() + text[1:]
+
+    def _vary_prefix(text: str) -> str:
+        if not text:
+            return ''
+        normalized = text
+        for prefix in ('Хорошо, ', 'Хорошо. ', 'Хорошо '):
+            if normalized.startswith(prefix):
+                normalized = normalized[len(prefix):]
+                break
+        variants_map = {
+            ('shift', ''): ('Оставим прежний узел и возьмём новый вопрос как отдельную тему.',),
+            ('answer_slot', 'clarify'): (
+                'Значит, держим именно этот слой проблемы.',
+                'Тогда не разбрасываемся и остаёмся внутри этого слоя.',
+            ),
+            ('answer_slot_detail', 'clarify'): (
+                'Теперь узел уже достаточно сузился, чтобы не ходить кругами вокруг общего симптома.',
+                'Теперь тема уже сузилась настолько, что можно удерживать именно этот слой.',
+            ),
+            ('continue', 'cause_list'): (
+                'Тогда разложим тему по главным причинам.',
+                'Значит, полезнее разложить тему по главным линиям, чем держать её туманной.',
+            ),
+            ('continue', 'next_step'): (
+                'Тогда переведём это в один честный следующий шаг.',
+                'Значит, пора не расширять тему, а перевести её в действие.',
+            ),
+            ('continue', 'example'): (
+                'Тогда посмотрим, как этот узел выглядит в живом примере.',
+                'Значит, не останемся на уровне схемы и возьмём живой пример.',
+            ),
+            ('continue', 'mini_analysis'): (
+                'Если держаться именно этого узла, уже можно понять, что он делает с человеком.',
+                'Раз тема уже сузилась, можно не только уточнять, но и понять её внутреннюю механику.',
+            ),
+        }
+        key = ('answer_slot_detail', goal) if relation == 'answer_slot' and has_detail else (relation, goal)
+        variants = variants_map.get(key)
+        if not variants:
+            return _sentence_case(normalized)
+        seed = sum(ord(ch) for ch in f'{topic}:{relation}:{goal}:{stance}')
+        return _sentence_case(variants[seed % len(variants)])
+
     spec = get_dialogue_family_spec(topic)
 
     if relation == 'shift':
-        return 'Хорошо, оставим прежний узел и возьмём новый вопрос как отдельную тему.'
+        return _vary_prefix('Хорошо, оставим прежний узел и возьмём новый вопрос как отдельную тему.')
 
     if dialogue_act == 'reject_scope':
         if spec and spec.reject_scope_ack:
-            return spec.reject_scope_ack
-        return 'Хорошо, тогда уберём общую рамку и вернёмся к одному живому узлу, который у тебя действительно болит.'
+            return _vary_prefix(spec.reject_scope_ack)
+        return 'Тогда уберём общую рамку и вернёмся к одному живому узлу, который у тебя действительно болит.'
 
     if relation == 'reframe' and stance == 'general':
         if spec and spec.reframe_general_ack:
-            return spec.reframe_general_ack
+            return _vary_prefix(spec.reframe_general_ack)
 
     if relation == 'continue' and stance == 'general' and goal == 'overview':
         if spec and spec.overview_continue_ack:
-            return spec.overview_continue_ack
+            return _vary_prefix(spec.overview_continue_ack)
 
     if relation == 'reframe' and stance == 'personal':
         if spec and spec.reframe_personal_ack:
-            return spec.reframe_personal_ack
+            return _vary_prefix(spec.reframe_personal_ack)
 
     if relation == 'answer_slot' and goal == 'clarify' and not has_detail:
-        if stance == 'general':
-            return 'Хорошо, значит не распыляемся по всей теме, а держим именно этот слой.'
-        return 'Хорошо, значит не разбрасываемся и держим именно этот слой проблемы.'
+        return _vary_prefix('Хорошо, значит не разбрасываемся и держим именно этот слой проблемы.')
 
     if relation == 'answer_slot' and goal == 'clarify' and has_detail:
-        return 'Хорошо, теперь узел уже достаточно сузился, чтобы не ходить кругами вокруг общего симптома.'
+        return _vary_prefix('Хорошо, теперь узел уже достаточно сузился, чтобы не ходить кругами вокруг общего симптома.')
 
     if goal == 'mini_analysis':
-        return 'Хорошо, если держаться именно этого узла, уже можно не только сужать, но и понять, что он делает с человеком.'
+        return _vary_prefix('Хорошо, если держаться именно этого узла, уже можно не только сужать, но и понять, что он делает с человеком.')
 
     if goal == 'next_step':
-        return 'Хорошо, тогда не будем снова расширять тему, а попробуем перевести её в один честный следующий шаг.'
+        return _vary_prefix('Хорошо, тогда не будем снова расширять тему, а попробуем перевести её в один честный следующий шаг.')
 
     if goal == 'example':
-        return 'Хорошо, тогда не останемся на уровне схемы, а посмотрим, как этот узел выглядит в живом примере.'
+        return _vary_prefix('Хорошо, тогда не останемся на уровне схемы, а посмотрим, как этот узел выглядит в живом примере.')
 
     if goal == 'cause_list':
-        return 'Хорошо, тогда не будем блуждать вокруг темы, а разложим по главным причинам.'
+        return _vary_prefix('Хорошо, тогда не будем блуждать вокруг темы, а разложим по главным причинам.')
 
     return ''

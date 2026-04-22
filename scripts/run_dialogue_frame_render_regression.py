@@ -158,6 +158,30 @@ def main() -> None:
         },
         dialogue_act='open_topic',
     )
+    relationship_foundations_example = build_clarification(
+        'приведи пример',
+        dialogue_state={
+            'active_topic': 'relationship-foundations',
+            'active_route': 'relationship-maintenance',
+            'abstraction_level': 'general',
+            'pending_slot': 'pattern_family',
+            'active_axis': '',
+            'active_detail': '',
+        },
+        dialogue_frame={
+            'topic': 'relationship-foundations',
+            'route': 'relationship-maintenance',
+            'frame_type': 'relationship_foundations',
+            'stance': 'general',
+            'goal': 'example',
+            'axis': '',
+            'detail': '',
+            'pending_slot': 'pattern_family',
+            'relation_to_previous': 'continue',
+            'confidence': '0.9',
+        },
+        dialogue_act='open_topic',
+    )
     scope_menu = build_clarification(
         'На какие темы с тобой можно говорить?',
         dialogue_state={
@@ -278,6 +302,14 @@ def main() -> None:
                 relationship_foundations.metadata.get('clarify_reason_code') == 'relationship-foundations-overview'
                 and relationship_foundations.metadata.get('clarify_question_kind') == 'topic_variant'
                 and 'крепких отношениях' in relationship_foundations.text.lower()
+            ),
+        },
+        {
+            'name': 'frame_relationship_foundations_example_renders_clean_text_without_tuple_repr',
+            'pass': (
+                relationship_foundations_example.metadata.get('clarify_reason_code') == 'relationship-foundations-example'
+                and "('" not in relationship_foundations_example.text
+                and 'живом примере' in relationship_foundations_example.text.lower()
             ),
         },
         {

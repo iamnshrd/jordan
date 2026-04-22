@@ -234,7 +234,7 @@ def extract_dialogue_axis(question: str, state: dict | None = None) -> str:
     if not q or not topic or not pending:
         return ''
 
-    if topic == 'relationship-loss-of-feeling' and pending in {'pattern_family', 'narrowing_axis'}:
+    if topic in {'relationship-loss-of-feeling', 'relationship-foundations'} and pending in {'pattern_family', 'narrowing_axis'}:
         return _match_axis(q, _RELATIONSHIP_AXIS_MARKERS)
     if topic == 'shame-self-contempt' and pending == 'narrowing_axis':
         return _match_axis(q, _SHAME_AXIS_MARKERS)
@@ -255,7 +255,7 @@ def extract_dialogue_detail(question: str, state: dict | None = None) -> str:
     if not q or not topic or pending != 'concrete_manifestation' or not axis:
         return ''
 
-    if topic == 'relationship-loss-of-feeling':
+    if topic in {'relationship-loss-of-feeling', 'relationship-foundations'}:
         return _match_nested_detail(q, _RELATIONSHIP_DETAIL_MARKERS, axis)
     if topic == 'self-diagnosis':
         return _match_nested_detail(q, _SELF_DIAGNOSIS_DETAIL_MARKERS, axis)

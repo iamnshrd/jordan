@@ -41,6 +41,7 @@ def main() -> None:
     loneliness_mini = get_dialogue_transition_hints('loneliness-rejection', 'mini_analysis')
     loneliness_next = get_dialogue_transition_hints('loneliness-rejection', 'next_step')
     loneliness_example = get_dialogue_transition_hints('loneliness-rejection', 'example')
+    foundations_example_axis = get_dialogue_transition_hints('relationship-foundations', 'axis_answer')
 
     results = [
         {
@@ -103,6 +104,20 @@ def main() -> None:
             ),
         },
         {
+            'name': 'foundations_allows_axis_after_example_path',
+            'pass': (
+                is_dialogue_transition_allowed(
+                    'relationship-foundations',
+                    'axis_answer',
+                    dialogue_mode='example_illustration',
+                    pending_slot='pattern_family',
+                    abstraction_level='general',
+                )
+                and foundations_example_axis.get('dialogue_mode') == 'followup_narrowing'
+                and foundations_example_axis.get('pending_slot') == 'concrete_manifestation'
+            ),
+        },
+        {
             'name': 'foundations_blocks_detail_without_axis_path',
             'pass': not is_dialogue_transition_allowed(
                 'relationship-foundations',
@@ -150,6 +165,7 @@ def main() -> None:
             'loneliness_mini': loneliness_mini,
             'loneliness_next': loneliness_next,
             'loneliness_example': loneliness_example,
+            'foundations_example_axis': foundations_example_axis,
         },
     )
 

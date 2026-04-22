@@ -77,6 +77,16 @@ _TOPIC_OPENING_PREFIXES = [
     'на чём ',
 ]
 
+_SLOT_FOLLOWUP_PREFIXES = [
+    'скорее ',
+    'скорее, ',
+    'больше ',
+    'главнее ',
+    'прежде всего ',
+    'скорее из ',
+    'скорее от ',
+]
+
 
 def _looks_like_fresh_topic_opening(text: str) -> bool:
     if not text:
@@ -88,6 +98,14 @@ def _looks_like_fresh_topic_opening(text: str) -> bool:
     if any(text.startswith(prefix) for prefix in _TOPIC_OPENING_PREFIXES):
         return True
     return text.endswith('?')
+
+
+def _looks_like_slot_followup_candidate(text: str) -> bool:
+    if not text:
+        return False
+    if any(text.startswith(prefix) for prefix in _SLOT_FOLLOWUP_PREFIXES):
+        return True
+    return len(text.split()) <= 4 and text.startswith('из ')
 
 
 def _family_stance_goal(topic: str) -> tuple[str, str]:
@@ -186,7 +204,8 @@ def _infer_update_from_question(question: str, *,
             update_source='intent_registry',
         )
 
-    semantic_family = infer_dialogue_family(question)
+    slotish_followup = bool(active_topic) and _looks_like_slot_followup_candidate(q) and not _looks_like_fresh_topic_opening(q)
+    semantic_family = None if slotish_followup else infer_dialogue_family(question)
 
     if semantic_family:
         return _build_update_payload(

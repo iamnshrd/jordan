@@ -139,6 +139,58 @@ def main() -> None:
         stale_slot_topic_update,
         fallback_state=self_state,
     ).as_dict()
+    foundations_state = {
+        'active_topic': 'relationship-foundations',
+        'active_route': 'relationship-maintenance',
+        'dialogue_mode': 'example_illustration',
+        'abstraction_level': 'general',
+        'pending_slot': 'pattern_family',
+        'active_axis': '',
+        'active_detail': '',
+    }
+    foundations_frame = {
+        'version': 1,
+        'topic': 'relationship-foundations',
+        'route': 'relationship-maintenance',
+        'frame_type': 'relationship_foundations',
+        'stance': 'general',
+        'goal': 'example',
+        'axis': '',
+        'detail': '',
+        'pending_slot': 'pattern_family',
+        'relation_to_previous': 'continue',
+        'confidence': '0.9',
+    }
+    foundations_axis_update = infer_dialogue_update(
+        'скорее обида',
+        dialogue_act='open_topic',
+        dialogue_state=foundations_state,
+        dialogue_frame=foundations_frame,
+    )
+    foundations_axis_frame = apply_dialogue_update(
+        foundations_frame,
+        foundations_axis_update,
+        fallback_state=foundations_state,
+    ).as_dict()
+    foundations_detail_state = {
+        **foundations_state,
+        'dialogue_mode': 'followup_narrowing',
+        'pending_slot': 'concrete_manifestation',
+        'active_axis': 'resentment',
+    }
+    foundations_detail_frame = {
+        **foundations_frame,
+        'goal': 'clarify',
+        'axis': 'resentment',
+        'pending_slot': 'concrete_manifestation',
+        'transition_kind': 'axis_answer',
+    }
+    foundations_detail_update = infer_dialogue_update(
+        'скорее из унижения',
+        dialogue_act='open_topic',
+        dialogue_state=foundations_detail_state,
+        dialogue_frame=foundations_detail_frame,
+    )
 
     results = [
         {
@@ -245,6 +297,27 @@ def main() -> None:
                 and stale_slot_topic_frame.get('transition_kind') == 'opening'
             ),
         },
+        {
+            'name': 'slot_like_followup_after_foundations_example_stays_in_current_topic',
+            'pass': (
+                not foundations_axis_update.is_new_topic
+                and foundations_axis_update.update_source == 'slot_answer'
+                and foundations_axis_update.transition_kind == 'axis_answer'
+                and foundations_axis_update.topic_candidate == 'relationship-foundations'
+                and foundations_axis_frame.get('topic') == 'relationship-foundations'
+                and foundations_axis_frame.get('axis') == 'resentment'
+            ),
+        },
+        {
+            'name': 'slot_like_detail_followup_after_foundations_axis_stays_in_current_topic',
+            'pass': (
+                not foundations_detail_update.is_new_topic
+                and foundations_detail_update.update_source == 'slot_answer'
+                and foundations_detail_update.transition_kind == 'detail_answer'
+                and foundations_detail_update.topic_candidate == 'relationship-foundations'
+                and foundations_detail_update.slot_fill.get('detail') == 'humiliation'
+            ),
+        },
     ]
 
     emit_report(
@@ -268,6 +341,9 @@ def main() -> None:
             'semantic_foundations_frame': semantic_foundations_frame,
             'stale_slot_topic_update': stale_slot_topic_update.as_dict(),
             'stale_slot_topic_frame': stale_slot_topic_frame,
+            'foundations_axis_update': foundations_axis_update.as_dict(),
+            'foundations_axis_frame': foundations_axis_frame,
+            'foundations_detail_update': foundations_detail_update.as_dict(),
         },
     )
 

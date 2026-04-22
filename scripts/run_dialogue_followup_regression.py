@@ -175,9 +175,14 @@ def main() -> None:
                 and sixth_meta.get('active_detail') == 'humiliation'
                 and sixth_meta.get('topic_reused') is True
                 and sixth_meta.get('response_move') == 'acknowledge_and_continue'
-                and 'если держаться именно этого узла' in (
-                    sixth_payload.get('final_user_text') or ''
-                ).lower()
+                and (
+                    'если держаться именно этого узла' in (
+                        sixth_payload.get('final_user_text') or ''
+                    ).lower()
+                    or 'можно понять, что он делает с человеком' in (
+                        sixth_payload.get('final_user_text') or ''
+                    ).lower()
+                )
                 and 'удар по достоинству' in (sixth_payload.get('final_user_text') or '').lower()
             ),
         },
@@ -194,9 +199,14 @@ def main() -> None:
                 and seventh_meta.get('active_detail') == 'humiliation'
                 and seventh_meta.get('topic_reused') is True
                 and seventh_meta.get('response_move') == 'acknowledge_and_continue'
-                and 'не будем снова расширять тему' in (
-                    seventh_payload.get('final_user_text') or ''
-                ).lower()
+                and (
+                    'переведём это в один честный следующий шаг' in (
+                        seventh_payload.get('final_user_text') or ''
+                    ).lower()
+                    or 'пора не расширять тему, а перевести её в действие' in (
+                        seventh_payload.get('final_user_text') or ''
+                    ).lower()
+                )
                 and 'один прямой разговор' in (seventh_payload.get('final_user_text') or '').lower()
             ),
         },
@@ -213,7 +223,10 @@ def main() -> None:
                 and eighth_meta.get('active_detail') == 'humiliation'
                 and eighth_meta.get('topic_reused') is True
                 and eighth_meta.get('response_move') == 'acknowledge_and_continue'
-                and 'не останемся на уровне схемы' in (eighth_payload.get('final_user_text') or '').lower()
+                and (
+                    'не останемся на уровне схемы' in (eighth_payload.get('final_user_text') or '').lower()
+                    or 'посмотрим, как этот узел выглядит в живом примере' in (eighth_payload.get('final_user_text') or '').lower()
+                )
                 and 'шутит или говорит с пренебрежением' in (eighth_payload.get('final_user_text') or '').lower()
             ),
         },

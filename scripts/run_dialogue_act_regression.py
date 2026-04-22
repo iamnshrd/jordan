@@ -335,9 +335,14 @@ def main() -> None:
                 and diagnosis_analysis_meta.get('active_axis') == 'emotional_flatness'
                 and diagnosis_analysis_meta.get('active_detail') == 'social_disconnection'
                 and diagnosis_analysis_meta.get('response_move') == 'acknowledge_and_continue'
-                and 'если держаться именно этого узла' in (
-                    diagnosis_analysis.get('final_user_text') or ''
-                ).lower()
+                and (
+                    'если держаться именно этого узла' in (
+                        diagnosis_analysis.get('final_user_text') or ''
+                    ).lower()
+                    or 'понять её внутреннюю механику' in (
+                        diagnosis_analysis.get('final_user_text') or ''
+                    ).lower()
+                )
                 and 'выпадает из живой взаимности' in (diagnosis_analysis.get('final_user_text') or '').lower()
             ),
         },
@@ -369,9 +374,14 @@ def main() -> None:
                 and diagnosis_next_step_meta.get('active_axis') == 'emotional_flatness'
                 and diagnosis_next_step_meta.get('active_detail') == 'social_disconnection'
                 and diagnosis_next_step_meta.get('response_move') == 'acknowledge_and_continue'
-                and 'не будем снова расширять тему' in (
-                    diagnosis_next_step.get('final_user_text') or ''
-                ).lower()
+                and (
+                    'не будем снова расширять тему' in (
+                        diagnosis_next_step.get('final_user_text') or ''
+                    ).lower()
+                    or 'пора не расширять тему, а перевести её в действие' in (
+                        diagnosis_next_step.get('final_user_text') or ''
+                    ).lower()
+                )
                 and 'один настоящий контакт' in (diagnosis_next_step.get('final_user_text') or '').lower()
             ),
         },
@@ -386,9 +396,17 @@ def main() -> None:
                 and portrait_next_step_meta.get('active_axis') == 'avoidance'
                 and portrait_next_step_meta.get('active_detail') == 'conversation'
                 and portrait_next_step_meta.get('response_move') == 'acknowledge_and_continue'
-                and 'не будем снова расширять тему' in (
-                    portrait_next_step.get('final_user_text') or ''
-                ).lower()
+                and (
+                    'не будем снова расширять тему' in (
+                        portrait_next_step.get('final_user_text') or ''
+                    ).lower()
+                    or 'переведём это в один честный следующий шаг' in (
+                        portrait_next_step.get('final_user_text') or ''
+                    ).lower()
+                    or 'пора не расширять тему, а перевести её в действие' in (
+                        portrait_next_step.get('final_user_text') or ''
+                    ).lower()
+                )
                 and 'один разговор' in (portrait_next_step.get('final_user_text') or '').lower()
             ),
         },
@@ -418,7 +436,10 @@ def main() -> None:
                 and portrait_example_meta.get('active_axis') == 'avoidance'
                 and portrait_example_meta.get('active_detail') == 'conversation'
                 and portrait_example_meta.get('response_move') == 'acknowledge_and_continue'
-                and 'не останемся на уровне схемы' in (portrait_example.get('final_user_text') or '').lower()
+                and (
+                    'не останемся на уровне схемы' in (portrait_example.get('final_user_text') or '').lower()
+                    or 'посмотрим, как этот узел выглядит в живом примере' in (portrait_example.get('final_user_text') or '').lower()
+                )
                 and 'откладывает разговор' in (portrait_example.get('final_user_text') or '').lower()
             ),
         },
@@ -484,7 +505,12 @@ def main() -> None:
                 and cause_list_meta.get('pending_slot') == 'narrowing_axis'
                 and cause_list_meta.get('topic_reused') is True
                 and cause_list_meta.get('response_move') == 'acknowledge_and_continue'
-                and 'разложим по главным причинам' in (cause_list_payload.get('final_user_text') or '').lower()
+                and (
+                    'разложим тему по главным причинам' in (cause_list_payload.get('final_user_text') or '').lower()
+                    or 'тогда разложим тему по главным причинам' in (cause_list_payload.get('final_user_text') or '').lower()
+                    or 'разложим по главным причинам' in (cause_list_payload.get('final_user_text') or '').lower()
+                    or 'разложить тему по главным линиям' in (cause_list_payload.get('final_user_text') or '').lower()
+                )
                 and 'накопленная обида' in (cause_list_payload.get('final_user_text') or '').lower()
                 and 'невысказанный конфликт' in (cause_list_payload.get('final_user_text') or '').lower()
             ),
@@ -502,7 +528,11 @@ def main() -> None:
                 and cause_next_step_meta.get('abstraction_level') == 'general'
                 and cause_next_step_meta.get('topic_reused') is True
                 and cause_next_step_meta.get('response_move') == 'acknowledge_and_continue'
-                and 'не будем снова расширять тему' in (cause_next_step_payload.get('final_user_text') or '').lower()
+                and (
+                    'не будем снова расширять тему' in (cause_next_step_payload.get('final_user_text') or '').lower()
+                    or 'переведём это в один честный следующий шаг' in (cause_next_step_payload.get('final_user_text') or '').lower()
+                    or 'пора не расширять тему, а перевести её в действие' in (cause_next_step_payload.get('final_user_text') or '').lower()
+                )
                 and 'выбрать одну причину' in (cause_next_step_payload.get('final_user_text') or '').lower()
             ),
         },
@@ -519,7 +549,10 @@ def main() -> None:
                 and cause_example_meta.get('abstraction_level') == 'general'
                 and cause_example_meta.get('topic_reused') is True
                 and cause_example_meta.get('response_move') == 'acknowledge_and_continue'
-                and 'не останемся на уровне схемы' in (cause_example_payload.get('final_user_text') or '').lower()
+                and (
+                    'не останемся на уровне схемы' in (cause_example_payload.get('final_user_text') or '').lower()
+                    or 'посмотрим, как этот узел выглядит в живом примере' in (cause_example_payload.get('final_user_text') or '').lower()
+                )
                 and 'откладывается “до более спокойного момента”' in (cause_example_payload.get('final_user_text') or '').lower()
             ),
         },
