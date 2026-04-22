@@ -6,6 +6,8 @@ missing prompts or weak retrieval outcomes.
 """
 from __future__ import annotations
 
+import re
+
 from library._core.runtime.guardrails import (
     detect_out_of_domain,
     maybe_reset_out_of_domain_streak,
@@ -63,9 +65,29 @@ _DOMAIN_EXTRA_KEYWORDS = [
     'страдан', 'трагед', 'избег', 'прокраст', 'страх', 'цен',
 ]
 
+_EXACT_TOKEN_SCOPE_KEYWORDS = {
+    'суд',
+    'btc',
+}
+
 
 def _contains_any(q: str, keywords: list[str]) -> bool:
-    return any(kw in q for kw in keywords)
+    tokens = [
+        token for token in re.sub(r'[^\w\s-]', ' ', q).split()
+        if token
+    ]
+    token_set = set(tokens)
+    for kw in keywords:
+        needle = (kw or '').lower().strip()
+        if not needle:
+            continue
+        if needle in _EXACT_TOKEN_SCOPE_KEYWORDS:
+            if needle in token_set:
+                return True
+            continue
+        if needle in q:
+            return True
+    return False
 
 
 def _looks_like_shopping_choice(q: str) -> bool:

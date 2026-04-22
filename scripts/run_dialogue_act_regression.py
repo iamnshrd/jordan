@@ -42,6 +42,8 @@ def main() -> None:
     portrait_user = f'telegram:dialogue-portrait-{uuid.uuid4().hex[:8]}'
     diagnosis_user = f'telegram:dialogue-diagnosis-{uuid.uuid4().hex[:8]}'
     menu_user = f'telegram:dialogue-menu-{uuid.uuid4().hex[:8]}'
+    self_eval_user = f'telegram:dialogue-selfeval-{uuid.uuid4().hex[:8]}'
+    shame_user = f'telegram:dialogue-shame-{uuid.uuid4().hex[:8]}'
 
     portrait_rc, portrait, portrait_stderr = _run_adapter(
         'Хорошо, давай тогда составим мой психологический портрет',
@@ -74,6 +76,22 @@ def main() -> None:
     menu_rc, menu, menu_stderr = _run_adapter(
         'а на что в базе есть опора, о чем можно поговорить?',
         menu_user,
+    )
+    self_eval_rc, self_eval, self_eval_stderr = _run_adapter(
+        'Что со мной не так?',
+        self_eval_user,
+    )
+    self_eval_followup_rc, self_eval_followup, self_eval_followup_stderr = _run_adapter(
+        'скорее избегание',
+        self_eval_user,
+    )
+    shame_rc, shame, shame_stderr = _run_adapter(
+        'Мне стыдно за себя целиком',
+        shame_user,
+    )
+    shame_followup_rc, shame_followup, shame_followup_stderr = _run_adapter(
+        'скорее унижение',
+        shame_user,
     )
     portrait_followup_rc, portrait_followup, portrait_followup_stderr = _run_adapter(
         'скорее избегание',
@@ -160,6 +178,10 @@ def main() -> None:
     diagnosis_next_step_meta = diagnosis_next_step.get('decision_metadata') or {}
     diagnosis_example_meta = diagnosis_example.get('decision_metadata') or {}
     menu_meta = menu.get('decision_metadata') or {}
+    self_eval_meta = self_eval.get('decision_metadata') or {}
+    self_eval_followup_meta = self_eval_followup.get('decision_metadata') or {}
+    shame_meta = shame.get('decision_metadata') or {}
+    shame_followup_meta = shame_followup.get('decision_metadata') or {}
     portrait_followup_meta = portrait_followup.get('decision_metadata') or {}
     portrait_detail_meta = portrait_detail.get('decision_metadata') or {}
     portrait_analysis_meta = portrait_analysis.get('decision_metadata') or {}
@@ -217,6 +239,48 @@ def main() -> None:
                 and diagnosis_followup_meta.get('selected_axis') == 'emotional_flatness'
                 and 'если главнее пустота' in (diagnosis_followup.get('final_user_text') or '').lower()
                 and 'цитат' not in (diagnosis_followup.get('final_user_text') or '').lower()
+            ),
+        },
+        {
+            'name': 'self_evaluation_becomes_pattern_clarify',
+            'pass': (
+                self_eval_rc == 0
+                and self_eval.get('reason_code') == 'self-evaluation-request'
+                and self_eval_meta.get('active_topic') == 'self-evaluation'
+                and self_eval_meta.get('pending_slot') == 'pattern_selection'
+                and 'ярлык' in (self_eval.get('final_user_text') or '').lower()
+            ),
+        },
+        {
+            'name': 'self_evaluation_followup_advances_to_pattern_specific_clarify',
+            'pass': (
+                self_eval_followup_rc == 0
+                and self_eval_followup.get('reason_code') == 'self-evaluation-axis-followup'
+                and self_eval_followup_meta.get('dialogue_act') == 'supply_narrowing_axis'
+                and self_eval_followup_meta.get('active_topic') == 'self-evaluation'
+                and self_eval_followup_meta.get('dialogue_mode') == 'followup_narrowing'
+                and self_eval_followup_meta.get('active_axis') == 'avoidance'
+            ),
+        },
+        {
+            'name': 'shame_family_becomes_narrowing_clarify',
+            'pass': (
+                shame_rc == 0
+                and shame.get('reason_code') == 'shame-self-contempt-request'
+                and shame_meta.get('active_topic') == 'shame-self-contempt'
+                and shame_meta.get('pending_slot') == 'narrowing_axis'
+                and 'стыд' in (shame.get('final_user_text') or '').lower()
+            ),
+        },
+        {
+            'name': 'shame_family_followup_advances_to_axis_specific_clarify',
+            'pass': (
+                shame_followup_rc == 0
+                and shame_followup.get('reason_code') == 'shame-self-contempt-axis-followup'
+                and shame_followup_meta.get('dialogue_act') == 'supply_narrowing_axis'
+                and shame_followup_meta.get('active_topic') == 'shame-self-contempt'
+                and shame_followup_meta.get('dialogue_mode') == 'followup_narrowing'
+                and shame_followup_meta.get('active_axis') == 'humiliation'
             ),
         },
         {
@@ -491,6 +555,10 @@ def main() -> None:
             'self_diagnosis_next_step': diagnosis_next_step,
             'self_diagnosis_example': diagnosis_example,
             'menu': menu,
+            'self_evaluation': self_eval,
+            'self_evaluation_followup': self_eval_followup,
+            'shame': shame,
+            'shame_followup': shame_followup,
             'portrait_followup': portrait_followup,
             'portrait_detail': portrait_detail,
             'portrait_analysis': portrait_analysis,
@@ -519,6 +587,10 @@ def main() -> None:
             'self_diagnosis_next_step': diagnosis_next_step_stderr,
             'self_diagnosis_example': diagnosis_example_stderr,
             'menu': menu_stderr,
+            'self_evaluation': self_eval_stderr,
+            'self_evaluation_followup': self_eval_followup_stderr,
+            'shame': shame_stderr,
+            'shame_followup': shame_followup_stderr,
             'portrait_followup': portrait_followup_stderr,
             'portrait_detail': portrait_detail_stderr,
             'portrait_analysis': portrait_analysis_stderr,

@@ -1,6 +1,8 @@
 """Interpret what a user turn does relative to the active dialogue."""
 from __future__ import annotations
 
+from library._core.runtime.dialogue_state import is_scope_menu_question
+
 _RELATIONSHIP_AXIS_MARKERS = {
     'resentment': ['обида', 'обиж', 'горечь'],
     'coldness': ['холод', 'холодность', 'отстраненность', 'отстранённость'],
@@ -23,6 +25,14 @@ _PORTRAIT_AXIS_MARKERS = {
     'resentment': ['обида', 'злость', 'горечь'],
     'avoidance': ['избегание', 'откладываю', 'прячусь'],
     'self_deception': ['самообман', 'вру себе', 'лгу себе'],
+}
+
+_SHAME_AXIS_MARKERS = {
+    'humiliation': ['унижение', 'унижен', 'унижена', 'унизили'],
+    'exposure': ['разоблачение', 'выставили', 'стыдно перед людьми', 'на людях', 'увидят', 'увидели'],
+    'failure': ['провал', 'неудача', 'несостоятельность', 'облажался', 'облажалась'],
+    'self_condemnation': ['ненависть к себе', 'самоненависть', 'отвращение к себе', 'я мерзок', 'я мерзка'],
+    'resentment': ['обида', 'горечь', 'злюсь на себя'],
 }
 
 _RELATIONSHIP_DETAIL_MARKERS = {
@@ -74,18 +84,6 @@ _PERSONALIZE_MARKERS = [
 ]
 
 _YES_MARKERS = ['да', 'ага', 'угу', 'именно']
-
-_MENU_MARKERS = [
-    'о чем можно поговорить',
-    'о чём можно поговорить',
-    'о чем с тобой можно поговорить',
-    'о чём с тобой можно поговорить',
-    'о чем мы можем поговорить',
-    'о чём мы можем поговорить',
-    'какие темы',
-    'что можно разобрать',
-    'с чем к тебе можно',
-]
 
 _GREETING_MARKERS = [
     'привет',
@@ -238,9 +236,11 @@ def extract_dialogue_axis(question: str, state: dict | None = None) -> str:
 
     if topic == 'relationship-loss-of-feeling' and pending in {'pattern_family', 'narrowing_axis'}:
         return _match_axis(q, _RELATIONSHIP_AXIS_MARKERS)
+    if topic == 'shame-self-contempt' and pending == 'narrowing_axis':
+        return _match_axis(q, _SHAME_AXIS_MARKERS)
     if topic == 'self-diagnosis' and pending == 'symptom_narrowing':
         return _match_axis(q, _SELF_DIAGNOSIS_AXIS_MARKERS)
-    if topic == 'psychological-portrait' and pending == 'pattern_selection':
+    if topic in {'psychological-portrait', 'self-evaluation'} and pending == 'pattern_selection':
         return _match_axis(q, _PORTRAIT_AXIS_MARKERS)
     return ''
 
@@ -259,7 +259,7 @@ def extract_dialogue_detail(question: str, state: dict | None = None) -> str:
         return _match_nested_detail(q, _RELATIONSHIP_DETAIL_MARKERS, axis)
     if topic == 'self-diagnosis':
         return _match_nested_detail(q, _SELF_DIAGNOSIS_DETAIL_MARKERS, axis)
-    if topic == 'psychological-portrait':
+    if topic in {'psychological-portrait', 'self-evaluation'}:
         return _match_nested_detail(q, _PORTRAIT_DETAIL_MARKERS, axis)
     return ''
 
@@ -272,7 +272,7 @@ def infer_dialogue_act(question: str, state: dict | None = None) -> str:
     if not q:
         return 'empty_turn'
 
-    if _contains_any(q, _MENU_MARKERS):
+    if is_scope_menu_question(q):
         return 'request_menu'
 
     if _looks_like_greeting(q):

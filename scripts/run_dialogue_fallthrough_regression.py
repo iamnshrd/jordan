@@ -78,6 +78,10 @@ def main() -> None:
         'Какие могут быть причины потери чувств в серьезных отношениях?',
         implicit_shift_user,
     )
+    conceptual_shift_rc, conceptual_shift, conceptual_shift_stderr = _run_adapter(
+        'В чём заключается смысл крепких отношений?',
+        implicit_shift_user,
+    )
 
     greeting_meta = greeting.get('decision_metadata') or {}
     menu_meta = menu.get('decision_metadata') or {}
@@ -87,6 +91,7 @@ def main() -> None:
     shift_seed_meta = shift_seed.get('decision_metadata') or {}
     shift_followup_meta = shift_followup.get('decision_metadata') or {}
     implicit_shift_meta = implicit_shift.get('decision_metadata') or {}
+    conceptual_shift_meta = conceptual_shift.get('decision_metadata') or {}
 
     results = [
         {
@@ -144,6 +149,20 @@ def main() -> None:
                 and implicit_shift_meta.get('active_axis') == ''
             ),
         },
+        {
+            'name': 'fresh_conceptual_question_does_not_get_trapped_in_old_pending_slot',
+            'pass': (
+                conceptual_shift_rc == 0
+                and conceptual_shift.get('reason_code') == 'relationship-foundations-overview'
+                and conceptual_shift_meta.get('dialogue_act') == 'open_topic'
+                and conceptual_shift_meta.get('active_topic') == 'relationship-foundations'
+                and conceptual_shift_meta.get('topic_reused') is False
+                and conceptual_shift_meta.get('active_axis') == ''
+                and 'их смысл в том, чтобы два человека могли выдерживать правду' in (
+                    conceptual_shift.get('final_user_text') or ''
+                ).lower()
+            ),
+        },
     ]
 
     emit_report(
@@ -167,6 +186,7 @@ def main() -> None:
             'shift_seed': shift_seed_stderr,
             'shift_followup': shift_followup_stderr,
             'implicit_shift': implicit_shift_stderr,
+            'conceptual_shift': conceptual_shift_stderr,
         },
     )
 

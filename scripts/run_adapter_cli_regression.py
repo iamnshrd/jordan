@@ -63,13 +63,13 @@ def main() -> None:
             and 'model_prompt' not in blocked,
         },
         {
-            'name': 'respond_kb_adapter_exposes_model_prompt',
+            'name': 'controlled_existential_adapter_avoids_model_prompt',
             'pass': answer_rc == 0
-            and answer.get('decision_type') == 'respond_kb'
-            and answer.get('delivery_mode') == 'model'
-            and answer.get('allow_model_call') is True
-            and isinstance(answer.get('model_prompt'), dict)
-            and bool((answer.get('model_prompt') or {}).get('system')),
+            and answer.get('decision_type') == 'clarify'
+            and answer.get('delivery_mode') == 'final_text'
+            and answer.get('allow_model_call') is False
+            and answer.get('reason_code') == 'lost-and-aimless'
+            and 'model_prompt' not in answer,
         },
         {
             'name': 'adapter_contract_keeps_assistant_metadata',

@@ -24,6 +24,12 @@ def main() -> None:
         'run_dialogue_followup_regression.py',
         'run_dialogue_act_regression.py',
         'run_dialogue_fallthrough_regression.py',
+        'run_dialogue_family_registry_regression.py',
+        'run_dialogue_intent_registry_regression.py',
+        'run_dialogue_transition_graph_regression.py',
+        'run_dialogue_frame_regression.py',
+        'run_dialogue_frame_update_regression.py',
+        'run_dialogue_frame_render_regression.py',
         'run_human_clarify_regression.py',
         'run_unified_logging_regression.py',
     ], 'guardrail')

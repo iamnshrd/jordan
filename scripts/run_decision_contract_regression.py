@@ -53,11 +53,12 @@ def main() -> None:
                 and clarify_run.get('adapter_contract', {}).get('delivery_mode') == 'final_text',
             },
             {
-                'name': 'respond_kb_run_and_prompt_share_decision_type',
-                'pass': answer_run.get('decision_type') == 'respond_kb'
-                and answer_prompt.get('decision_type') == 'respond_kb'
-                and answer_env.get('allow_model_call') is True
-                and answer_run.get('adapter_contract', {}).get('model_call_allowed') is True,
+                'name': 'controlled_existential_run_and_prompt_share_decision_type',
+                'pass': answer_run.get('decision_type') == 'clarify'
+                and answer_prompt.get('decision_type') == 'clarify'
+                and answer_env.get('allow_model_call') is False
+                and answer_env.get('reason_code') == 'lost-and-aimless'
+                and answer_run.get('adapter_contract', {}).get('model_call_allowed') is False,
             },
             {
                 'name': 'contracts_keep_final_text_and_trace_consistent',

@@ -15,6 +15,7 @@ def main() -> None:
         weather_q = 'Какая завтра будет погода в Москве и нужен ли зонтик?'
         tech_q = 'Напиши regex для email и помоги отладить python traceback'
         in_domain_q = 'Я потерял смысл, дисциплину и направление'
+        menu_q = 'Что мы можем обсудить?'
 
         shopping = orchestrate(shopping_q, user_id='telegram:61001', store=store)
         shopping_prompt = orchestrate_for_llm(
@@ -23,6 +24,7 @@ def main() -> None:
         weather = orchestrate(weather_q, user_id='telegram:61003', store=store)
         tech = orchestrate(tech_q, user_id='telegram:61004', store=store)
         in_domain = orchestrate(in_domain_q, user_id='telegram:61005', store=store)
+        menu = orchestrate(menu_q, user_id='telegram:61006', store=store)
 
         results = [
             {
@@ -63,6 +65,12 @@ def main() -> None:
                     'ask-clarifying-question',
                 },
             },
+            {
+                'name': 'scope_menu_question_is_not_false_policy_blocked',
+                'pass': not menu.get('guardrail')
+                and menu.get('action') == 'ask-clarifying-question'
+                and menu.get('reason_code') == 'scope-topics',
+            },
         ]
         emit_report(
             results,
@@ -72,6 +80,7 @@ def main() -> None:
                 'weather': weather.get('final_user_text'),
                 'tech': tech.get('final_user_text'),
                 'in_domain_action': in_domain.get('action'),
+                'menu_action': menu.get('action'),
             },
         )
 

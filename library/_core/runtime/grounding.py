@@ -83,6 +83,7 @@ class GroundedAnswerPlan:
     reaction: dict = field(default_factory=dict)
     retrieval_validation: dict = field(default_factory=dict)
     dialogue_state: dict = field(default_factory=dict)
+    dialogue_frame: dict = field(default_factory=dict)
     synthesis: dict | None = None
     voice_mode: str = 'default'
     guardrail: dict | None = None
@@ -135,6 +136,7 @@ class GroundedAnswerPlan:
             'reaction': self.reaction,
             'retrieval_validation': self.retrieval_validation,
             'dialogue_state': self.dialogue_state,
+            'dialogue_frame': self.dialogue_frame,
             'guardrail': self.guardrail,
             'response': final_text,
             'direct_response': self.direct_response,
@@ -194,6 +196,7 @@ class GroundedAnswerPlan:
             'decision_envelope': envelope,
             'retrieval_validation': self.retrieval_validation,
             'dialogue_state': self.dialogue_state,
+            'dialogue_frame': self.dialogue_frame,
             'decision_meta': self.decision.as_dict(),
             'purpose': self.purpose,
             'trace_id': current_trace_id(),

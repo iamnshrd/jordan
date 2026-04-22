@@ -49,11 +49,13 @@ def main() -> None:
                 and blocked.get('adapter_contract', {}).get('must_not_call_model_when_blocked') is True,
             },
             {
-                'name': 'kb_answer_adapter_payload_resolves_to_model_prompt',
-                'pass': answered.get('delivery_mode') == 'model'
-                and bool(answered.get('system'))
-                and bool(answered.get('user'))
-                and answered.get('adapter_contract', {}).get('model_call_allowed') is True,
+                'name': 'controlled_existential_adapter_payload_resolves_to_final_text',
+                'pass': answered.get('delivery_mode') == 'final_text'
+                and answered.get('decision_type') == 'clarify'
+                and bool(answered.get('message'))
+                and not bool(answered.get('system'))
+                and not bool(answered.get('user'))
+                and answered.get('adapter_contract', {}).get('model_call_allowed') is False,
             },
             {
                 'name': 'mentor_canonical_result_carries_adapter_contract',

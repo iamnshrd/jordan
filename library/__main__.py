@@ -43,6 +43,7 @@ def _build_adapter_cli_result(payload: dict) -> dict:
         'delivery_mode': delivery_mode,
         'final_user_text': final_user_text,
         'decision_metadata': decision_metadata,
+        'dialogue_frame': payload.get('dialogue_frame', {}),
     }
     if result['allow_model_call']:
         result['model_prompt'] = {
@@ -119,6 +120,10 @@ def cmd_adapter(args):
         active_topic=(result.get('decision_metadata') or {}).get('active_topic', ''),
         abstraction_level=(result.get('decision_metadata') or {}).get('abstraction_level', ''),
         pending_slot=(result.get('decision_metadata') or {}).get('pending_slot', ''),
+        frame_topic=(result.get('decision_metadata') or {}).get('frame_topic', ''),
+        frame_type=(result.get('decision_metadata') or {}).get('frame_type', ''),
+        frame_goal=(result.get('decision_metadata') or {}).get('frame_goal', ''),
+        frame_relation=(result.get('decision_metadata') or {}).get('frame_relation_to_previous', ''),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
 

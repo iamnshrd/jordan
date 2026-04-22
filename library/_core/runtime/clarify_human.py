@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from library._core.kb.voice_patterns import load_profile_voice_bundle
+from library._core.runtime.dialogue_family_registry import get_dialogue_acknowledgement_hint
+from library._core.runtime.dialogue_frame_renderer import plan_act_fallback_render, plan_frame_render
 from library._core.runtime.routes import infer_route
 
 
@@ -239,6 +241,15 @@ _PROFILE_SPECS = {
         'question': 'чего ты боишься лишиться — одобрения, безопасности, власти или привычной идентичности?',
         'question_kind': 'narrowing',
     },
+    'loneliness-rejection': {
+        'opening': 'Одиночество особенно разрушительно там, где человек уже начинает переживать себя как того, кого перестали выбирать.',
+        'fallback_voice': (
+            'Тогда боль идёт не только от отсутствия людей рядом, а от ощущения невидимости, ненужности или скрытого отвержения.',
+        ),
+        'question_lead': 'Скажи точнее:',
+        'question': 'что здесь больнее всего — оставленность, невидимость, унижение или чувство, что тебя снова не выбрали?',
+        'question_kind': 'narrowing',
+    },
     'parenting-boundaries': {
         'opening': 'Воспитание почти никогда не сводится к технике.',
         'moves': ('don-t-solve-a-problem-you-don-t-have',),
@@ -287,6 +298,24 @@ _PROFILE_SPECS = {
         'question': 'Где ты себе вредишь устойчивее всего — в дисциплине, в близости, в обиде, в избегании или в самообмане?',
         'question_kind': 'pattern_selection',
     },
+    'self-evaluation-request': {
+        'opening': 'Если ты спрашиваешь, что с тобой не так, я не хочу отвечать тебе ярлыком.',
+        'fallback_voice': (
+            'Полезнее искать не дефект личности, а повторяющийся паттерн, через который ты сам себе вредишь и разрушаешь порядок жизни.',
+        ),
+        'question_lead': 'Начни не с самоприговоров, а с правды.',
+        'question': 'Где ты себе вредишь устойчивее всего — в дисциплине, в близости, в обиде, в избегании или в самообмане?',
+        'question_kind': 'pattern_selection',
+    },
+    'shame-self-contempt-request': {
+        'opening': 'Если стыд уже стал приговором личности, спорить с ним общими словами почти бесполезно.',
+        'fallback_voice': (
+            'Нужно понять, из чего именно он питается: из унижения, разоблачения, провала, внутренней ненависти к себе или из горечи, обращённой внутрь.',
+        ),
+        'question_lead': 'Скажи точнее:',
+        'question': 'здесь главнее унижение, разоблачение перед людьми, чувство провала, самоненависть или обида, обращённая на себя?',
+        'question_kind': 'narrowing',
+    },
     'self-diagnosis-soft': {
         'opening': 'Я не хочу приклеивать к тебе диагноз раньше, чем мы назвали сам опыт.',
         'fallback_voice': (
@@ -321,6 +350,16 @@ _PROFILE_SPECS = {
         ),
         'question_lead': 'Если хочешь идти дальше по существу,',
         'question': 'выбери один паттерн: обида, холод, потеря желания, исчезновение уважения или ложь о том, что всё в порядке.',
+        'question_kind': 'topic_variant',
+    },
+    'relationship-foundations-overview': {
+        'opening': 'Если говорить о крепких отношениях по существу, их смысл не в том, чтобы устранить всякое напряжение.',
+        'fallback_voice': (
+            'Их смысл в том, чтобы два человека могли выдерживать правду, различие и совместное бремя без взаимного распада.',
+            'Такая связь держится не на одном чувстве, а на правдивости, уважении, добровольной ответственности, сохранённом желании видеть другого как живого человека и способности чинить разрыв, не превращая его в войну.',
+        ),
+        'question_lead': 'Если хочешь идти дальше по делу,',
+        'question': 'выбери, что для тебя здесь важнее разобрать: правду, уважение, совместное бремя, желание или восстановление связи после конфликта.',
         'question_kind': 'topic_variant',
     },
     'empty-input': {
@@ -571,10 +610,34 @@ def _render_axis_followup(active_topic: str, selected_axis: str) -> tuple[str, d
             'Скажи точнее: в чём именно ложь — в мотивах, в отношениях, в целях или в том, что ты называешь своими ценностями?',
         ),
     }
+    shame_axis_map = {
+        'humiliation': (
+            'Если в центре унижение, тогда стыд держится не просто на ошибке, а на переживании собственного уменьшения в чьих-то глазах.',
+            'Скажи точнее: это унижение родилось из презрения другого человека, из публичного эпизода, из собственной слабости или из того, что ты позволил с собой обращаться недопустимо?',
+        ),
+        'exposure': (
+            'Если мучает прежде всего разоблачение, тогда ты живёшь не только с фактом, а с невыносимым взглядом воображаемого свидетеля.',
+            'Скажи точнее: страшнее всего здесь чужое мнение, потеря лица, страх быть увиденным насквозь или чувство, что после этого тебя уже нельзя уважать?',
+        ),
+        'failure': (
+            'Если ядро стыда — провал, тогда важно понять, это боль от реальной несостоятельности или тотальный приговор, который ты вынес себе из одного поражения.',
+            'Скажи точнее: здесь больнее ошибка, слабость, потеря статуса или мысль, что один провал уже доказывает твою никчёмность?',
+        ),
+        'self_condemnation': (
+            'Если всё уже перешло в самоненависть, тогда проблема не просто в поступке, а в том, что внутренний судья занял всё пространство и не оставил места для правды, кроме приговора.',
+            'Скажи точнее: ты сейчас больше переживаешь отвращение к себе, желание исчезнуть, ощущение моральной испорченности или страх, что внутри тебя нет ничего достойного уважения?',
+        ),
+        'resentment': (
+            'Если стыд спутан с горечью, тогда часть удара может быть обращена не только против себя, но и против того, кто унизил, отверг или заставил жить в скрытом счёте.',
+            'Скажи точнее: здесь сильнее злость на другого, злость на себя за слабость, чувство несправедливости или мучительная смесь всех трёх?',
+        ),
+    }
     source_map = {
         'relationship-loss-of-feeling': relationship_axis_map,
+        'shame-self-contempt': shame_axis_map,
         'self-diagnosis': self_diagnosis_axis_map,
         'psychological-portrait': portrait_axis_map,
+        'self-evaluation': portrait_axis_map,
     }
     axis_map = source_map.get(active_topic, {})
     opening, question = axis_map.get(
@@ -648,6 +711,7 @@ def _render_detail_followup(active_topic: str, active_axis: str, selected_detail
         'relationship-loss-of-feeling': relationship_detail_map,
         'self-diagnosis': self_diagnosis_detail_map,
         'psychological-portrait': portrait_detail_map,
+        'self-evaluation': portrait_detail_map,
     }
     opening, question = source_map.get(active_topic, {}).get(
         (active_axis, selected_detail),
@@ -720,6 +784,7 @@ def _render_mini_analysis(active_topic: str, active_axis: str, active_detail: st
         'relationship-loss-of-feeling': relationship_analysis_map,
         'self-diagnosis': self_diagnosis_analysis_map,
         'psychological-portrait': portrait_analysis_map,
+        'self-evaluation': portrait_analysis_map,
     }
     paragraph_one, paragraph_two = source_map.get(active_topic, {}).get(
         (active_axis, active_detail),
@@ -738,6 +803,17 @@ def _render_mini_analysis(active_topic: str, active_axis: str, active_detail: st
 
 
 def _render_next_step(active_topic: str, active_axis: str, active_detail: str) -> tuple[str, dict]:
+    if active_topic == 'relationship-foundations' and not active_axis and not active_detail:
+        return (
+            'Тогда не пытайся вывести окончательную формулу любви. Полезнее выбрать одну опору из уже названных и посмотреть, как она реально строится: правда, уважение, совместное бремя, желание или восстановление связи.',
+            'Практический следующий шаг здесь обычно такой: возьми одну пару, одну свою связь или одну недавнюю историю и спроси не “есть ли там чувство”, а “держится ли связь на правде, уважении и добровольной ответственности, когда возникает напряжение”.',
+        ), {
+            'voice_moves': [],
+            'framing_moves': [],
+            'narrowing_moves': [],
+            'source_refs': [],
+            'voice_layer': '',
+        }
     if active_topic == 'relationship-loss-of-feeling' and not active_axis and not active_detail:
         return (
             'Тогда не пытайся чинить всё сразу и не жди, что чувство само оживёт от одного инсайта. Первый практический шаг — выбрать одну причину из уже названных и проверить, где именно она проявляется у вас повторяющимся паттерном, а не единичным эпизодом.',
@@ -803,6 +879,7 @@ def _render_next_step(active_topic: str, active_axis: str, active_detail: str) -
         'relationship-loss-of-feeling': relationship_next_step_map,
         'self-diagnosis': self_diagnosis_next_step_map,
         'psychological-portrait': portrait_next_step_map,
+        'self-evaluation': portrait_next_step_map,
     }
     paragraph_one, paragraph_two = source_map.get(active_topic, {}).get(
         (active_axis, active_detail),
@@ -855,7 +932,19 @@ def _render_example(active_topic: str, active_axis: str, active_detail: str) -> 
         'relationship-loss-of-feeling': relationship_example_map,
         'self-diagnosis': self_diagnosis_example_map,
         'psychological-portrait': portrait_example_map,
+        'self-evaluation': portrait_example_map,
     }
+    if active_topic == 'relationship-foundations' and not active_axis and not active_detail:
+        return (
+            'Например, внешне крепкая пара не обязана всё время быть нежной или бесконфликтной. Но когда между ними возникает напряжение, они не прячут правду под вежливость, не размывают уважение мелким презрением и не используют близость как валюту давления.',
+            'Они могут спорить жёстко, но всё равно возвращаются к вопросу: что здесь правда, за что каждый из нас отвечает и как восстановить связь так, чтобы после конфликта осталось больше порядка, а не больше тайной вражды.',
+        ), {
+            'voice_moves': [],
+            'framing_moves': [],
+            'narrowing_moves': [],
+            'source_refs': [],
+            'voice_layer': '',
+        }
     if active_topic == 'relationship-loss-of-feeling' and not active_axis and not active_detail:
         return (
             'Например, пара может не переживать ни одной большой драмы, но месяцами жить так, что любой разговор о боли, желании или разочаровании откладывается “до более спокойного момента”. '
@@ -886,39 +975,41 @@ def _render_example(active_topic: str, active_axis: str, active_detail: str) -> 
 def _contextual_acknowledgement(dialogue_act: str, dialogue_state: dict | None = None) -> str:
     state = dialogue_state or {}
     topic = state.get('active_topic', '')
-    abstraction_level = state.get('abstraction_level', 'personal')
-
-    if dialogue_act == 'abstractify_previous_question' and topic == 'relationship-loss-of-feeling':
-        return 'Хорошо, значит речь теперь не о твоём частном случае, а о самой структуре этой проблемы.'
-    if dialogue_act == 'confirm_scope' and topic == 'relationship-loss-of-feeling':
-        return 'Хорошо, держим этот разговор в общем виде и не сваливаемся обратно в частную историю.'
-    if dialogue_act == 'personalize_previous_question' and topic == 'relationship-loss-of-feeling':
-        return 'Хорошо, тогда вернём разговор от общей схемы к тебе лично и посмотрим, где этот узел бьёт по твоей жизни.'
-    if dialogue_act == 'personalize_previous_question' and topic == 'psychological-portrait':
-        return 'Хорошо, тогда вернёмся от общей схемы характера к тебе лично и посмотрим, где этот паттерн портит твою жизнь на практике.'
-    if dialogue_act == 'personalize_previous_question' and topic == 'self-diagnosis':
-        return 'Хорошо, тогда вернёмся от общей картины к твоему личному опыту и посмотрим, что именно у тебя рушится изнутри.'
-    if dialogue_act == 'supply_narrowing_axis':
-        return (
-            'Хорошо, значит не распыляемся по всей теме, а держим именно этот слой.'
-            if abstraction_level == 'general'
-            else 'Хорошо, значит не разбрасываемся и держим именно этот слой проблемы.'
-        )
-    if dialogue_act == 'supply_concrete_manifestation':
-        return 'Хорошо, теперь узел уже достаточно сузился, чтобы не ходить кругами вокруг общего симптома.'
-    if dialogue_act == 'request_mini_analysis':
-        return 'Хорошо, если держаться именно этого узла, уже можно не только сужать, но и понять, что он делает с человеком.'
-    if dialogue_act == 'request_next_step':
-        return 'Хорошо, тогда не будем снова расширять тему, а попробуем перевести её в один честный следующий шаг.'
-    if dialogue_act == 'request_example':
-        return 'Хорошо, тогда не останемся на уровне схемы, а посмотрим, как этот узел выглядит в живом примере.'
-    if dialogue_act == 'request_cause_list':
-        return 'Хорошо, тогда не будем блуждать вокруг темы, а разложим по главным причинам.'
-    if dialogue_act == 'reject_scope':
-        return 'Хорошо, тогда уберём общую рамку и вернёмся к одному живому узлу, который у тебя действительно болит.'
-    if dialogue_act == 'topic_shift':
-        return 'Хорошо, оставим прежний узел и возьмём новый вопрос как отдельную тему.'
-    return ''
+    abstraction_level = state.get('abstraction_level', 'personal') or 'personal'
+    relation = {
+        'abstractify_previous_question': 'reframe',
+        'confirm_scope': 'continue',
+        'personalize_previous_question': 'reframe',
+        'supply_narrowing_axis': 'answer_slot',
+        'supply_concrete_manifestation': 'answer_slot',
+        'request_mini_analysis': 'continue',
+        'request_next_step': 'continue',
+        'request_example': 'continue',
+        'request_cause_list': 'continue',
+        'reject_scope': 'reframe',
+        'topic_shift': 'shift',
+    }.get(dialogue_act, '')
+    goal = {
+        'abstractify_previous_question': 'overview',
+        'confirm_scope': 'overview',
+        'personalize_previous_question': 'clarify',
+        'supply_narrowing_axis': 'clarify',
+        'supply_concrete_manifestation': 'clarify',
+        'request_mini_analysis': 'mini_analysis',
+        'request_next_step': 'next_step',
+        'request_example': 'example',
+        'request_cause_list': 'cause_list',
+        'reject_scope': 'clarify',
+        'topic_shift': 'opening',
+    }.get(dialogue_act, '')
+    return get_dialogue_acknowledgement_hint(
+        topic=topic,
+        relation=relation,
+        goal=goal,
+        stance=abstraction_level,
+        has_detail=bool(state.get('active_detail')),
+        dialogue_act=dialogue_act,
+    )
 
 
 def _render_cause_list(active_topic: str, abstraction_level: str = 'personal') -> tuple[str, dict]:
@@ -926,6 +1017,10 @@ def _render_cause_list(active_topic: str, abstraction_level: str = 'personal') -
         'Если говорить в общем виде, чувство в серьёзных отношениях чаще всего подтачивают пять вещей: '
         'накопленная обида, невысказанный конфликт, утрата уважения, расхождение в желании и привычка жить рядом без настоящей встречи. '
         'Обычно проблема не в одном пункте, а в том, какой из них слишком долго оставался неназванным.'
+    )
+    relationship_foundations_text = (
+        'Если разложить крепкие отношения по главным опорам, я бы начал с пяти вещей: правдивость, уважение, добровольно принятое совместное бремя, сохранённое желание видеть другого как живого человека и способность восстанавливать связь после разрыва. '
+        'Это не украшения вокруг любви, а структура, без которой чувство быстро становится либо сентиментом, либо скрытой войной.'
     )
     relationship_text_personal = (
         'Если возвращать это к личной истории, то обычно стоит смотреть на те же пять причин: накопленная обида, невысказанный конфликт, '
@@ -941,10 +1036,16 @@ def _render_cause_list(active_topic: str, abstraction_level: str = 'personal') -
         'Если говорить о характере честно, то слабое место обычно лежит в одном из пяти узлов: дисциплина, близость, resentment, избегание или самообман. '
         'Дальше важно не каталогизировать себя, а назвать, какой из этих паттернов повторяется у тебя чаще всего и дороже всего обходится.'
     )
+    self_evaluation_text = (
+        'Если задавать вопрос честно и без самоприговоров, то обычно приходится смотреть на те же пять узлов: дисциплина, близость, resentment, избегание и самообман. '
+        'Полезный ход здесь не в том, чтобы решить, что с тобой “не так” вообще, а в том, чтобы назвать, какой из этих паттернов повторяется у тебя чаще всего и дороже всего обходится.'
+    )
     topic_map = {
         'relationship-loss-of-feeling': relationship_text_general if abstraction_level == 'general' else relationship_text_personal,
+        'relationship-foundations': relationship_foundations_text,
         'self-diagnosis': self_diagnosis_text,
         'psychological-portrait': portrait_text,
+        'self-evaluation': self_evaluation_text,
     }
     text = topic_map.get(
         active_topic,
@@ -968,506 +1069,134 @@ def _compose_contextual_response(base_text: str, *, dialogue_act: str = '',
     return f'{acknowledgement} {base_text}'.strip(), 'acknowledge_and_continue'
 
 
+def _contextual_acknowledgement_from_frame(dialogue_frame: dict | None = None,
+                                           dialogue_state: dict | None = None) -> str:
+    frame = dialogue_frame or {}
+    state = dialogue_state or {}
+    topic = frame.get('topic') or state.get('active_topic', '')
+    goal = frame.get('goal', '')
+    stance = frame.get('stance') or state.get('abstraction_level', 'personal')
+    relation = frame.get('relation_to_previous', '')
+    return get_dialogue_acknowledgement_hint(
+        topic=topic,
+        relation=relation,
+        goal=goal,
+        stance=stance,
+        has_detail=bool(state.get('active_detail')),
+    )
+
+
+def _compose_frame_contextual_response(base_text: str, *,
+                                       dialogue_frame: dict | None = None,
+                                       dialogue_state: dict | None = None) -> tuple[str, str]:
+    acknowledgement = _contextual_acknowledgement_from_frame(dialogue_frame, dialogue_state)
+    if not acknowledgement:
+        return base_text.strip(), ''
+    return f'{acknowledgement} {base_text}'.strip(), 'acknowledge_and_continue'
+
+
+def _render_from_frame_plan(plan, *,
+                            route_name: str,
+                            dialogue_state: dict | None = None,
+                            dialogue_frame: dict | None = None) -> ClarificationResult:
+    if plan.render_kind == 'profile':
+        text, voice_meta = _render_profile(plan.profile)
+    elif plan.render_kind == 'cause_list':
+        text, voice_meta = _render_cause_list(plan.topic, plan.stance)
+    elif plan.render_kind == 'mini_analysis':
+        text, voice_meta = _render_mini_analysis(plan.topic, plan.axis, plan.detail)
+    elif plan.render_kind == 'next_step':
+        text, voice_meta = _render_next_step(plan.topic, plan.axis, plan.detail)
+    elif plan.render_kind == 'example':
+        text, voice_meta = _render_example(plan.topic, plan.axis, plan.detail)
+    elif plan.render_kind == 'axis_followup':
+        text, voice_meta = _render_axis_followup(plan.topic, plan.axis)
+    elif plan.render_kind == 'detail_followup':
+        text, voice_meta = _render_detail_followup(plan.topic, plan.axis, plan.detail)
+    else:
+        raise ValueError(f'Unsupported frame render kind: {plan.render_kind}')
+
+    if plan.response_mode == 'act':
+        text, response_move = _compose_contextual_response(
+            text,
+            dialogue_act=plan.source_act or 'reject_scope',
+            dialogue_state=dialogue_state,
+        )
+    else:
+        text, response_move = _compose_frame_contextual_response(
+            text,
+            dialogue_frame=dialogue_frame,
+            dialogue_state=dialogue_state,
+        )
+
+    meta = _metadata(
+        clarify_type=plan.clarify_type,
+        route_name=plan.route_name or route_name,
+        profile=plan.profile,
+        template_id=plan.template_id,
+        question_kind=plan.question_kind,
+        reason_code=plan.reason_code,
+        voice_moves=voice_meta.get('voice_moves'),
+        framing_moves=voice_meta.get('framing_moves'),
+        narrowing_moves=voice_meta.get('narrowing_moves'),
+        source_refs=voice_meta.get('source_refs'),
+        voice_layer=voice_meta.get('voice_layer'),
+    )
+    if response_move:
+        meta['response_move'] = response_move
+    return ClarificationResult(text=text, metadata=meta)
+
+
 def build_clarification(question: str, *,
                         selected: dict | None = None,
                         fallback_text: str = '',
                         dialogue_state: dict | None = None,
+                        dialogue_frame: dict | None = None,
                         dialogue_act: str = '',
                         selected_axis: str = '',
                         selected_detail: str = '') -> ClarificationResult:
     selected = selected or {}
     dialogue_state = dialogue_state or {}
+    dialogue_frame = dialogue_frame or {}
     route_name = selected.get('route_name') or infer_route(question)
     q = _normalize(question)
-
-    if (
-        dialogue_act in {'abstractify_previous_question', 'confirm_scope'}
-        and dialogue_state.get('active_topic') == 'relationship-loss-of-feeling'
-    ):
-        text, voice_meta = _render_profile('abstractify-relationship-loss-of-feeling')
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='scope',
-            route_name=dialogue_state.get('active_route') or route_name,
-            profile='abstractify-relationship-loss-of-feeling',
-            template_id='abstractify-relationship-loss-of-feeling.v1',
-            question_kind='topic_variant',
-            reason_code='abstractify-relationship-loss-of-feeling',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if (
-        dialogue_act == 'personalize_previous_question'
-        and dialogue_state.get('active_topic') == 'relationship-loss-of-feeling'
-    ):
-        text, voice_meta = _render_profile('relationship-knot')
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name=dialogue_state.get('active_route') or route_name,
-            profile='relationship-knot',
-            template_id='relationship-knot.v1',
-            question_kind='narrowing',
-            reason_code='relationship-knot',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if (
-        dialogue_act == 'personalize_previous_question'
-        and dialogue_state.get('active_topic') == 'psychological-portrait'
-    ):
-        text, voice_meta = _render_profile('psychological-portrait-request')
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name=dialogue_state.get('active_route') or route_name,
-            profile='psychological-portrait-request',
-            template_id='psychological-portrait-request.v1',
-            question_kind='pattern_selection',
-            reason_code='psychological-portrait-request',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if (
-        dialogue_act == 'personalize_previous_question'
-        and dialogue_state.get('active_topic') == 'self-diagnosis'
-    ):
-        text, voice_meta = _render_profile('self-diagnosis-soft')
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name=dialogue_state.get('active_route') or route_name,
-            profile='self-diagnosis-soft',
-            template_id='self-diagnosis-soft.v1',
-            question_kind='symptom_narrowing',
-            reason_code='self-diagnosis-soft',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if (
-        dialogue_act == 'reject_scope'
-        and dialogue_state.get('active_topic') == 'relationship-loss-of-feeling'
-    ):
-        text, voice_meta = _render_profile('relationship-knot')
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name=dialogue_state.get('active_route') or route_name,
-            profile='relationship-knot',
-            template_id='relationship-knot.v1',
-            question_kind='narrowing',
-            reason_code='relationship-knot',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if dialogue_act == 'supply_narrowing_axis' and dialogue_state.get('active_topic'):
-        text, voice_meta = _render_axis_followup(
-            dialogue_state.get('active_topic', ''),
-            selected_axis,
-        )
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name=dialogue_state.get('active_route') or route_name,
-            profile='axis-followup',
-            template_id=f'axis-followup.{dialogue_state.get("active_topic", "general")}.v1',
-            question_kind='concrete_manifestation',
-            reason_code=f'{dialogue_state.get("active_topic", "general")}-axis-followup',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if dialogue_act == 'supply_concrete_manifestation' and dialogue_state.get('active_topic'):
-        text, voice_meta = _render_detail_followup(
-            dialogue_state.get('active_topic', ''),
-            dialogue_state.get('active_axis', ''),
-            selected_detail,
-        )
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name=dialogue_state.get('active_route') or route_name,
-            profile='detail-followup',
-            template_id=f'detail-followup.{dialogue_state.get("active_topic", "general")}.v1',
-            question_kind='analysis_focus',
-            reason_code=f'{dialogue_state.get("active_topic", "general")}-detail-followup',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if dialogue_act == 'request_mini_analysis' and dialogue_state.get('active_topic'):
-        text, voice_meta = _render_mini_analysis(
-            dialogue_state.get('active_topic', ''),
-            dialogue_state.get('active_axis', ''),
-            dialogue_state.get('active_detail', ''),
-        )
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name=dialogue_state.get('active_route') or route_name,
-            profile='mini-analysis',
-            template_id=f'mini-analysis.{dialogue_state.get("active_topic", "general")}.v1',
-            question_kind='meaning_reframe',
-            reason_code=f'{dialogue_state.get("active_topic", "general")}-mini-analysis',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if dialogue_act == 'request_next_step' and dialogue_state.get('active_topic'):
-        text, voice_meta = _render_next_step(
-            dialogue_state.get('active_topic', ''),
-            dialogue_state.get('active_axis', ''),
-            dialogue_state.get('active_detail', ''),
-        )
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name=dialogue_state.get('active_route') or route_name,
-            profile='next-step',
-            template_id=f'next-step.{dialogue_state.get("active_topic", "general")}.v1',
-            question_kind='practical_next_step',
-            reason_code=f'{dialogue_state.get("active_topic", "general")}-next-step',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if dialogue_act == 'request_example' and dialogue_state.get('active_topic'):
-        text, voice_meta = _render_example(
-            dialogue_state.get('active_topic', ''),
-            dialogue_state.get('active_axis', ''),
-            dialogue_state.get('active_detail', ''),
-        )
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name=dialogue_state.get('active_route') or route_name,
-            profile='example',
-            template_id=f'example.{dialogue_state.get("active_topic", "general")}.v1',
-            question_kind='illustrative_example',
-            reason_code=f'{dialogue_state.get("active_topic", "general")}-example',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if dialogue_act == 'request_cause_list' and dialogue_state.get('active_topic'):
-        text, voice_meta = _render_cause_list(
-            dialogue_state.get('active_topic', ''),
-            dialogue_state.get('abstraction_level', 'personal'),
-        )
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name=dialogue_state.get('active_route') or route_name,
-            profile='cause-list',
-            template_id=f'cause-list.{dialogue_state.get("active_topic", "general")}.v1',
-            question_kind='cause_list',
-            reason_code=f'{dialogue_state.get("active_topic", "general")}-cause-list',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if dialogue_act == 'request_menu':
-        text, voice_meta = _render_profile('scope-topics')
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='scope',
+    frame_topic = dialogue_frame.get('topic') or dialogue_state.get('active_topic', '')
+    frame_goal = dialogue_frame.get('goal', '')
+    frame_stance = dialogue_frame.get('stance') or dialogue_state.get('abstraction_level', 'personal')
+    frame_relation = dialogue_frame.get('relation_to_previous', '')
+    use_act_fallback = not frame_topic
+    frame_plan = plan_frame_render(
+        route_name=route_name,
+        dialogue_state=dialogue_state,
+        dialogue_frame=dialogue_frame,
+        dialogue_act=dialogue_act,
+        selected_axis=selected_axis,
+        selected_detail=selected_detail,
+    )
+    if frame_plan is not None:
+        return _render_from_frame_plan(
+            frame_plan,
             route_name=route_name,
-            profile='scope-topics',
-            template_id='scope-topics.v1',
-            question_kind='topic_selection',
-            reason_code='scope-topics',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if dialogue_act == 'greeting_opening':
-        text, voice_meta = _render_profile('greeting-opening')
-        meta = _metadata(
-            clarify_type='scope',
-            route_name='general',
-            profile='greeting-opening',
-            template_id='greeting-opening.v1',
-            question_kind='topic_selection',
-            reason_code='greeting-opening',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if dialogue_act == 'topic_shift' and _contains_any(q, _PORTRAIT_REQUEST_MARKERS):
-        text, voice_meta = _render_profile('psychological-portrait-request')
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
             dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name='general',
-            profile='psychological-portrait-request',
-            template_id='psychological-portrait-request.v1',
-            question_kind='pattern_selection',
-            reason_code='psychological-portrait-request',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
+            dialogue_frame=dialogue_frame,
         )
 
-    if dialogue_act == 'request_psychological_portrait':
-        text, voice_meta = _render_profile('psychological-portrait-request')
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
+    if use_act_fallback:
+        act_fallback_plan = plan_act_fallback_render(
+            question=question,
+            route_name=route_name,
             dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name='general',
-            profile='psychological-portrait-request',
-            template_id='psychological-portrait-request.v1',
-            question_kind='pattern_selection',
-            reason_code='psychological-portrait-request',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if dialogue_act == 'topic_shift' and _contains_any(q, _SELF_DIAGNOSIS_REQUEST_MARKERS):
-        text, voice_meta = _render_profile('self-diagnosis-soft')
-        text, response_move = _compose_contextual_response(
-            text,
             dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
+            selected_axis=selected_axis,
+            selected_detail=selected_detail,
         )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name='general',
-            profile='self-diagnosis-soft',
-            template_id='self-diagnosis-soft.v1',
-            question_kind='symptom_narrowing',
-            reason_code='self-diagnosis-soft',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
-
-    if dialogue_act == 'self_diagnosis_soft':
-        text, voice_meta = _render_profile('self-diagnosis-soft')
-        text, response_move = _compose_contextual_response(
-            text,
-            dialogue_act=dialogue_act,
-            dialogue_state=dialogue_state,
-        )
-        meta = _metadata(
-            clarify_type='human_problem',
-            route_name='general',
-            profile='self-diagnosis-soft',
-            template_id='self-diagnosis-soft.v1',
-            question_kind='symptom_narrowing',
-            reason_code='self-diagnosis-soft',
-            voice_moves=voice_meta.get('voice_moves'),
-            framing_moves=voice_meta.get('framing_moves'),
-            narrowing_moves=voice_meta.get('narrowing_moves'),
-            source_refs=voice_meta.get('source_refs'),
-            voice_layer=voice_meta.get('voice_layer'),
-        )
-        if response_move:
-            meta['response_move'] = response_move
-        return ClarificationResult(
-            text=text,
-            metadata=meta,
-        )
+        if act_fallback_plan is not None:
+            return _render_from_frame_plan(
+                act_fallback_plan,
+                route_name=route_name,
+                dialogue_state=dialogue_state,
+                dialogue_frame=dialogue_frame,
+            )
 
     if not q:
         text, voice_meta = _render_profile('empty-input')

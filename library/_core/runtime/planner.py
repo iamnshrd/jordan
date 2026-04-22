@@ -12,9 +12,17 @@ from library._core.runtime.dialogue_acts import (
     extract_dialogue_axis,
     infer_dialogue_act,
 )
+from library._core.runtime.dialogue_frame import (
+    build_frame_metadata,
+    frame_from_state,
+)
 from library._core.runtime.dialogue_state import (
     advance_dialogue_state,
     build_dialogue_metadata,
+)
+from library._core.runtime.dialogue_update import (
+    apply_dialogue_update,
+    infer_dialogue_update,
 )
 from library._core.runtime.grounding import (
     GroundedAnswerPlan, GroundingDecision,
@@ -36,6 +44,10 @@ from library._core.session.continuity import load as load_continuity
 from library._core.session.dialogue import (
     load as load_dialogue_state,
     save as save_dialogue_state,
+)
+from library._core.session.dialogue_frame import (
+    load as load_dialogue_frame,
+    save as save_dialogue_frame,
 )
 from library._core.state_store import StateStore
 from library.config import canonical_user_id, get_default_store
@@ -232,6 +244,7 @@ def _select_clarification(question: str, *,
                           fallback_text: str = '',
                           stage: str = '',
                           dialogue_state: dict | None = None,
+                          dialogue_frame: dict | None = None,
                           dialogue_act: str = '',
                           selected_axis: str = '',
                           selected_detail: str = '') -> tuple[str, dict]:
@@ -240,6 +253,7 @@ def _select_clarification(question: str, *,
         selected=selected,
         fallback_text=fallback_text,
         dialogue_state=dialogue_state,
+        dialogue_frame=dialogue_frame,
         dialogue_act=dialogue_act,
         selected_axis=selected_axis,
         selected_detail=selected_detail,
@@ -254,6 +268,7 @@ def _select_clarification(question: str, *,
 
 def _merge_dialogue_metadata(metadata: dict | None,
                              dialogue_state: dict | None,
+                             dialogue_frame: dict | None,
                              dialogue_act: str,
                              *,
                              question: str,
@@ -264,7 +279,7 @@ def _merge_dialogue_metadata(metadata: dict | None,
                              topic_reused: bool = False,
                              confidence: str = '',
                              selected_axis: str = '',
-                             selected_detail: str = '') -> tuple[dict, dict]:
+                             selected_detail: str = '') -> tuple[dict, dict, dict]:
     payload = dict(metadata or {})
     next_state = advance_dialogue_state(
         dialogue_state,
@@ -287,20 +302,96 @@ def _merge_dialogue_metadata(metadata: dict | None,
             topic_reused=topic_reused,
         ),
     )
+    next_frame = frame_from_state(next_state, dialogue_act=dialogue_act).as_dict()
+    next_frame.update(
+        apply_dialogue_update(
+            dialogue_frame or next_frame,
+            infer_dialogue_update(
+                question,
+                dialogue_act=dialogue_act,
+                dialogue_state=next_state,
+                dialogue_frame=dialogue_frame,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
+            ),
+            fallback_state=next_state,
+        ).as_dict(),
+    )
+    payload.update(build_frame_metadata(next_frame))
     if selected_axis:
         payload['selected_axis'] = selected_axis
     if selected_detail:
         payload['selected_detail'] = selected_detail
-    return payload, next_state.as_dict()
+    return payload, next_state.as_dict(), next_frame
 
 
 def _finalize_plan(plan: GroundedAnswerPlan, *,
                    dialogue_state: dict,
+                   dialogue_frame: dict,
                    user_id: str,
                    store: StateStore | None = None) -> GroundedAnswerPlan:
     plan.dialogue_state = dict(dialogue_state or {})
+    plan.dialogue_frame = dict(dialogue_frame or {})
     save_dialogue_state(plan.dialogue_state, user_id=user_id, store=store)
+    save_dialogue_frame(plan.dialogue_frame, user_id=user_id, store=store)
     return plan
+
+
+def _compute_topic_reused(dialogue_state: dict | None,
+                          interpreted_frame: dict | None) -> bool:
+    state = dict(dialogue_state or {})
+    frame = dict(interpreted_frame or {})
+    previous_topic = state.get('active_topic', '') or ''
+    next_topic = frame.get('topic', '') or ''
+    relation = frame.get('relation_to_previous', '') or ''
+    if not previous_topic or not next_topic:
+        return False
+    if previous_topic != next_topic:
+        return False
+    return relation in {'continue', 'reframe', 'answer_slot'}
+
+
+def _should_render_frame_directly(interpreted_frame: dict | None) -> bool:
+    frame = dict(interpreted_frame or {})
+    return (
+        (
+            frame.get('topic', '') == 'relationship-foundations'
+            and frame.get('goal', '') == 'overview'
+            and frame.get('stance', '') == 'general'
+        )
+        or (
+            frame.get('topic', '') == 'scope-topics'
+            and frame.get('goal', '') == 'menu'
+            and frame.get('stance', '') == 'general'
+        )
+        or (
+            frame.get('topic', '') == 'lost-and-aimless'
+            and frame.get('goal', '') == 'clarify'
+            and frame.get('stance', '') == 'personal'
+        )
+        or (
+            frame.get('topic', '') == 'self-evaluation'
+            and frame.get('goal', '') == 'clarify'
+            and frame.get('stance', '') == 'personal'
+        )
+        or (
+            frame.get('topic', '') == 'shame-self-contempt'
+            and frame.get('goal', '') == 'clarify'
+            and frame.get('stance', '') == 'personal'
+        )
+        or (
+            frame.get('topic', '') in {
+                'resentment-conflict',
+                'self-deception',
+                'fear-and-price',
+                'loneliness-rejection',
+                'parenting-boundaries',
+                'tragedy-bitterness',
+                'greeting',
+            }
+            and frame.get('goal', '') in {'clarify', 'opening'}
+        )
+    )
 
 
 def build_answer_plan(question: str, user_id: str = 'default',
@@ -316,24 +407,24 @@ def build_answer_plan(question: str, user_id: str = 'default',
         assistant = get_default_assistant()
         mode = detect_mode(question)
         dialogue_state = load_dialogue_state(user_id=user_id, store=store)
+        dialogue_frame = load_dialogue_frame(user_id=user_id, store=store)
         dialogue_act = infer_dialogue_act(question, dialogue_state)
         selected_axis = extract_dialogue_axis(question, dialogue_state)
         selected_detail = extract_dialogue_detail(question, dialogue_state)
-        topic_reused = bool(
-            dialogue_state.get('active_topic')
-            and dialogue_act in {
-                'abstractify_previous_question',
-                'confirm_scope',
-                'personalize_previous_question',
-                'reject_scope',
-                'supply_narrowing_axis',
-                'supply_concrete_manifestation',
-                'request_mini_analysis',
-                'request_next_step',
-                'request_example',
-                'request_cause_list',
-            }
+        dialogue_update = infer_dialogue_update(
+            question,
+            dialogue_act=dialogue_act,
+            dialogue_state=dialogue_state,
+            dialogue_frame=dialogue_frame,
+            selected_axis=selected_axis,
+            selected_detail=selected_detail,
         )
+        interpreted_frame = apply_dialogue_update(
+            dialogue_frame,
+            dialogue_update,
+            fallback_state=dialogue_state,
+        ).as_dict()
+        topic_reused = _compute_topic_reused(dialogue_state, interpreted_frame)
         log_event(
             'planner.request_received',
             store=store,
@@ -357,6 +448,22 @@ def build_answer_plan(question: str, user_id: str = 'default',
             selected_detail=selected_detail,
             topic_reused=topic_reused,
         )
+        log_event(
+            'planner.dialogue_frame_interpreted',
+            store=store,
+            user_id=user_id,
+            frame_topic=interpreted_frame.get('topic', ''),
+            frame_type=interpreted_frame.get('frame_type', ''),
+            frame_stance=interpreted_frame.get('stance', ''),
+            frame_goal=interpreted_frame.get('goal', ''),
+            frame_relation_to_previous=interpreted_frame.get('relation_to_previous', ''),
+            frame_transition_kind=interpreted_frame.get('transition_kind', ''),
+            frame_axis=interpreted_frame.get('axis', ''),
+            frame_detail=interpreted_frame.get('detail', ''),
+            frame_pending_slot=interpreted_frame.get('pending_slot', ''),
+            frame_confidence=interpreted_frame.get('confidence', ''),
+            frame_update_source=interpreted_frame.get('update_source', ''),
+        )
 
         if question.strip() and record_user_reply and purpose == 'response':
             with traced_stage('mentor.reply_record', store=store, user_id=user_id):
@@ -365,9 +472,10 @@ def build_answer_plan(question: str, user_id: str = 'default',
 
         guardrail = run_policy_stage(question, user_id=user_id, store=store)
         if guardrail:
-            dialogue_metadata, next_dialogue_state = _merge_dialogue_metadata(
+            dialogue_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
                 {},
                 dialogue_state,
+                interpreted_frame,
                 dialogue_act,
                 question=question,
                 route_name=dialogue_state.get('active_route', ''),
@@ -407,7 +515,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 guardrail=guardrail,
                 direct_response=guardrail['message'],
                 user=question,
-            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
+            ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 
         if not should_use_kb(question):
             clarification, clarify_metadata = _select_clarification(
@@ -415,13 +523,15 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 fallback_text=_build_kb_only_clarification(question),
                 stage='kb_rejected',
                 dialogue_state=dialogue_state,
+                dialogue_frame=interpreted_frame,
                 dialogue_act=dialogue_act,
                 selected_axis=selected_axis,
                 selected_detail=selected_detail,
             )
-            clarify_metadata, next_dialogue_state = _merge_dialogue_metadata(
+            clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
                 clarify_metadata,
                 dialogue_state,
+                interpreted_frame,
                 dialogue_act,
                 question=question,
                 route_name=dialogue_state.get('active_route', ''),
@@ -461,7 +571,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 direct_response=clarification,
                 clarifying_question=clarification,
                 user=question,
-            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
+            ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 
         run_profile_context_stage(user_id=user_id, store=store)
 
@@ -477,13 +587,15 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 fallback_text=_build_kb_only_clarification(question, reason=reason),
                 stage='frame_failed',
                 dialogue_state=dialogue_state,
+                dialogue_frame=interpreted_frame,
                 dialogue_act=dialogue_act,
                 selected_axis=selected_axis,
                 selected_detail=selected_detail,
             )
-            clarify_metadata, next_dialogue_state = _merge_dialogue_metadata(
+            clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
                 clarify_metadata,
                 dialogue_state,
+                interpreted_frame,
                 dialogue_act,
                 question=question,
                 decision_type='clarify',
@@ -524,7 +636,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 direct_response=clarification,
                 clarifying_question=clarification,
                 user=question,
-            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
+            ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 
         confidence = selected.get('confidence', 'low')
         continuity, progress, reaction = run_user_state_stage(
@@ -533,6 +645,75 @@ def build_answer_plan(question: str, user_id: str = 'default',
         validation = run_retrieval_validation_stage(
             question, selected=selected, user_id=user_id, store=store,
         )
+
+        if _should_render_frame_directly(interpreted_frame):
+            clarification, clarify_metadata = _select_clarification(
+                question,
+                selected=selected,
+                validation=validation,
+                fallback_text=_build_kb_only_clarification(
+                    question, validation=validation, selected=selected,
+                ),
+                stage='frame_direct_overview',
+                dialogue_state=dialogue_state,
+                dialogue_frame=interpreted_frame,
+                dialogue_act=dialogue_act,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
+            )
+            clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
+                clarify_metadata,
+                dialogue_state,
+                interpreted_frame,
+                dialogue_act,
+                question=question,
+                route_name=selected.get('route_name') or '',
+                decision_type='clarify',
+                reason_code=clarify_metadata.get('clarify_reason_code', ''),
+                final_user_text=clarification,
+                topic_reused=topic_reused,
+                confidence=confidence,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
+            )
+            decision = _build_decision(
+                action='ask-clarifying-question',
+                mode=mode,
+                use_kb=True,
+                confidence=confidence,
+                reason='Frame-driven overview chosen instead of freeform synthesis.',
+                validation=validation,
+                selected=selected,
+                metadata=clarify_metadata,
+            )
+            log_event(
+                'planner.frame_direct_overview',
+                store=store,
+                user_id=user_id,
+                action=decision.action,
+                reason=decision.reason,
+                route_name=selected.get('route_name') or 'general',
+                frame_topic=interpreted_frame.get('topic', ''),
+                frame_goal=interpreted_frame.get('goal', ''),
+                clarify_type=clarify_metadata.get('clarify_type', ''),
+                clarify_profile=clarify_metadata.get('clarify_profile', ''),
+            )
+            return _finalize_plan(GroundedAnswerPlan(
+                question=question,
+                user_id=user_id,
+                decision=decision,
+                assistant_id=assistant.assistant_id,
+                knowledge_set_id=assistant.knowledge_set_id,
+                purpose=purpose,
+                selection=selected,
+                continuity=continuity,
+                progress=progress,
+                reaction=reaction,
+                retrieval_validation=validation,
+                direct_response=clarification,
+                clarifying_question=clarification,
+                user=question,
+            ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 
         if confidence == 'low' or (not validation['valid'] and confidence != 'high'):
             clarification, clarify_metadata = _select_clarification(
@@ -544,13 +725,15 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 ),
                 stage='pre_synthesis',
                 dialogue_state=dialogue_state,
+                dialogue_frame=interpreted_frame,
                 dialogue_act=dialogue_act,
                 selected_axis=selected_axis,
                 selected_detail=selected_detail,
             )
-            clarify_metadata, next_dialogue_state = _merge_dialogue_metadata(
+            clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
                 clarify_metadata,
                 dialogue_state,
+                interpreted_frame,
                 dialogue_act,
                 question=question,
                 route_name=selected.get('route_name') or '',
@@ -602,7 +785,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 direct_response=clarification,
                 clarifying_question=clarification,
                 user=question,
-            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
+            ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 
         force_clarify, force_reason = _should_force_clarification(
             question, selected, validation,
@@ -617,13 +800,15 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 ),
                 stage='pre_synthesis_gate',
                 dialogue_state=dialogue_state,
+                dialogue_frame=interpreted_frame,
                 dialogue_act=dialogue_act,
                 selected_axis=selected_axis,
                 selected_detail=selected_detail,
             )
-            clarify_metadata, next_dialogue_state = _merge_dialogue_metadata(
+            clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
                 clarify_metadata,
                 dialogue_state,
+                interpreted_frame,
                 dialogue_act,
                 question=question,
                 route_name=selected.get('route_name') or '',
@@ -671,7 +856,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 direct_response=clarification,
                 clarifying_question=clarification,
                 user=question,
-            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
+            ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 
         voice_mode = run_voice_stage(
             question, selected=selected, progress=progress,
@@ -705,13 +890,15 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 fallback_text=build_strict_clarification(synthesis_data, mode=mode),
                 stage='post_synthesis_gate',
                 dialogue_state=dialogue_state,
+                dialogue_frame=interpreted_frame,
                 dialogue_act=dialogue_act,
                 selected_axis=selected_axis,
                 selected_detail=selected_detail,
             )
-            clarify_metadata, next_dialogue_state = _merge_dialogue_metadata(
+            clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
                 clarify_metadata,
                 dialogue_state,
+                interpreted_frame,
                 dialogue_act,
                 question=question,
                 route_name=selected.get('route_name') or '',
@@ -762,7 +949,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 direct_response=clarification,
                 clarifying_question=clarification,
                 user=question,
-            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
+            ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 
         if not can_render_strict(synthesis_data, mode=mode):
             clarification, clarify_metadata = _select_clarification(
@@ -776,9 +963,10 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 selected_axis=selected_axis,
                 selected_detail=selected_detail,
             )
-            clarify_metadata, next_dialogue_state = _merge_dialogue_metadata(
+            clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
                 clarify_metadata,
                 dialogue_state,
+                interpreted_frame,
                 dialogue_act,
                 question=question,
                 route_name=selected.get('route_name') or '',
@@ -828,11 +1016,12 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 direct_response=clarification,
                 clarifying_question=clarification,
                 user=question,
-            ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
+            ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 
-        answer_metadata, next_dialogue_state = _merge_dialogue_metadata(
+        answer_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
             {},
             dialogue_state,
+            interpreted_frame,
             dialogue_act,
             question=question,
             route_name=selected.get('route_name') or '',
@@ -879,4 +1068,4 @@ def build_answer_plan(question: str, user_id: str = 'default',
             synthesis=synthesis_data,
             voice_mode=voice_mode,
             user=question,
-        ), dialogue_state=next_dialogue_state, user_id=user_id, store=store)
+        ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)

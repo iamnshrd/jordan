@@ -182,6 +182,8 @@ def build_adapter_payload(payload: dict[str, Any]) -> dict[str, Any]:
         'trace_id': envelope.get('trace_id') or payload.get('trace_id', ''),
         'decision_envelope': envelope,
         'adapter_contract': contract,
+        'dialogue_state': payload.get('dialogue_state', {}),
+        'dialogue_frame': payload.get('dialogue_frame', {}),
     }
     if contract['model_call_allowed']:
         result.update({
