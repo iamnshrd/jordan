@@ -92,7 +92,7 @@ restart_active_match() {
     systemctl restart "$unit"
     restarted=1
   done < <(systemctl list-units --type=service --all --no-legend | awk '{print $1}' | grep -E "$pattern" || true)
-  return "$restarted"
+  [ "$restarted" -eq 1 ]
 }
 
 restart_user_if_exists() {
@@ -120,7 +120,23 @@ restart_user_active_match() {
     _user_systemctl restart "$unit"
     restarted=1
   done < <(_user_systemctl list-units --type=service --all --no-legend | awk '{print $1}' | grep -E "$pattern" || true)
-  return "$restarted"
+  [ "$restarted" -eq 1 ]
+}
+
+export_user_unit_environment() {
+  local unit="$1"
+  local env_line
+  if ! user_bus_available; then
+    return 1
+  fi
+  env_line="$(_user_systemctl show "$unit" -p Environment --value 2>/dev/null || true)"
+  if [ -z "$env_line" ]; then
+    return 1
+  fi
+  # Values come from our own trusted unit files/drop-ins and are simple
+  # KEY=value pairs without shell metacharacters that would make eval risky.
+  eval "export $env_line"
+  return 0
 }
 
 main() {
@@ -137,13 +153,13 @@ main() {
   restart_if_exists "jordan-mentor-dispatch.service" || log "unit not found: jordan-mentor-dispatch.service"
 
   log "restarting OpenClaw gateway/service units"
-  if restart_if_exists "openclaw-gateway.service"; then
-    :
-  elif restart_active_match '^openclaw.*\.service$'; then
-    :
-  elif restart_user_if_exists "openclaw-gateway-jordan-peterson.service"; then
+  if restart_user_if_exists "openclaw-gateway-jordan-peterson.service"; then
     :
   elif restart_user_active_match '^openclaw.*\.service$'; then
+    :
+  elif restart_if_exists "openclaw-gateway.service"; then
+    :
+  elif restart_active_match '^openclaw.*\.service$'; then
     :
   elif ! user_bus_available; then
     log "OpenClaw user bus unavailable; run this helper without sudo or ensure /run/user/$(_user_uid)/bus is present"
@@ -156,6 +172,7 @@ main() {
   systemctl --no-pager --full status jordan-mentor-dispatch.timer || true
   if user_bus_available; then
     _user_systemctl --no-pager --full status openclaw-gateway-jordan-peterson.service || true
+    export_user_unit_environment "openclaw-gateway-jordan-peterson.service" || true
   fi
   run_jordan_warmup
 }
