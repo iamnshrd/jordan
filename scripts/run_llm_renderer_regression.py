@@ -311,19 +311,16 @@ def main() -> None:
         def __exit__(self, exc_type, exc, tb):
             return False
 
+        @property
+        def headers(self):
+            return {'content-type': 'text/event-stream'}
+
         def read(self):
-            return json.dumps({
-                'output': [
-                    {
-                        'content': [
-                            {
-                                'type': 'output_text',
-                                'text': 'Скажи прямо, что именно ты хочешь разобрать.',
-                            },
-                        ],
-                    },
-                ],
-            }).encode('utf-8')
+            return (
+                'data: {"type":"response.output_item.done","item":{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Скажи прямо, что именно ты хочешь разобрать.","annotations":[]}]}}\n\n'
+                'data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":10,"output_tokens":10,"total_tokens":20}}}\n\n'
+                'data: [DONE]\n\n'
+            ).encode('utf-8')
 
     def _fake_api_urlopen(req, timeout=0):
         api_calls.append({
@@ -486,6 +483,7 @@ def main() -> None:
                 and api_calls[0]['body']['input'][0]['role'] == 'user'
                 and api_calls[0]['body']['input'][0]['content'][0]['type'] == 'input_text'
                 and api_calls[0]['body']['input'][0]['content'][0]['text'] == 'USER'
+                and api_calls[0]['body']['stream'] is True
                 and api_calls[0]['body']['store'] is False
                 and api_calls[0]['headers'].get('Authorization') == 'Bearer oauth-access'
                 and api_calls[0]['headers'].get('Chatgpt-account-id') == 'acct_test_123'

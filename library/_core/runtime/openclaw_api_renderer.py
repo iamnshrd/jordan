@@ -139,6 +139,65 @@ def _extract_output_text(payload: Any) -> str:
     return ''
 
 
+def _parse_sse_payload(raw: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for chunk in raw.split('\n\n'):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        data_lines = [line[5:].strip() for line in chunk.splitlines() if line.startswith('data:')]
+        if not data_lines:
+            continue
+        data = '\n'.join(data_lines).strip()
+        if not data or data == '[DONE]':
+            continue
+        try:
+            parsed = json.loads(data)
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            events.append(parsed)
+    return events
+
+
+def _extract_output_text_from_sse(raw: str) -> str:
+    deltas: list[str] = []
+    fallback_items: list[dict[str, Any]] = []
+    completed_response: dict[str, Any] | None = None
+    for event in _parse_sse_payload(raw):
+        event_type = event.get('type')
+        if event_type == 'response.output_text.delta':
+            delta = event.get('delta')
+            if isinstance(delta, str) and delta:
+                deltas.append(delta)
+            continue
+        if event_type == 'response.output_text.done':
+            text = event.get('text')
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+            continue
+        if event_type == 'response.output_item.done':
+            item = event.get('item')
+            if isinstance(item, dict):
+                fallback_items.append(item)
+            continue
+        if event_type == 'response.completed':
+            response = event.get('response')
+            if isinstance(response, dict):
+                completed_response = response
+    if deltas:
+        return ''.join(deltas).strip()
+    for item in fallback_items:
+        text = _extract_output_text({'output': [item]})
+        if text:
+            return text
+    if completed_response is not None:
+        text = _extract_output_text({'output': completed_response.get('output')})
+        if text:
+            return text
+    return ''
+
+
 def render_via_openclaw_api(*, request, prompt, attempt, violations):
     store = _load_auth_profiles()
     credential = _select_openai_codex_profile(store)
@@ -167,6 +226,7 @@ def render_via_openclaw_api(*, request, prompt, attempt, violations):
                 'content': [{'type': 'input_text', 'text': user_text}],
             }
         ],
+        'stream': True,
         'store': False,
         'text': {'verbosity': 'low'},
     }
@@ -179,12 +239,22 @@ def render_via_openclaw_api(*, request, prompt, attempt, violations):
     )
     try:
         with request_module.urlopen(req, timeout=timeout) as resp:
+            content_type = str(resp.headers.get('content-type') or '')
             raw = resp.read().decode('utf-8', errors='replace')
     except error.HTTPError as exc:
         detail = exc.read().decode('utf-8', errors='replace')
         raise RuntimeError(f'OpenClaw API renderer HTTP {exc.code}: {detail[:500]}') from exc
     except error.URLError as exc:
         raise RuntimeError(f'OpenClaw API renderer connection failed: {exc}') from exc
+
+    if 'text/event-stream' in content_type or raw.lstrip().startswith('data:'):
+        text = _extract_output_text_from_sse(raw)
+        if not text:
+            raise RuntimeError(
+                'OpenClaw API renderer returned no output_text in SSE payload: '
+                f'{raw[:500]}'
+            )
+        return text
 
     try:
         response_payload = json.loads(raw)
