@@ -168,6 +168,20 @@ def _autoload_renderer_from_env() -> None:
         or ''
     ).strip()
     if not hook_ref or ':' not in hook_ref:
+        if str(os.environ.get('JORDAN_DISABLE_OPENCLAW_API_RENDERER') or '').strip().lower() not in {
+            '1', 'true', 'yes',
+        }:
+            try:
+                from library._core.runtime.openclaw_api_renderer import (
+                    is_available as api_renderer_available,
+                    render_via_openclaw_api,
+                )
+            except Exception:
+                pass
+            else:
+                if api_renderer_available():
+                    _set_renderer(render_via_openclaw_api, backend='openclaw_api')
+                    return
         if str(os.environ.get('JORDAN_DISABLE_OPENCLAW_CLI_RENDERER') or '').strip().lower() not in {
             '1', 'true', 'yes',
         }:

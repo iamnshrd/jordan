@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from _helpers import emit_report
 from library._core.runtime.clarify_human import build_clarification
 from library._core.runtime.llm_renderer import reset_llm_renderer, set_llm_renderer
+from library._core.runtime import openclaw_api_renderer
 from library._core.runtime import openclaw_cli_renderer
 from library._core.runtime import openclaw_gateway_renderer
 
@@ -27,10 +28,13 @@ def main() -> None:
     original_jordan_model = os.environ.get('JORDAN_MODEL')
     original_renderer_model = os.environ.get('JORDAN_LLM_RENDERER_MODEL')
     original_disable_cli = os.environ.get('JORDAN_DISABLE_OPENCLAW_CLI_RENDERER')
+    original_disable_api = os.environ.get('JORDAN_DISABLE_OPENCLAW_API_RENDERER')
     original_openclaw_config_path = os.environ.get('OPENCLAW_CONFIG_PATH')
+    original_openclaw_state_dir = os.environ.get('OPENCLAW_STATE_DIR')
     original_openclaw_cli_bin = os.environ.get('OPENCLAW_CLI_BIN')
     os.environ['JORDAN_DISABLE_OPENCLAW_GATEWAY_RENDERER'] = '1'
     os.environ['JORDAN_DISABLE_OPENCLAW_CLI_RENDERER'] = '1'
+    os.environ['JORDAN_DISABLE_OPENCLAW_API_RENDERER'] = '1'
     os.environ.pop('JORDAN_LLM_RENDERER_HOOK', None)
     reset_llm_renderer()
     not_configured = build_clarification(
@@ -274,7 +278,9 @@ def main() -> None:
 
     gateway_calls: list[dict] = []
     gateway_fallback_calls: list[dict] = []
+    api_calls: list[dict] = []
     original_urlopen = openclaw_gateway_renderer.request_module.urlopen
+    original_api_urlopen = openclaw_api_renderer.request_module.urlopen
     os.environ['OPENCLAW_GATEWAY_TOKEN'] = 'test-token'
     os.environ['JORDAN_MODEL'] = 'openai-codex/gpt-5.4'
     os.environ.pop('JORDAN_LLM_RENDERER_MODEL', None)
@@ -297,6 +303,36 @@ def main() -> None:
             'url': req.full_url,
         })
         return _FakeGatewayResponse()
+
+    class _FakeApiResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({
+                'output': [
+                    {
+                        'content': [
+                            {
+                                'type': 'output_text',
+                                'text': 'Скажи прямо, что именно ты хочешь разобрать.',
+                            },
+                        ],
+                    },
+                ],
+            }).encode('utf-8')
+
+    def _fake_api_urlopen(req, timeout=0):
+        api_calls.append({
+            'timeout': timeout,
+            'headers': dict(req.header_items()),
+            'body': json.loads(req.data.decode('utf-8')),
+            'url': req.full_url,
+        })
+        return _FakeApiResponse()
 
     class _FakeChatCompletionResponse:
         def __enter__(self):
@@ -343,6 +379,43 @@ def main() -> None:
         )
     finally:
         openclaw_gateway_renderer.request_module.urlopen = original_urlopen
+
+    with tempfile.TemporaryDirectory(prefix='jordan-openclaw-api-renderer-') as temp_dir:
+        state_dir = Path(temp_dir) / 'state'
+        auth_dir = state_dir / 'agents' / 'main' / 'agent'
+        auth_dir.mkdir(parents=True, exist_ok=True)
+        auth_store_path = auth_dir / 'auth-profiles.json'
+        auth_store_path.write_text(
+            json.dumps(
+                {
+                    'version': 1,
+                    'profiles': {
+                        'openai-codex:default': {
+                            'type': 'oauth',
+                            'provider': 'openai-codex',
+                            'access': 'oauth-access',
+                            'refresh': 'oauth-refresh',
+                            'expires': 9999999999999,
+                            'accountId': 'acct_test_123',
+                        },
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding='utf-8',
+        )
+        os.environ['OPENCLAW_STATE_DIR'] = str(state_dir)
+        os.environ['JORDAN_DISABLE_OPENCLAW_API_RENDERER'] = '0'
+        openclaw_api_renderer.request_module.urlopen = _fake_api_urlopen
+        try:
+            api_rendered = openclaw_api_renderer.render_via_openclaw_api(
+                request=None,
+                prompt={'system': 'sys', 'user': 'usr'},
+                attempt=1,
+                violations=[],
+            )
+        finally:
+            openclaw_api_renderer.request_module.urlopen = original_api_urlopen
 
     openclaw_gateway_renderer.request_module.urlopen = _fake_urlopen_with_fallback
     try:
@@ -402,6 +475,18 @@ def main() -> None:
     exception_meta = exception_case.metadata or {}
 
     results = [
+        {
+            'name': 'openclaw_api_renderer_uses_oauth_profile_and_codex_backend',
+            'pass': (
+                api_rendered == 'Скажи прямо, что именно ты хочешь разобрать.'
+                and len(api_calls) == 1
+                and api_calls[0]['url'] == 'https://chatgpt.com/backend-api/codex/responses'
+                and api_calls[0]['body']['model'] == 'gpt-5.4'
+                and api_calls[0]['body']['store'] is False
+                and api_calls[0]['headers'].get('Authorization') == 'Bearer oauth-access'
+                and api_calls[0]['headers'].get('Chatgpt-account-id') == 'acct_test_123'
+            ),
+        },
         {
             'name': 'gateway_renderer_uses_jordan_model_override_header',
             'pass': (
@@ -543,10 +628,18 @@ def main() -> None:
         os.environ.pop('JORDAN_DISABLE_OPENCLAW_CLI_RENDERER', None)
     else:
         os.environ['JORDAN_DISABLE_OPENCLAW_CLI_RENDERER'] = original_disable_cli
+    if original_disable_api is None:
+        os.environ.pop('JORDAN_DISABLE_OPENCLAW_API_RENDERER', None)
+    else:
+        os.environ['JORDAN_DISABLE_OPENCLAW_API_RENDERER'] = original_disable_api
     if original_openclaw_config_path is None:
         os.environ.pop('OPENCLAW_CONFIG_PATH', None)
     else:
         os.environ['OPENCLAW_CONFIG_PATH'] = original_openclaw_config_path
+    if original_openclaw_state_dir is None:
+        os.environ.pop('OPENCLAW_STATE_DIR', None)
+    else:
+        os.environ['OPENCLAW_STATE_DIR'] = original_openclaw_state_dir
     if original_openclaw_cli_bin is None:
         os.environ.pop('OPENCLAW_CLI_BIN', None)
     else:
