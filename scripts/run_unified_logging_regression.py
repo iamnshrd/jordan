@@ -18,6 +18,7 @@ def main() -> None:
         env = dict(os.environ)
         env['JORDAN_LOG_PATH'] = str(runtime_log)
         env['JORDAN_CONVERSATION_AUDIT_LOG'] = str(conversation_audit_log)
+        env['JORDAN_DISABLE_OPENCLAW_GATEWAY_RENDERER'] = '1'
 
         run_proc = subprocess.run(
             [sys.executable, '-m', 'library', 'run', 'Я застрял и не понимаю, с чего начать'],
@@ -28,6 +29,16 @@ def main() -> None:
         )
         prompt_proc = subprocess.run(
             [sys.executable, '-m', 'library', 'prompt', 'Я застрял и не понимаю, с чего начать'],
+            cwd=REPO_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        adapter_proc = subprocess.run(
+            [
+                sys.executable, '-m', 'library', 'adapter', 'telegram',
+                'В чем заключается смысл крепких отношений?',
+            ],
             cwd=REPO_ROOT,
             env=env,
             capture_output=True,
@@ -50,6 +61,14 @@ def main() -> None:
 
         runtime_rows = load_rows(runtime_log)
         audit_rows = load_rows(conversation_audit_log)
+        adapter_rows = [
+            row for row in audit_rows
+            if row.get('event') == 'conversation.adapter_result'
+        ]
+        adapter_renderer_rows = [
+            row for row in adapter_rows
+            if row.get('question') == 'В чем заключается смысл крепких отношений?'
+        ]
 
         results = [
             {
@@ -59,6 +78,10 @@ def main() -> None:
             {
                 'name': 'cli_prompt_succeeds',
                 'pass': prompt_proc.returncode == 0,
+            },
+            {
+                'name': 'cli_adapter_succeeds',
+                'pass': adapter_proc.returncode == 0,
             },
             {
                 'name': 'runtime_log_created',
@@ -87,6 +110,17 @@ def main() -> None:
             {
                 'name': 'conversation_audit_contains_prompt_prepared',
                 'pass': any(row.get('event') == 'conversation.prompt_prepared' for row in audit_rows),
+            },
+            {
+                'name': 'adapter_result_includes_renderer_metadata',
+                'pass': (
+                    len(adapter_renderer_rows) == 1
+                    and adapter_renderer_rows[0].get('renderer_mode') == 'frame_final_text'
+                    and adapter_renderer_rows[0].get('renderer_status') == 'not_configured'
+                    and adapter_renderer_rows[0].get('renderer_backend') == 'none'
+                    and adapter_renderer_rows[0].get('renderer_used') is False
+                    and adapter_renderer_rows[0].get('renderer_fallback_used') is False
+                ),
             },
         ]
         emit_report(results)

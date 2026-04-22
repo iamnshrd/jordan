@@ -100,6 +100,7 @@ def cmd_adapter(args):
     )
     payload = orchestrate_for_adapter(question, user_id=user_id)
     result = _build_adapter_cli_result(payload)
+    decision_metadata = result.get('decision_metadata') or {}
     audit_event(
         'conversation.adapter_result',
         user_id=user_id,
@@ -112,18 +113,26 @@ def cmd_adapter(args):
         delivery_mode=result.get('delivery_mode', ''),
         final_user_text=result.get('final_user_text', ''),
         trace_id=result.get('trace_id', ''),
-        clarify_type=(result.get('decision_metadata') or {}).get('clarify_type', ''),
-        clarify_theme=(result.get('decision_metadata') or {}).get('clarify_theme', ''),
-        clarify_profile=(result.get('decision_metadata') or {}).get('clarify_profile', ''),
-        dialogue_act=(result.get('decision_metadata') or {}).get('dialogue_act', ''),
-        dialogue_mode=(result.get('decision_metadata') or {}).get('dialogue_mode', ''),
-        active_topic=(result.get('decision_metadata') or {}).get('active_topic', ''),
-        abstraction_level=(result.get('decision_metadata') or {}).get('abstraction_level', ''),
-        pending_slot=(result.get('decision_metadata') or {}).get('pending_slot', ''),
-        frame_topic=(result.get('decision_metadata') or {}).get('frame_topic', ''),
-        frame_type=(result.get('decision_metadata') or {}).get('frame_type', ''),
-        frame_goal=(result.get('decision_metadata') or {}).get('frame_goal', ''),
-        frame_relation=(result.get('decision_metadata') or {}).get('frame_relation_to_previous', ''),
+        clarify_type=decision_metadata.get('clarify_type', ''),
+        clarify_theme=decision_metadata.get('clarify_theme', ''),
+        clarify_profile=decision_metadata.get('clarify_profile', ''),
+        dialogue_act=decision_metadata.get('dialogue_act', ''),
+        dialogue_mode=decision_metadata.get('dialogue_mode', ''),
+        active_topic=decision_metadata.get('active_topic', ''),
+        abstraction_level=decision_metadata.get('abstraction_level', ''),
+        pending_slot=decision_metadata.get('pending_slot', ''),
+        frame_topic=decision_metadata.get('frame_topic', ''),
+        frame_type=decision_metadata.get('frame_type', ''),
+        frame_goal=decision_metadata.get('frame_goal', ''),
+        frame_relation=decision_metadata.get('frame_relation_to_previous', ''),
+        renderer_used=decision_metadata.get('renderer_used', False),
+        renderer_mode=decision_metadata.get('renderer_mode', ''),
+        renderer_status=decision_metadata.get('renderer_status', ''),
+        renderer_backend=decision_metadata.get('renderer_backend', ''),
+        renderer_backend_detail=decision_metadata.get('renderer_backend_detail', ''),
+        renderer_attempt_count=decision_metadata.get('renderer_attempt_count', 0),
+        renderer_fallback_used=decision_metadata.get('renderer_fallback_used', False),
+        renderer_validation_failures=decision_metadata.get('renderer_validation_failures', []),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
 
