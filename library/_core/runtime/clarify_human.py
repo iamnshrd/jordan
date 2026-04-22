@@ -269,6 +269,15 @@ _PROFILE_SPECS = {
         'question': 'Выбери один узел и назови его прямо.',
         'question_kind': 'topic_selection',
     },
+    'greeting-opening': {
+        'opening': 'Добрый вечер.',
+        'fallback_voice': (
+            'Если хочешь, не будем тратить ход на вежливость и сразу возьмём один настоящий вопрос там, где у тебя есть конфликт, страх, обида, потеря направления или распад близости.',
+        ),
+        'question_lead': 'Назови прямо:',
+        'question': 'что именно ты хочешь разобрать.',
+        'question_kind': 'topic_selection',
+    },
     'psychological-portrait-request': {
         'opening': 'Я не хочу лепить тебе психологический портрет из воздуха.',
         'fallback_voice': (
@@ -885,6 +894,10 @@ def _contextual_acknowledgement(dialogue_act: str, dialogue_state: dict | None =
         return 'Хорошо, держим этот разговор в общем виде и не сваливаемся обратно в частную историю.'
     if dialogue_act == 'personalize_previous_question' and topic == 'relationship-loss-of-feeling':
         return 'Хорошо, тогда вернём разговор от общей схемы к тебе лично и посмотрим, где этот узел бьёт по твоей жизни.'
+    if dialogue_act == 'personalize_previous_question' and topic == 'psychological-portrait':
+        return 'Хорошо, тогда вернёмся от общей схемы характера к тебе лично и посмотрим, где этот паттерн портит твою жизнь на практике.'
+    if dialogue_act == 'personalize_previous_question' and topic == 'self-diagnosis':
+        return 'Хорошо, тогда вернёмся от общей картины к твоему личному опыту и посмотрим, что именно у тебя рушится изнутри.'
     if dialogue_act == 'supply_narrowing_axis':
         return (
             'Хорошо, значит не распыляемся по всей теме, а держим именно этот слой.'
@@ -1014,6 +1027,66 @@ def build_clarification(question: str, *,
             template_id='relationship-knot.v1',
             question_kind='narrowing',
             reason_code='relationship-knot',
+            voice_moves=voice_meta.get('voice_moves'),
+            framing_moves=voice_meta.get('framing_moves'),
+            narrowing_moves=voice_meta.get('narrowing_moves'),
+            source_refs=voice_meta.get('source_refs'),
+            voice_layer=voice_meta.get('voice_layer'),
+        )
+        if response_move:
+            meta['response_move'] = response_move
+        return ClarificationResult(
+            text=text,
+            metadata=meta,
+        )
+
+    if (
+        dialogue_act == 'personalize_previous_question'
+        and dialogue_state.get('active_topic') == 'psychological-portrait'
+    ):
+        text, voice_meta = _render_profile('psychological-portrait-request')
+        text, response_move = _compose_contextual_response(
+            text,
+            dialogue_act=dialogue_act,
+            dialogue_state=dialogue_state,
+        )
+        meta = _metadata(
+            clarify_type='human_problem',
+            route_name=dialogue_state.get('active_route') or route_name,
+            profile='psychological-portrait-request',
+            template_id='psychological-portrait-request.v1',
+            question_kind='pattern_selection',
+            reason_code='psychological-portrait-request',
+            voice_moves=voice_meta.get('voice_moves'),
+            framing_moves=voice_meta.get('framing_moves'),
+            narrowing_moves=voice_meta.get('narrowing_moves'),
+            source_refs=voice_meta.get('source_refs'),
+            voice_layer=voice_meta.get('voice_layer'),
+        )
+        if response_move:
+            meta['response_move'] = response_move
+        return ClarificationResult(
+            text=text,
+            metadata=meta,
+        )
+
+    if (
+        dialogue_act == 'personalize_previous_question'
+        and dialogue_state.get('active_topic') == 'self-diagnosis'
+    ):
+        text, voice_meta = _render_profile('self-diagnosis-soft')
+        text, response_move = _compose_contextual_response(
+            text,
+            dialogue_act=dialogue_act,
+            dialogue_state=dialogue_state,
+        )
+        meta = _metadata(
+            clarify_type='human_problem',
+            route_name=dialogue_state.get('active_route') or route_name,
+            profile='self-diagnosis-soft',
+            template_id='self-diagnosis-soft.v1',
+            question_kind='symptom_narrowing',
+            reason_code='self-diagnosis-soft',
             voice_moves=voice_meta.get('voice_moves'),
             framing_moves=voice_meta.get('framing_moves'),
             narrowing_moves=voice_meta.get('narrowing_moves'),
@@ -1263,6 +1336,26 @@ def build_clarification(question: str, *,
         )
         if response_move:
             meta['response_move'] = response_move
+        return ClarificationResult(
+            text=text,
+            metadata=meta,
+        )
+
+    if dialogue_act == 'greeting_opening':
+        text, voice_meta = _render_profile('greeting-opening')
+        meta = _metadata(
+            clarify_type='scope',
+            route_name='general',
+            profile='greeting-opening',
+            template_id='greeting-opening.v1',
+            question_kind='topic_selection',
+            reason_code='greeting-opening',
+            voice_moves=voice_meta.get('voice_moves'),
+            framing_moves=voice_meta.get('framing_moves'),
+            narrowing_moves=voice_meta.get('narrowing_moves'),
+            source_refs=voice_meta.get('source_refs'),
+            voice_layer=voice_meta.get('voice_layer'),
+        )
         return ClarificationResult(
             text=text,
             metadata=meta,

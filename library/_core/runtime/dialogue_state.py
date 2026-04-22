@@ -79,6 +79,8 @@ def infer_active_topic(question: str, *, route_name: str = '',
                        clarify_profile: str = '') -> str:
     q = _normalize(question)
     if clarify_profile:
+        if clarify_profile == 'greeting-opening':
+            return 'greeting'
         if clarify_profile == 'psychological-portrait-request':
             return 'psychological-portrait'
         if clarify_profile == 'self-diagnosis-soft':
@@ -189,6 +191,9 @@ def advance_dialogue_state(current_state: dict | None, *, question: str,
             if dialogue_act == 'request_menu':
                 next_state.dialogue_mode = 'scope_clarify'
                 next_state.pending_slot = 'topic_selection'
+            elif dialogue_act == 'greeting_opening' or clarify_profile == 'greeting-opening':
+                next_state.dialogue_mode = 'topic_opening'
+                next_state.pending_slot = ''
             elif dialogue_act == 'request_psychological_portrait' or clarify_profile == 'psychological-portrait-request':
                 next_state.dialogue_mode = 'human_problem_clarify'
                 next_state.pending_slot = 'pattern_selection'

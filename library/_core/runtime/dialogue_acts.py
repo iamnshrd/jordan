@@ -78,8 +78,21 @@ _YES_MARKERS = ['да', 'ага', 'угу', 'именно']
 _MENU_MARKERS = [
     'о чем можно поговорить',
     'о чём можно поговорить',
+    'о чем с тобой можно поговорить',
+    'о чём с тобой можно поговорить',
+    'о чем мы можем поговорить',
+    'о чём мы можем поговорить',
     'какие темы',
     'что можно разобрать',
+    'с чем к тебе можно',
+]
+
+_GREETING_MARKERS = [
+    'привет',
+    'здравствуйте',
+    'добрый вечер',
+    'добрый день',
+    'доброе утро',
 ]
 
 _PORTRAIT_MARKERS = [
@@ -158,6 +171,21 @@ _TOPIC_SHIFT_MARKERS = [
     'теперь про',
 ]
 
+_TOPIC_OPENING_PREFIXES = [
+    'какие ',
+    'почему ',
+    'что ',
+    'как ',
+    'зачем ',
+    'от чего ',
+    'из-за чего ',
+    'можно ли ',
+    'о чем ',
+    'о чём ',
+    'давайте ',
+    'расскажи ',
+]
+
 
 def _normalize(text: str) -> str:
     return ' '.join((text or '').lower().split())
@@ -165,6 +193,23 @@ def _normalize(text: str) -> str:
 
 def _contains_any(text: str, markers: list[str]) -> bool:
     return any(marker in text for marker in markers)
+
+
+def _looks_like_greeting(text: str) -> bool:
+    if not text:
+        return False
+    words = text.split()
+    return len(words) <= 6 and _contains_any(text, _GREETING_MARKERS)
+
+
+def _looks_like_fresh_topic_opening(text: str) -> bool:
+    if not text:
+        return False
+    if len(text.split()) < 4:
+        return False
+    if any(text.startswith(prefix) for prefix in _TOPIC_OPENING_PREFIXES):
+        return True
+    return text.endswith('?')
 
 
 def _match_axis(text: str, mapping: dict[str, list[str]]) -> str:
@@ -230,6 +275,9 @@ def infer_dialogue_act(question: str, state: dict | None = None) -> str:
     if _contains_any(q, _MENU_MARKERS):
         return 'request_menu'
 
+    if _looks_like_greeting(q):
+        return 'greeting_opening'
+
     if state.get('active_topic') and _contains_any(q, _TOPIC_SHIFT_MARKERS):
         return 'topic_shift'
 
@@ -277,12 +325,11 @@ def infer_dialogue_act(question: str, state: dict | None = None) -> str:
     if state.get('active_topic') and any(marker == q for marker in _YES_MARKERS):
         return 'confirm_previous_question'
 
-    if (
-        state.get('active_topic')
-        and state.get('abstraction_level') == 'general'
-        and _contains_any(q, _PERSONALIZE_MARKERS)
-    ):
+    if state.get('active_topic') and _contains_any(q, _PERSONALIZE_MARKERS):
         return 'personalize_previous_question'
+
+    if state.get('active_topic') and _looks_like_fresh_topic_opening(q):
+        return 'open_topic'
 
     if _contains_any(q, _ABSTRACTIFY_MARKERS):
         return 'abstractify_previous_question' if state.get('active_topic') else 'request_generalization'
