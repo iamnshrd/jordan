@@ -67,7 +67,6 @@ def _build_render_config(*, system_prompt: str) -> tuple[dict[str, Any], Path]:
         agents['defaults'] = defaults
     defaults['systemPromptOverride'] = system_prompt
     defaults['skills'] = []
-    defaults['heartbeatPrompt'] = ''
     return cfg, _resolve_openclaw_config_path()
 
 
