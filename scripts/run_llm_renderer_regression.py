@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import json
+import io
 import os
 import sys
+from urllib import error
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -234,6 +236,7 @@ def main() -> None:
     reset_llm_renderer()
 
     gateway_calls: list[dict] = []
+    gateway_fallback_calls: list[dict] = []
     original_urlopen = openclaw_gateway_renderer.request_module.urlopen
     os.environ['OPENCLAW_GATEWAY_TOKEN'] = 'test-token'
     os.environ['JORDAN_MODEL'] = 'openai-codex/gpt-5.4'
@@ -258,9 +261,55 @@ def main() -> None:
         })
         return _FakeGatewayResponse()
 
+    class _FakeChatCompletionResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({
+                'choices': [
+                    {
+                        'message': {
+                            'content': 'Смотри на главный узел и назови его прямо.',
+                        },
+                    },
+                ],
+            }).encode('utf-8')
+
+    def _fake_urlopen_with_fallback(req, timeout=0):
+        gateway_fallback_calls.append({
+            'timeout': timeout,
+            'headers': dict(req.header_items()),
+            'body': json.loads(req.data.decode('utf-8')),
+            'url': req.full_url,
+        })
+        if req.full_url.endswith('/v1/responses'):
+            raise error.HTTPError(
+                req.full_url,
+                404,
+                'Not Found',
+                hdrs=None,
+                fp=io.BytesIO(b'Not Found'),
+            )
+        return _FakeChatCompletionResponse()
+
     openclaw_gateway_renderer.request_module.urlopen = _fake_urlopen
     try:
         gateway_rendered = openclaw_gateway_renderer.render_via_openclaw_gateway(
+            request=None,
+            prompt={'system': 'sys', 'user': 'usr'},
+            attempt=1,
+            violations=[],
+        )
+    finally:
+        openclaw_gateway_renderer.request_module.urlopen = original_urlopen
+
+    openclaw_gateway_renderer.request_module.urlopen = _fake_urlopen_with_fallback
+    try:
+        gateway_fallback_rendered = openclaw_gateway_renderer.render_via_openclaw_gateway(
             request=None,
             prompt={'system': 'sys', 'user': 'usr'},
             attempt=1,
@@ -284,6 +333,17 @@ def main() -> None:
                 and len(gateway_calls) == 1
                 and gateway_calls[0]['body']['model'] == 'openclaw'
                 and gateway_calls[0]['headers'].get('X-openclaw-model') == 'openai-codex/gpt-5.4'
+            ),
+        },
+        {
+            'name': 'gateway_renderer_falls_back_to_chat_completions_on_404',
+            'pass': (
+                gateway_fallback_rendered == 'Смотри на главный узел и назови его прямо.'
+                and len(gateway_fallback_calls) == 2
+                and gateway_fallback_calls[0]['url'].endswith('/v1/responses')
+                and gateway_fallback_calls[1]['url'].endswith('/v1/chat/completions')
+                and gateway_fallback_calls[1]['body']['model'] == 'openclaw'
+                and gateway_fallback_calls[1]['headers'].get('X-openclaw-model') == 'openai-codex/gpt-5.4'
             ),
         },
         {

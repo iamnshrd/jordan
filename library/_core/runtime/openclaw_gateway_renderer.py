@@ -146,6 +146,59 @@ def _extract_output_text(payload: Any) -> str:
     return ''
 
 
+def _extract_chat_completion_text(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ''
+    choices = payload.get('choices')
+    if not isinstance(choices, list):
+        return ''
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get('message')
+        if not isinstance(message, dict):
+            continue
+        content = message.get('content')
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+        if isinstance(content, list):
+            parts: list[str] = []
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                text = part.get('text')
+                if isinstance(text, str) and text.strip():
+                    parts.append(text.strip())
+            if parts:
+                return '\n'.join(parts)
+    return ''
+
+
+def _build_request_headers(secret: str, requested_model: str) -> dict[str, str]:
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {secret}',
+    }
+    if requested_model and not requested_model.startswith('openclaw'):
+        headers['x-openclaw-model'] = requested_model
+    return headers
+
+
+def _open_json(*, url: str, body: dict[str, Any], headers: dict[str, str], timeout: float) -> dict[str, Any]:
+    req = request_module.Request(
+        url,
+        data=json.dumps(body).encode('utf-8'),
+        headers=headers,
+        method='POST',
+    )
+    with request_module.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read().decode('utf-8', errors='replace')
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise RuntimeError('OpenClaw gateway renderer returned a non-object JSON payload.')
+    return payload
+
+
 def render_via_openclaw_gateway(*, request, prompt, attempt, violations):
     gateway_url = resolve_gateway_url().rstrip('/')
     secret = resolve_gateway_secret()
@@ -153,34 +206,59 @@ def render_via_openclaw_gateway(*, request, prompt, attempt, violations):
         raise RuntimeError('OpenClaw gateway auth token/password is not configured.')
     requested_model = resolve_renderer_model_ref()
     gateway_model = requested_model if requested_model.startswith('openclaw') else _DEFAULT_MODEL
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {secret}',
-    }
-    if requested_model and not requested_model.startswith('openclaw'):
-        headers['x-openclaw-model'] = requested_model
-    body = {
+    headers = _build_request_headers(secret, requested_model)
+    responses_body = {
         'model': gateway_model,
         'instructions': prompt.get('system', ''),
         'input': prompt.get('user', ''),
         'store': False,
     }
-    req = request_module.Request(
-        f'{gateway_url}/v1/responses',
-        data=json.dumps(body).encode('utf-8'),
-        headers=headers,
-        method='POST',
-    )
     timeout = float((os.environ.get('JORDAN_LLM_RENDERER_TIMEOUT_SECONDS') or '20').strip() or '20')
     try:
-        with request_module.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode('utf-8', errors='replace')
+        payload = _open_json(
+            url=f'{gateway_url}/v1/responses',
+            body=responses_body,
+            headers=headers,
+            timeout=timeout,
+        )
     except error.HTTPError as exc:
         detail = exc.read().decode('utf-8', errors='replace')
+        if exc.code == 404:
+            chat_body = {
+                'model': gateway_model,
+                'messages': [
+                    {'role': 'system', 'content': prompt.get('system', '')},
+                    {'role': 'user', 'content': prompt.get('user', '')},
+                ],
+                'stream': False,
+            }
+            try:
+                payload = _open_json(
+                    url=f'{gateway_url}/v1/chat/completions',
+                    body=chat_body,
+                    headers=headers,
+                    timeout=timeout,
+                )
+            except error.HTTPError as fallback_exc:
+                fallback_detail = fallback_exc.read().decode('utf-8', errors='replace')
+                raise RuntimeError(
+                    f'OpenClaw gateway renderer HTTP 404 on /v1/responses and '
+                    f'HTTP {fallback_exc.code} on /v1/chat/completions: {fallback_detail[:300]}'
+                ) from fallback_exc
+            except error.URLError as fallback_exc:
+                raise RuntimeError(
+                    f'OpenClaw gateway renderer /v1/responses unavailable and '
+                    f'/v1/chat/completions connection failed: {fallback_exc}'
+                ) from fallback_exc
+            text = _extract_chat_completion_text(payload)
+            if not text:
+                raise RuntimeError(
+                    'OpenClaw gateway renderer fallback /v1/chat/completions returned no assistant content.'
+                )
+            return text
         raise RuntimeError(f'OpenClaw gateway renderer HTTP {exc.code}: {detail[:300]}') from exc
     except error.URLError as exc:
         raise RuntimeError(f'OpenClaw gateway renderer connection failed: {exc}') from exc
-    payload = json.loads(raw)
     text = _extract_output_text(payload)
     if not text:
         raise RuntimeError('OpenClaw gateway renderer returned no output_text.')
