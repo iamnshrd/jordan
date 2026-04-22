@@ -130,14 +130,36 @@ tail -f "$JORDAN_HOME/workspace/logs/conversation_audit.jsonl"
 tail -f "$JORDAN_HOME/workspace/logs/openclaw.log"
 ```
 
-## SCP Workflow
+## Export Workflow
 
-Copy the single canonical log file to your local machine:
+Do not copy logs into the repo root with commands like `scp ... ./conversation_audit.jsonl`.
+That creates a second misleading copy next to the code and makes it easy to analyze stale local files
+instead of the canonical runtime logs under `workspace/logs/`.
+
+On the VPS, bundle the canonical logs first:
 
 ```bash
-scp user@your-vps:$JORDAN_HOME/workspace/logs/jordan.jsonl ./jordan.jsonl
-scp user@your-vps:$JORDAN_HOME/workspace/logs/conversation_audit.jsonl ./conversation_audit.jsonl
-scp user@your-vps:$JORDAN_HOME/workspace/logs/openclaw.log ./openclaw.log
+JORDAN_HOME=/root/jordan /root/jordan/deploy/systemd/export-jordan-logs.sh
 ```
 
-Then send me `conversation_audit.jsonl`, `jordan.jsonl`, `openclaw.log`, or the relevant fragments.
+This writes a timestamped archive under:
+
+```bash
+$JORDAN_HOME/workspace/logs/exports/jordan-logs-<timestamp>.tar.gz
+```
+
+Then copy that archive somewhere outside the repo root on your local machine:
+
+```bash
+scp user@your-vps:$JORDAN_HOME/workspace/logs/exports/jordan-logs-<timestamp>.tar.gz ~/Downloads/
+```
+
+If you need a single file instead of the archive, still copy it outside the repo root:
+
+```bash
+scp user@your-vps:$JORDAN_HOME/workspace/logs/conversation_audit.jsonl ~/Downloads/jordan-conversation_audit.jsonl
+scp user@your-vps:$JORDAN_HOME/workspace/logs/jordan.jsonl ~/Downloads/jordan-runtime.jsonl
+scp user@your-vps:$JORDAN_HOME/workspace/logs/openclaw.log ~/Downloads/jordan-openclaw.log
+```
+
+Then send me the extracted file or the relevant fragments.

@@ -21,6 +21,7 @@ def main() -> None:
         encoding='utf-8'
     )
     gitignore = (REPO_ROOT / '.gitignore').read_text(encoding='utf-8')
+    deploy_doc = (REPO_ROOT / 'DEPLOY_SYSTEMD.md').read_text(encoding='utf-8')
 
     results = [
         {
@@ -49,6 +50,12 @@ def main() -> None:
             'name': 'gitignore_covers_root_runtime_artifacts',
             'pass': 'conversation_audit.jsonl' in gitignore
             and 'openclaw.log' in gitignore,
+        },
+        {
+            'name': 'deploy_doc_avoids_repo_root_scp_targets',
+            'pass': 'scp user@your-vps:$JORDAN_HOME/workspace/logs/conversation_audit.jsonl ./conversation_audit.jsonl' not in deploy_doc
+            and 'scp user@your-vps:$JORDAN_HOME/workspace/logs/openclaw.log ./openclaw.log' not in deploy_doc
+            and 'export-jordan-logs.sh' in deploy_doc,
         },
     ]
     emit_report(results)
