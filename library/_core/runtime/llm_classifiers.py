@@ -15,6 +15,10 @@ _family_classifier: Callable[..., Any] | None = None
 _family_classifier_backend = 'none'
 _family_classifier_backend_detail = ''
 _family_autoload_attempted = False
+_marginal_router: Callable[..., Any] | None = None
+_marginal_router_backend = 'none'
+_marginal_router_backend_detail = ''
+_marginal_router_autoload_attempted = False
 
 
 def _runtime_classifier_enabled() -> bool:
@@ -98,6 +102,25 @@ def reset_family_classifier() -> None:
     _set_family_classifier(None, backend='none')
 
 
+def _set_marginal_router(fn: Callable[..., Any] | None, *, backend: str) -> None:
+    global _marginal_router, _marginal_router_backend, _marginal_router_backend_detail
+    _marginal_router = fn
+    _marginal_router_backend = backend if fn is not None else 'none'
+    _marginal_router_backend_detail = _classifier_detail_for(fn) if fn is not None else ''
+
+
+def set_marginal_router(fn: Callable[..., Any] | None) -> None:
+    global _marginal_router_autoload_attempted
+    _marginal_router_autoload_attempted = fn is not None
+    _set_marginal_router(fn, backend='custom_hook')
+
+
+def reset_marginal_router() -> None:
+    global _marginal_router_autoload_attempted
+    _marginal_router_autoload_attempted = False
+    _set_marginal_router(None, backend='none')
+
+
 def _autoload_family_classifier() -> None:
     global _family_autoload_attempted
     if _family_autoload_attempted:
@@ -129,6 +152,39 @@ def _autoload_family_classifier() -> None:
         return
     if openclaw_api_renderer.is_available():
         _set_family_classifier(classify_dialogue_family_with_llm, backend='openclaw_api')
+
+
+def _autoload_marginal_router() -> None:
+    global _marginal_router_autoload_attempted
+    if _marginal_router_autoload_attempted:
+        return
+    _marginal_router_autoload_attempted = True
+    if str(os.environ.get('JORDAN_DISABLE_LLM_MARGINAL_ROUTER') or '').strip().lower() in {
+        '1', 'true', 'yes',
+    }:
+        return
+    hook_ref = (
+        os.environ.get('JORDAN_LLM_MARGINAL_ROUTER_HOOK')
+        or os.environ.get('JORDAN_LLM_SPECIAL_ROUTE_HOOK')
+        or ''
+    ).strip()
+    if hook_ref and ':' in hook_ref:
+        module_name, attr_name = hook_ref.split(':', 1)
+        try:
+            module = importlib.import_module(module_name.strip())
+            candidate = getattr(module, attr_name.strip(), None)
+        except Exception:
+            candidate = None
+        if callable(candidate):
+            _set_marginal_router(candidate, backend='custom_hook')
+            return
+    if not _runtime_classifier_enabled():
+        return
+    if anthropic_api_renderer.is_available():
+        _set_marginal_router(classify_marginal_route_with_anthropic, backend='anthropic_api')
+        return
+    if openclaw_api_renderer.is_available():
+        _set_marginal_router(classify_marginal_route_with_llm, backend='openclaw_api')
 
 
 @dataclass(frozen=True)
@@ -176,6 +232,55 @@ class LLMFamilyClassificationResult:
         }
 
 
+@dataclass(frozen=True)
+class LLMMarginalRouteRequest:
+    question: str
+    dialogue_act: str
+    dialogue_state: dict[str, Any]
+    dialogue_frame: dict[str, Any]
+    previous_topic: str = ''
+    previous_route: str = ''
+    previous_goal: str = ''
+    previous_stance: str = ''
+
+
+@dataclass
+class LLMMarginalRouteResult:
+    special_route: str = 'no_special_route'
+    topic_candidate: str = ''
+    route_candidate: str = ''
+    stance_shift: str = ''
+    goal_candidate: str = ''
+    repair_strategy: str = ''
+    confidence: float = 0.0
+    reason: str = ''
+    source: str = 'deterministic_fallback'
+    used: bool = False
+    backend: str = 'none'
+    backend_detail: str = ''
+    status: str = 'not_configured'
+    fallback_used: bool = True
+    rejection_reason: str = ''
+    exception_detail: str = ''
+
+    def metadata(self) -> dict[str, Any]:
+        return {
+            'marginal_router_used': self.used,
+            'marginal_router_backend': self.backend,
+            'marginal_router_backend_detail': self.backend_detail,
+            'marginal_router_status': self.status,
+            'marginal_router_confidence': self.confidence,
+            'marginal_router_result_route': self.special_route,
+            'marginal_router_result_topic': self.topic_candidate,
+            'marginal_router_result_goal': self.goal_candidate,
+            'marginal_router_repair_strategy': self.repair_strategy,
+            'marginal_router_fallback_used': self.fallback_used,
+            'marginal_router_rejection_reason': self.rejection_reason,
+            'marginal_router_reason': self.reason,
+            'marginal_router_exception_detail': self.exception_detail,
+        }
+
+
 def _build_family_prompt(request: LLMFamilyClassificationRequest) -> dict[str, str]:
     candidate_lines = []
     for candidate in request.candidates:
@@ -213,6 +318,59 @@ def _build_family_prompt(request: LLMFamilyClassificationRequest) -> dict[str, s
         f'deterministic_guess={deterministic_guess}',
         'allowed_candidates:',
         *candidate_lines,
+    ])
+    return {'system': system, 'user': user}
+
+
+def _build_marginal_route_prompt(request: LLMMarginalRouteRequest) -> dict[str, str]:
+    allowed_routes = (
+        'repair_misunderstanding',
+        'repair_meta_friction',
+        'repair_wrong_level',
+        'repair_wrong_topic',
+        'vague_help_request',
+        'symptom_self_report',
+        'scope_shift_meta',
+        'relationship_opening_broad',
+        'summon_soft_opening',
+        'teasing_or_guessing_opening',
+        'no_special_route',
+    )
+    allowed_strategies = (
+        'ack_and_rephrase',
+        'ack_and_restart',
+        'simplify_and_focus',
+        'reframe_topic',
+        'offer_axis_menu',
+        'convert_to_human_problem_clarify',
+    )
+    system = (
+        'Ты маршрутизируешь только маргинальные conversational turns. '
+        'Нельзя придумывать новые route/topic/goal. Верни только JSON без markdown. '
+        'Если special-route не нужен, верни no_special_route. '
+        'Допустимые special_route: '
+        + ', '.join(allowed_routes)
+        + '. Допустимые repair_strategy: '
+        + ', '.join(allowed_strategies)
+        + '. Формат: '
+        '{"special_route":"<allowed_route>",'
+        '"topic_candidate":"<known_topic_or_empty>",'
+        '"route_candidate":"<known_route_or_empty>",'
+        '"stance_shift":"<general|personal|empty>",'
+        '"goal_candidate":"<opening|menu|clarify|overview|cause_list|mini_analysis|next_step|example|empty>",'
+        '"repair_strategy":"<allowed_strategy_or_empty>",'
+        '"confidence":0.0,'
+        '"reason":"<short_reason>"}'
+    )
+    user = '\n'.join([
+        f'question={request.question}',
+        f'dialogue_act={request.dialogue_act}',
+        f'previous_topic={request.previous_topic}',
+        f'previous_route={request.previous_route}',
+        f'previous_goal={request.previous_goal}',
+        f'previous_stance={request.previous_stance}',
+        f'active_frame={json.dumps(request.dialogue_frame, ensure_ascii=False)}',
+        f'active_state={json.dumps(request.dialogue_state, ensure_ascii=False)}',
     ])
     return {'system': system, 'user': user}
 
@@ -362,6 +520,76 @@ def maybe_classify_dialogue_family(request: LLMFamilyClassificationRequest) -> L
     result.confidence = float(payload.get('confidence', 0.0) or 0.0)
     result.reason = str(payload.get('reason', '') or '')
     result.source = str(payload.get('source', 'llm_classifier') or 'llm_classifier')
+    result.status = 'classified'
+    result.fallback_used = False
+    return result
+
+
+def classify_marginal_route_with_llm(*, request: LLMMarginalRouteRequest) -> dict[str, Any]:
+    return _call_openclaw_api_json(_build_marginal_route_prompt(request))
+
+
+classify_marginal_route_with_llm.__jordan_classifier_backend_detail__ = describe_api_classifier_backend
+
+
+def classify_marginal_route_with_anthropic(*, request: LLMMarginalRouteRequest) -> dict[str, Any]:
+    timeout = float((os.environ.get('JORDAN_LLM_MARGINAL_ROUTER_TIMEOUT_SECONDS') or '4').strip() or '4')
+    return anthropic_api_renderer.call_anthropic_json(
+        prompt=_build_marginal_route_prompt(request),
+        timeout_seconds=timeout,
+        max_tokens=260,
+    )
+
+
+classify_marginal_route_with_anthropic.__jordan_classifier_backend_detail__ = (
+    describe_anthropic_classifier_backend
+)
+
+
+def maybe_route_marginal_turn(request: LLMMarginalRouteRequest) -> LLMMarginalRouteResult:
+    _autoload_marginal_router()
+    result = LLMMarginalRouteResult(
+        backend=_marginal_router_backend,
+        backend_detail=_marginal_router_backend_detail,
+        status='not_configured' if _marginal_router is None else 'not_used',
+        fallback_used=True,
+    )
+    if _marginal_router is None:
+        return result
+    try:
+        payload = _marginal_router(request=request)
+    except Exception as exc:
+        result.used = True
+        result.status = 'exception'
+        result.rejection_reason = 'exception'
+        result.reason = f'{type(exc).__name__}: {exc}'
+        result.exception_detail = f'{type(exc).__name__}: {exc}'
+        return result
+
+    if isinstance(payload, LLMMarginalRouteResult):
+        payload.used = True
+        payload.backend = _marginal_router_backend
+        payload.backend_detail = _marginal_router_backend_detail
+        return payload
+
+    if not isinstance(payload, dict):
+        result.used = True
+        result.status = 'invalid_payload'
+        result.rejection_reason = 'invalid_payload'
+        return result
+
+    result.used = True
+    result.backend = _marginal_router_backend
+    result.backend_detail = _marginal_router_backend_detail
+    result.special_route = str(payload.get('special_route', 'no_special_route') or 'no_special_route')
+    result.topic_candidate = str(payload.get('topic_candidate', '') or '')
+    result.route_candidate = str(payload.get('route_candidate', '') or '')
+    result.stance_shift = str(payload.get('stance_shift', '') or '')
+    result.goal_candidate = str(payload.get('goal_candidate', '') or '')
+    result.repair_strategy = str(payload.get('repair_strategy', '') or '')
+    result.confidence = float(payload.get('confidence', 0.0) or 0.0)
+    result.reason = str(payload.get('reason', '') or '')
+    result.source = str(payload.get('source', 'marginal_router') or 'marginal_router')
     result.status = 'classified'
     result.fallback_used = False
     return result

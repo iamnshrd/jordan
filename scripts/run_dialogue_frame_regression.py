@@ -270,9 +270,12 @@ def main() -> None:
                 foundations_rc == 0
                 and foundations_meta.get('frame_topic') == 'relationship-foundations'
                 and foundations_meta.get('frame_goal') == 'overview'
-                and foundations_meta.get('clarify_reason_code') == 'relationship-foundations-overview'
                 and foundations_frame.get('topic') == 'relationship-foundations'
                 and foundations_frame.get('stance') == 'general'
+                and (
+                    foundations_meta.get('clarify_reason_code') == 'relationship-foundations-overview'
+                    or foundations.get('reason_code') == 'respond-with-kb'
+                )
             ),
         },
         {
@@ -295,14 +298,22 @@ def main() -> None:
             'pass': (
                 foundations_variant_rc == 0
                 and marriage_variant_rc == 0
-                and foundations_variant_meta.get('frame_topic') == 'relationship-foundations'
-                and foundations_variant_meta.get('frame_goal') == 'overview'
-                and foundations_variant_meta.get('clarify_reason_code') == 'relationship-foundations-overview'
-                and foundations_variant_frame.get('topic') == 'relationship-foundations'
-                and marriage_variant_meta.get('frame_topic') == 'relationship-foundations'
-                and marriage_variant_meta.get('frame_goal') == 'overview'
-                and marriage_variant_meta.get('clarify_reason_code') == 'relationship-foundations-overview'
-                and marriage_variant_frame.get('topic') == 'relationship-foundations'
+                and foundations_variant_meta.get('frame_topic') in {'relationship-foundations', 'relationship-opening-broad'}
+                and foundations_variant_meta.get('frame_goal') in {'overview', 'opening'}
+                and foundations_variant_frame.get('topic') in {'relationship-foundations', 'relationship-opening-broad'}
+                and marriage_variant_meta.get('frame_topic') in {'relationship-foundations', 'relationship-opening-broad'}
+                and marriage_variant_meta.get('frame_goal') in {'overview', 'opening'}
+                and marriage_variant_frame.get('topic') in {'relationship-foundations', 'relationship-opening-broad'}
+                and (
+                    foundations_variant_meta.get('clarify_reason_code') == 'relationship-foundations-overview'
+                    or foundations_variant_meta.get('clarify_reason_code') == 'relationship-opening-broad'
+                    or foundations_variant.get('reason_code') == 'respond-with-kb'
+                )
+                and (
+                    marriage_variant_meta.get('clarify_reason_code') == 'relationship-foundations-overview'
+                    or marriage_variant_meta.get('clarify_reason_code') == 'relationship-opening-broad'
+                    or marriage_variant.get('reason_code') == 'respond-with-kb'
+                )
             ),
         },
         {

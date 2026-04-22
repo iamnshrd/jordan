@@ -17,7 +17,12 @@ from library._core.runtime.dialogue_frame import DialogueFrame, coerce_frame, in
 from library._core.runtime.dialogue_intent_registry import infer_dialogue_intent
 from library._core.runtime.dialogue_intent_registry import question_has_dialogue_intent_marker
 from library._core.runtime.dialogue_acts import extract_dialogue_axis, extract_dialogue_detail
-from library._core.runtime.llm_classifiers import LLMFamilyClassificationRequest, maybe_classify_dialogue_family
+from library._core.runtime.llm_classifiers import (
+    LLMFamilyClassificationRequest,
+    LLMMarginalRouteRequest,
+    maybe_classify_dialogue_family,
+    maybe_route_marginal_turn,
+)
 from library._core.runtime.policy import detect_policy_block
 from library._core.runtime.routes import infer_route
 from library._core.runtime.dialogue_state import DialogueState
@@ -93,6 +98,205 @@ _SLOT_FOLLOWUP_PREFIXES = [
     'скорее от ',
 ]
 
+_MARGINAL_ROUTE_MARKERS = {
+    'repair_misunderstanding': (
+        'я не понимаю',
+        'не понимаю о чем',
+        'не понимаю о чём',
+        'не понял',
+        'не поняла',
+        'объясни проще',
+        'скажи проще',
+        'ты не туда пошёл',
+        'ты сейчас не туда пошел',
+        'ты сейчас не туда пошёл',
+    ),
+    'repair_meta_friction': (
+        'так разговора не получится',
+        'так разговора у нас не получится',
+        'ты меня не слышишь',
+        'это мимо',
+        'это вообще мимо',
+        'разговор не получается',
+    ),
+    'repair_wrong_level': (
+        'слишком абстрактно',
+        'слишком резко',
+        'без этих общих слов',
+        'слишком общо',
+    ),
+    'vague_help_request': (
+        'предложи что делать',
+        'что теперь',
+        'и как дальше',
+        'ну и что теперь',
+    ),
+    'symptom_self_report': (
+        'я подозреваю, что у меня',
+        'кажется, что у меня',
+        'похоже, что у меня',
+        'мне кажется, я выгорел',
+        'у меня ангедония',
+        'у меня тревога',
+    ),
+    'scope_shift_meta': (
+        'я имею в виду в общем',
+        'я имею ввиду в общем',
+        'а если абстрактно',
+        'не про меня',
+        'в общем виде',
+    ),
+    'relationship_opening_broad': (
+        'давай обсудим отношения',
+        'хочу поговорить про брак',
+        'поговорить про отношения',
+        'что делает отношения крепкими',
+        'на чем держится брак',
+        'на чём держится брак',
+    ),
+    'summon_soft_opening': (
+        'джордан...',
+        'я тебе пишу сообщение',
+        'проверяем рендерер',
+    ),
+    'teasing_or_guessing_opening': (
+        'угадай, что я хочу спросить',
+        'попробуй сам догадаться',
+        'догадайся сам',
+    ),
+}
+
+_SPECIAL_ROUTE_ALLOWED = {
+    'repair_misunderstanding',
+    'repair_meta_friction',
+    'repair_wrong_level',
+    'repair_wrong_topic',
+    'vague_help_request',
+    'symptom_self_report',
+    'scope_shift_meta',
+    'relationship_opening_broad',
+    'summon_soft_opening',
+    'teasing_or_guessing_opening',
+    'no_special_route',
+}
+
+_SPECIAL_ROUTE_ALLOWED_STRATEGIES = {
+    '',
+    'ack_and_rephrase',
+    'ack_and_restart',
+    'simplify_and_focus',
+    'reframe_topic',
+    'offer_axis_menu',
+    'convert_to_human_problem_clarify',
+}
+
+_SPECIAL_ROUTE_ALLOWED_GOALS = {
+    '',
+    'opening',
+    'menu',
+    'clarify',
+    'overview',
+    'cause_list',
+    'mini_analysis',
+    'next_step',
+    'example',
+}
+
+_SPECIAL_ROUTE_TOPIC_DEFAULTS = {
+    'repair_misunderstanding': {
+        'topic': 'repair-misunderstanding',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'reframe',
+        'pending_slot': '',
+    },
+    'repair_meta_friction': {
+        'topic': 'repair-meta-friction',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'reframe',
+        'pending_slot': '',
+    },
+    'repair_wrong_level': {
+        'topic': 'repair-wrong-level',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'reframe',
+        'pending_slot': '',
+    },
+    'repair_wrong_topic': {
+        'topic': 'repair-wrong-topic',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'reframe',
+        'pending_slot': '',
+    },
+    'vague_help_request': {
+        'topic': 'vague-help-request',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'reframe',
+        'pending_slot': 'narrowing_axis',
+    },
+    'symptom_self_report': {
+        'topic': 'self-diagnosis',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'reframe',
+        'pending_slot': 'symptom_narrowing',
+    },
+    'scope_shift_meta': {
+        'topic': 'scope-shift-meta',
+        'route': 'general',
+        'stance': 'general',
+        'goal': 'overview',
+        'relation': 'reframe',
+        'pending_slot': 'topic_selection',
+    },
+    'relationship_opening_broad': {
+        'topic': 'relationship-opening-broad',
+        'route': 'relationship-maintenance',
+        'stance': 'general',
+        'goal': 'opening',
+        'relation': 'reframe',
+        'pending_slot': 'pattern_family',
+    },
+    'summon_soft_opening': {
+        'topic': 'social-small-talk',
+        'route': 'general',
+        'stance': 'general',
+        'goal': 'opening',
+        'relation': 'new',
+        'pending_slot': '',
+    },
+    'teasing_or_guessing_opening': {
+        'topic': 'teasing-opening',
+        'route': 'general',
+        'stance': 'general',
+        'goal': 'opening',
+        'relation': 'new',
+        'pending_slot': '',
+    },
+}
+
+_HEURISTIC_MARGINAL_ROUTE_PATTERNS = (
+    ('repair_misunderstanding', _MARGINAL_ROUTE_MARKERS['repair_misunderstanding']),
+    ('repair_meta_friction', _MARGINAL_ROUTE_MARKERS['repair_meta_friction']),
+    ('repair_wrong_level', _MARGINAL_ROUTE_MARKERS['repair_wrong_level']),
+    ('vague_help_request', _MARGINAL_ROUTE_MARKERS['vague_help_request']),
+    ('symptom_self_report', _MARGINAL_ROUTE_MARKERS['symptom_self_report']),
+    ('scope_shift_meta', _MARGINAL_ROUTE_MARKERS['scope_shift_meta']),
+    ('relationship_opening_broad', _MARGINAL_ROUTE_MARKERS['relationship_opening_broad']),
+    ('summon_soft_opening', _MARGINAL_ROUTE_MARKERS['summon_soft_opening']),
+    ('teasing_or_guessing_opening', _MARGINAL_ROUTE_MARKERS['teasing_or_guessing_opening']),
+)
+
 
 def _looks_like_fresh_topic_opening(text: str) -> bool:
     if not text:
@@ -161,6 +365,24 @@ def _fallback_family_metadata(*, status: str = 'not_applicable', reason: str = '
     }
 
 
+def _fallback_marginal_metadata(*, status: str = 'not_applicable', reason: str = '') -> dict:
+    return {
+        'marginal_router_used': False,
+        'marginal_router_backend': 'none',
+        'marginal_router_backend_detail': '',
+        'marginal_router_status': status,
+        'marginal_router_confidence': 0.0,
+        'marginal_router_result_route': '',
+        'marginal_router_result_topic': '',
+        'marginal_router_result_goal': '',
+        'marginal_router_repair_strategy': '',
+        'marginal_router_fallback_used': True,
+        'marginal_router_rejection_reason': '',
+        'marginal_router_reason': reason,
+        'marginal_router_exception_detail': '',
+    }
+
+
 def _build_family_shortlist(question: str, *,
                             state: dict,
                             frame: DialogueFrame,
@@ -209,6 +431,191 @@ def _build_family_shortlist(question: str, *,
             if len(candidates) >= 5:
                 break
     return candidates[:5]
+
+
+def _looks_like_marginal_turn(question: str, *, state: dict, frame: DialogueFrame) -> bool:
+    q = _normalize(question)
+    if not q:
+        return False
+    if any(_contains_any(q, markers) for markers in _MARGINAL_ROUTE_MARKERS.values()):
+        return True
+    active_topic = frame.topic or state.get('active_topic', '')
+    if active_topic and len(q.split()) <= 8:
+        return True
+    return False
+
+
+def _should_use_marginal_router(question: str, *,
+                                dialogue_act: str,
+                                state: dict,
+                                frame: DialogueFrame,
+                                slotish_followup: bool) -> bool:
+    q = _normalize(question)
+    if not q or slotish_followup:
+        return False
+    if detect_policy_block(question) is not None:
+        return False
+    if dialogue_act in {
+        'supply_narrowing_axis',
+        'supply_concrete_manifestation',
+        'abstractify_previous_question',
+        'confirm_scope',
+        'personalize_previous_question',
+        'request_cause_list',
+        'request_example',
+        'request_next_step',
+        'request_mini_analysis',
+    }:
+        return False
+    return _looks_like_marginal_turn(question, state=state, frame=frame)
+
+
+def _resolve_marginal_route(question: str, *,
+                            dialogue_act: str,
+                            state: dict,
+                            frame: DialogueFrame,
+                            slotish_followup: bool = False) -> tuple[dict, dict]:
+    def _heuristic_route() -> tuple[dict, dict]:
+        q = _normalize(question)
+        guessed_route = 'no_special_route'
+        for route_name, markers in _HEURISTIC_MARGINAL_ROUTE_PATTERNS:
+            if _contains_any(q, markers):
+                guessed_route = route_name
+                break
+        if guessed_route == 'no_special_route':
+            return {}, metadata
+        defaults = dict(_SPECIAL_ROUTE_TOPIC_DEFAULTS.get(guessed_route) or {})
+        topic_candidate = defaults.get('topic', '')
+        if topic_candidate not in {spec.topic for spec in DIALOGUE_FAMILY_REGISTRY}:
+            return {}, metadata
+        heuristic_metadata = dict(metadata)
+        heuristic_metadata.update({
+            'marginal_router_status': 'heuristic_fallback',
+            'marginal_router_confidence': 0.86,
+            'marginal_router_result_route': guessed_route,
+            'marginal_router_result_topic': topic_candidate,
+            'marginal_router_result_goal': defaults.get('goal', ''),
+            'marginal_router_repair_strategy': '',
+            'marginal_router_fallback_used': True,
+            'marginal_router_reason': 'marker_match',
+        })
+        return {
+            'special_route': guessed_route,
+            'topic_candidate': topic_candidate,
+            'route_candidate': defaults.get('route', ''),
+            'stance_shift': defaults.get('stance', ''),
+            'goal_candidate': defaults.get('goal', ''),
+            'confidence': 0.86,
+            'reason': 'marker_match',
+            'repair_strategy': '',
+            'relation_to_previous': defaults.get('relation', 'reframe'),
+            'pending_slot': defaults.get('pending_slot', ''),
+        }, heuristic_metadata
+
+    metadata = _fallback_marginal_metadata()
+    if not _should_use_marginal_router(
+        question,
+        dialogue_act=dialogue_act,
+        state=state,
+        frame=frame,
+        slotish_followup=slotish_followup,
+    ):
+        return {}, metadata
+    request = LLMMarginalRouteRequest(
+        question=question,
+        dialogue_act=dialogue_act,
+        dialogue_state=dict(state or {}),
+        dialogue_frame=frame.as_dict(),
+        previous_topic=frame.topic or state.get('active_topic', ''),
+        previous_route=frame.route or state.get('active_route', ''),
+        previous_goal=frame.goal,
+        previous_stance=frame.stance or state.get('abstraction_level', ''),
+    )
+    result = maybe_route_marginal_turn(request)
+    metadata.update(result.metadata())
+    if not result.used:
+        return _heuristic_route()
+    if result.status == 'exception':
+        metadata['marginal_router_rejection_reason'] = 'exception'
+        heuristic_route, heuristic_metadata = _heuristic_route()
+        if heuristic_route:
+            heuristic_metadata.setdefault('marginal_router_exception_detail', metadata.get('marginal_router_exception_detail', ''))
+            heuristic_metadata['marginal_router_rejection_reason'] = 'exception'
+            return heuristic_route, heuristic_metadata
+        return {}, metadata
+    if result.special_route not in _SPECIAL_ROUTE_ALLOWED:
+        metadata['marginal_router_status'] = 'rejected'
+        metadata['marginal_router_rejection_reason'] = 'invalid_route'
+        heuristic_route, heuristic_metadata = _heuristic_route()
+        if heuristic_route:
+            heuristic_metadata['marginal_router_rejection_reason'] = 'invalid_route'
+            return heuristic_route, heuristic_metadata
+        return {}, metadata
+    if result.special_route == 'no_special_route':
+        metadata['marginal_router_status'] = 'deterministic_fallback'
+        return _heuristic_route()
+    if result.repair_strategy not in _SPECIAL_ROUTE_ALLOWED_STRATEGIES:
+        metadata['marginal_router_status'] = 'rejected'
+        metadata['marginal_router_rejection_reason'] = 'invalid_strategy'
+        heuristic_route, heuristic_metadata = _heuristic_route()
+        if heuristic_route:
+            heuristic_metadata['marginal_router_rejection_reason'] = 'invalid_strategy'
+            return heuristic_route, heuristic_metadata
+        return {}, metadata
+    if result.goal_candidate and result.goal_candidate not in _SPECIAL_ROUTE_ALLOWED_GOALS:
+        metadata['marginal_router_status'] = 'rejected'
+        metadata['marginal_router_rejection_reason'] = 'invalid_goal'
+        heuristic_route, heuristic_metadata = _heuristic_route()
+        if heuristic_route:
+            heuristic_metadata['marginal_router_rejection_reason'] = 'invalid_goal'
+            return heuristic_route, heuristic_metadata
+        return {}, metadata
+    if float(result.confidence or 0.0) < 0.78:
+        metadata['marginal_router_status'] = 'rejected'
+        metadata['marginal_router_rejection_reason'] = 'low_confidence'
+        heuristic_route, heuristic_metadata = _heuristic_route()
+        if heuristic_route:
+            heuristic_metadata['marginal_router_rejection_reason'] = 'low_confidence'
+            return heuristic_route, heuristic_metadata
+        return {}, metadata
+    defaults = dict(_SPECIAL_ROUTE_TOPIC_DEFAULTS.get(result.special_route) or {})
+    topic_candidate = result.topic_candidate or defaults.get('topic', '')
+    goal_candidate = result.goal_candidate or defaults.get('goal', '')
+    route_candidate = result.route_candidate or defaults.get('route', '')
+    stance_shift = result.stance_shift or defaults.get('stance', '')
+    if topic_candidate not in {spec.topic for spec in DIALOGUE_FAMILY_REGISTRY}:
+        metadata['marginal_router_status'] = 'rejected'
+        metadata['marginal_router_rejection_reason'] = 'invalid_topic'
+        heuristic_route, heuristic_metadata = _heuristic_route()
+        if heuristic_route:
+            heuristic_metadata['marginal_router_rejection_reason'] = 'invalid_topic'
+            return heuristic_route, heuristic_metadata
+        return {}, metadata
+    if not resolve_dialogue_transition(topic_candidate, 'opening'):
+        metadata['marginal_router_status'] = 'rejected'
+        metadata['marginal_router_rejection_reason'] = 'transition_conflict'
+        heuristic_route, heuristic_metadata = _heuristic_route()
+        if heuristic_route:
+            heuristic_metadata['marginal_router_rejection_reason'] = 'transition_conflict'
+            return heuristic_route, heuristic_metadata
+        return {}, metadata
+    metadata['marginal_router_status'] = 'accepted'
+    metadata['marginal_router_fallback_used'] = False
+    metadata['marginal_router_result_route'] = result.special_route
+    metadata['marginal_router_result_topic'] = topic_candidate
+    metadata['marginal_router_result_goal'] = goal_candidate
+    return {
+        'special_route': result.special_route,
+        'topic_candidate': topic_candidate,
+        'route_candidate': route_candidate,
+        'stance_shift': stance_shift,
+        'goal_candidate': goal_candidate,
+        'confidence': float(result.confidence or 0.0),
+        'reason': result.reason,
+        'repair_strategy': result.repair_strategy or '',
+        'relation_to_previous': defaults.get('relation', 'reframe'),
+        'pending_slot': defaults.get('pending_slot', ''),
+    }, metadata
 
 
 def _should_use_llm_family_classifier(question: str, *,
@@ -338,6 +745,19 @@ def _resolve_semantic_family(question: str, *,
 
 
 def _infer_special_topic(question: str, dialogue_act: str, *, state: dict, frame: DialogueFrame) -> tuple[str, str, dict]:
+    marginal_route, marginal_metadata = _resolve_marginal_route(
+        question,
+        dialogue_act=dialogue_act,
+        state=state,
+        frame=frame,
+        slotish_followup=False,
+    )
+    if marginal_route:
+        return (
+            marginal_route.get('topic_candidate', '') or '',
+            marginal_route.get('route_candidate', '') or '',
+            marginal_metadata,
+        )
     semantic_family, metadata = _resolve_semantic_family(
         question,
         dialogue_act=dialogue_act,
@@ -420,6 +840,27 @@ def _infer_update_from_question(question: str, *,
         )
 
     slotish_followup = bool(active_topic) and _looks_like_slot_followup_candidate(q) and not _looks_like_fresh_topic_opening(q)
+    marginal_route, marginal_metadata = _resolve_marginal_route(
+        question,
+        dialogue_act=dialogue_act,
+        state=state,
+        frame=frame,
+        slotish_followup=slotish_followup,
+    )
+    if marginal_route:
+        return _build_update_payload(
+            relation_to_previous=marginal_route.get('relation_to_previous', 'reframe'),
+            is_new_topic=True,
+            topic_candidate=marginal_route.get('topic_candidate', ''),
+            route_candidate=marginal_route.get('route_candidate', ''),
+            stance_shift=marginal_route.get('stance_shift', ''),
+            goal_candidate=marginal_route.get('goal_candidate', ''),
+            transition_kind='opening',
+            pending_slot=marginal_route.get('pending_slot', ''),
+            confidence=float(marginal_route.get('confidence', 0.84) or 0.84),
+            update_source='marginal_router',
+            classifier_metadata=marginal_metadata,
+        )
     semantic_family, classifier_metadata = _resolve_semantic_family(
         question,
         dialogue_act=dialogue_act,
@@ -427,6 +868,7 @@ def _infer_update_from_question(question: str, *,
         frame=frame,
         slotish_followup=slotish_followup,
     )
+    classifier_metadata = {**marginal_metadata, **classifier_metadata}
 
     if semantic_family:
         return _build_update_payload(

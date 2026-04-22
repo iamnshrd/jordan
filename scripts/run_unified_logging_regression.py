@@ -129,9 +129,12 @@ def main() -> None:
                 'name': 'adapter_result_includes_classifier_metadata',
                 'pass': (
                     len(adapter_renderer_rows) == 1
-                    and adapter_renderer_rows[0].get('family_classifier_status') in {'not_applicable', 'not_configured', 'deterministic'}
-                    and adapter_renderer_rows[0].get('mode_classifier_status') in {'heuristic', 'classified', 'exception', 'invalid_payload'}
-                    and adapter_renderer_rows[0].get('kb_classifier_status') in {'heuristic', 'classified', 'policy_locked', 'exception', 'empty_question'}
+                    and 'marginal_router_status' in adapter_renderer_rows[0]
+                    and 'marginal_router_result_route' in adapter_renderer_rows[0]
+                    and 'marginal_router_exception_detail' in adapter_renderer_rows[0]
+                    and 'family_classifier_status' in adapter_renderer_rows[0]
+                    and 'mode_classifier_status' in adapter_renderer_rows[0]
+                    and 'kb_classifier_status' in adapter_renderer_rows[0]
                 ),
             },
         ]

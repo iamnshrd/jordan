@@ -607,21 +607,21 @@ def main() -> None:
             ),
         },
         {
-            'name': 'reject_scope_returns_general_thread_to_one_personal_knot',
+            'name': 'reject_scope_uses_repair_wrong_level_instead_of_falling_back_to_source_lookup',
             'pass': (
                 reject_seed_rc == 0
                 and reject_seed_meta.get('active_topic') == 'relationship-loss-of-feeling'
                 and reject_general_rc == 0
                 and reject_general_meta.get('abstraction_level') == 'general'
                 and reject_scope_rc == 0
-                and reject_scope_payload.get('reason_code') == 'relationship-knot'
-                and reject_scope_meta.get('dialogue_act') == 'reject_scope'
-                and reject_scope_meta.get('active_topic') == 'relationship-loss-of-feeling'
+                and reject_scope_payload.get('reason_code') == 'repair-wrong-level'
+                and reject_scope_meta.get('active_topic') == 'repair-wrong-level'
                 and reject_scope_meta.get('abstraction_level') == 'personal'
-                and reject_scope_meta.get('dialogue_mode') == 'human_problem_clarify'
+                and reject_scope_meta.get('dialogue_mode') == 'topic_opening'
                 and reject_scope_meta.get('pending_slot') == 'narrowing_axis'
-                and reject_scope_meta.get('topic_reused') is True
-                and reject_scope_meta.get('response_move') == 'acknowledge_and_continue'
+                and reject_scope_meta.get('marginal_router_status') == 'heuristic_fallback'
+                and reject_scope_meta.get('marginal_router_result_route') == 'repair_wrong_level'
+                and reject_scope_meta.get('topic_reused') is False
                 and 'уберём общую рамку' in (reject_scope_payload.get('final_user_text') or '').lower()
             ),
         },

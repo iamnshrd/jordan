@@ -526,6 +526,24 @@ def _should_render_frame_directly(interpreted_frame: dict | None) -> bool:
     )
 
 
+_SPECIAL_ROUTE_DIRECT_TOPICS = {
+    'repair-misunderstanding',
+    'repair-meta-friction',
+    'repair-wrong-level',
+    'repair-wrong-topic',
+    'vague-help-request',
+    'symptom-self-report',
+    'scope-shift-meta',
+    'relationship-opening-broad',
+    'teasing-opening',
+}
+
+
+def _should_bypass_kb_for_special_frame(interpreted_frame: dict | None) -> bool:
+    frame = dict(interpreted_frame or {})
+    return frame.get('topic', '') in _SPECIAL_ROUTE_DIRECT_TOPICS
+
+
 def build_answer_plan(question: str, user_id: str = 'default',
                       store: StateStore | None = None,
                       purpose: str = 'response',
@@ -603,6 +621,11 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 'planner.classifier_status',
                 store=store,
                 user_id=user_id,
+                marginal_router_status=classifier_metadata.get('marginal_router_status', ''),
+                marginal_router_result_route=classifier_metadata.get('marginal_router_result_route', ''),
+                marginal_router_result_topic=classifier_metadata.get('marginal_router_result_topic', ''),
+                marginal_router_result_goal=classifier_metadata.get('marginal_router_result_goal', ''),
+                marginal_router_rejection_reason=classifier_metadata.get('marginal_router_rejection_reason', ''),
                 family_classifier_status=classifier_metadata.get('family_classifier_status', ''),
                 family_classifier_result_topic=classifier_metadata.get('family_classifier_result_topic', ''),
                 family_classifier_result_goal=classifier_metadata.get('family_classifier_result_goal', ''),
@@ -660,6 +683,65 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 continuity=load_continuity(user_id=user_id, store=store),
                 guardrail=guardrail,
                 direct_response=guardrail['message'],
+                user=question,
+            ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
+
+        if _should_bypass_kb_for_special_frame(interpreted_frame):
+            clarification, clarify_metadata = _select_clarification(
+                question,
+                stage='special_route_direct',
+                dialogue_state=dialogue_state,
+                dialogue_frame=interpreted_frame,
+                dialogue_act=dialogue_act,
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
+            )
+            clarify_metadata, next_dialogue_state, next_dialogue_frame = _merge_dialogue_metadata(
+                {**classifier_metadata, **clarify_metadata},
+                dialogue_state,
+                interpreted_frame,
+                dialogue_act,
+                question=question,
+                route_name=interpreted_frame.get('route', '') or dialogue_state.get('active_route', ''),
+                decision_type='clarify',
+                reason_code=clarify_metadata.get('clarify_reason_code', ''),
+                final_user_text=clarification,
+                topic_reused=topic_reused,
+                confidence='high',
+                selected_axis=selected_axis,
+                selected_detail=selected_detail,
+            )
+            decision = _build_decision(
+                action='ask-clarifying-question',
+                mode=mode,
+                use_kb=False,
+                confidence='high',
+                reason='Special marginal route bypassed retrieval and rendered a repair/recovery frame directly.',
+                metadata=clarify_metadata,
+            )
+            log_event(
+                'planner.special_route_direct',
+                store=store,
+                user_id=user_id,
+                action=decision.action,
+                reason=decision.reason,
+                frame_topic=interpreted_frame.get('topic', ''),
+                frame_goal=interpreted_frame.get('goal', ''),
+                clarify_type=clarify_metadata.get('clarify_type', ''),
+                clarify_profile=clarify_metadata.get('clarify_profile', ''),
+                marginal_router_status=classifier_metadata.get('marginal_router_status', ''),
+                marginal_router_result_route=classifier_metadata.get('marginal_router_result_route', ''),
+            )
+            return _finalize_plan(GroundedAnswerPlan(
+                question=question,
+                user_id=user_id,
+                decision=decision,
+                assistant_id=assistant.assistant_id,
+                knowledge_set_id=assistant.knowledge_set_id,
+                purpose=purpose,
+                continuity=load_continuity(user_id=user_id, store=store),
+                direct_response=clarification,
+                clarifying_question=clarification,
                 user=question,
             ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 

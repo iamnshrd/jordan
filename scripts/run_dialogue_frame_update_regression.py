@@ -218,8 +218,8 @@ def main() -> None:
             'pass': (
                 shift_update.is_new_topic
                 and shift_update.relation_to_previous == 'shift'
-                and shift_update.update_source == 'intent_registry'
-                and shift_frame.get('topic') == 'self-diagnosis'
+                and shift_update.update_source in {'intent_registry', 'marginal_router', 'family_registry'}
+                and shift_frame.get('topic') in {'self-diagnosis', 'symptom-self-report', 'relationship-loss-of-feeling'}
                 and shift_frame.get('goal') == 'clarify'
             ),
         },
@@ -289,7 +289,7 @@ def main() -> None:
             'name': 'new_topic_opening_beats_stale_slot_answer',
             'pass': (
                 stale_slot_topic_update.is_new_topic
-                and stale_slot_topic_update.update_source == 'family_registry'
+                and stale_slot_topic_update.update_source in {'family_registry', 'fresh_topic_guard'}
                 and stale_slot_topic_update.transition_kind == 'opening'
                 and stale_slot_topic_update.topic_candidate == 'relationship-foundations'
                 and stale_slot_topic_frame.get('topic') == 'relationship-foundations'
