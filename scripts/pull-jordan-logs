@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import tarfile
+from pathlib import Path
+
+
+SCRIPT_PATH = Path(__file__).resolve()
+REPO_ROOT = SCRIPT_PATH.parent.parent
+DEFAULT_EXPORT_DIR = REPO_ROOT / 'workspace' / 'logs' / 'exports'
+
+
+def _remote_export_command(remote_home: str) -> str:
+    return (
+        'set -euo pipefail; '
+        f'if [ -x "{remote_home}/runtime/current/deploy/systemd/export-jordan-logs.sh" ]; then '
+        f'JORDAN_HOME="{remote_home}/runtime/current" bash "{remote_home}/runtime/current/deploy/systemd/export-jordan-logs.sh"; '
+        f'elif [ -x "{remote_home}/deploy/systemd/export-jordan-logs.sh" ]; then '
+        f'JORDAN_HOME="{remote_home}" bash "{remote_home}/deploy/systemd/export-jordan-logs.sh"; '
+        'else '
+        'echo "missing export helper" >&2; exit 1; '
+        'fi'
+    )
+
+
+def _extract_archive(archive_path: Path, export_dir: Path) -> str:
+    extracted_root = ''
+    with tarfile.open(archive_path, 'r:gz') as tar:
+        members = tar.getmembers()
+        if members:
+            extracted_root = members[0].name.split('/', 1)[0]
+        tar.extractall(export_dir)
+    return str(export_dir / extracted_root) if extracted_root else ''
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--remote', default=os.environ.get('JORDAN_REMOTE', '').strip())
+    parser.add_argument('--remote-home', default=os.environ.get('JORDAN_REMOTE_HOME', '/root/jordan').strip() or '/root/jordan')
+    parser.add_argument('--dest-dir', default=str(DEFAULT_EXPORT_DIR))
+    parser.add_argument('--no-extract', action='store_true')
+    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--json', action='store_true')
+    args = parser.parse_args()
+
+    if not args.remote:
+        raise SystemExit('Missing --remote or JORDAN_REMOTE')
+
+    dest_dir = Path(args.dest_dir).expanduser()
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    remote_cmd = _remote_export_command(args.remote_home)
+    ssh_cmd = ['ssh', args.remote, remote_cmd]
+
+    archive_path = ''
+    if args.dry_run:
+        remote_archive = f'{args.remote_home}/workspace/logs/exports/jordan-logs-<timestamp>.tar.gz'
+    else:
+        proc = subprocess.run(ssh_cmd, check=True, capture_output=True, text=True)
+        remote_archive = proc.stdout.strip().splitlines()[-1].strip()
+        if not remote_archive:
+            raise SystemExit('Remote export helper did not return archive path')
+        local_archive = dest_dir / Path(remote_archive).name
+        subprocess.run(['scp', f'{args.remote}:{remote_archive}', str(local_archive)], check=True)
+        archive_path = str(local_archive)
+
+    extracted_dir = ''
+    if archive_path and not args.no_extract:
+        extracted_dir = _extract_archive(Path(archive_path), dest_dir)
+
+    result = {
+        'remote': args.remote,
+        'remote_home': args.remote_home,
+        'dest_dir': str(dest_dir),
+        'remote_command': ssh_cmd,
+        'remote_archive': remote_archive,
+        'local_archive': archive_path,
+        'extracted_dir': extracted_dir,
+        'dry_run': args.dry_run,
+    }
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(archive_path or remote_archive)
+
+
+if __name__ == '__main__':
+    main()

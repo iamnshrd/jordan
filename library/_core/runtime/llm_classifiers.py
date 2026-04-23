@@ -19,6 +19,10 @@ _marginal_router: Callable[..., Any] | None = None
 _marginal_router_backend = 'none'
 _marginal_router_backend_detail = ''
 _marginal_router_autoload_attempted = False
+_control_command_classifier: Callable[..., Any] | None = None
+_control_command_backend = 'none'
+_control_command_backend_detail = ''
+_control_command_autoload_attempted = False
 
 
 def _runtime_classifier_enabled() -> bool:
@@ -121,6 +125,25 @@ def reset_marginal_router() -> None:
     _set_marginal_router(None, backend='none')
 
 
+def _set_control_command_classifier(fn: Callable[..., Any] | None, *, backend: str) -> None:
+    global _control_command_classifier, _control_command_backend, _control_command_backend_detail
+    _control_command_classifier = fn
+    _control_command_backend = backend if fn is not None else 'none'
+    _control_command_backend_detail = _classifier_detail_for(fn) if fn is not None else ''
+
+
+def set_control_command_classifier(fn: Callable[..., Any] | None) -> None:
+    global _control_command_autoload_attempted
+    _control_command_autoload_attempted = fn is not None
+    _set_control_command_classifier(fn, backend='custom_hook')
+
+
+def reset_control_command_classifier() -> None:
+    global _control_command_autoload_attempted
+    _control_command_autoload_attempted = False
+    _set_control_command_classifier(None, backend='none')
+
+
 def _autoload_family_classifier() -> None:
     global _family_autoload_attempted
     if _family_autoload_attempted:
@@ -185,6 +208,39 @@ def _autoload_marginal_router() -> None:
         return
     if openclaw_api_renderer.is_available():
         _set_marginal_router(classify_marginal_route_with_llm, backend='openclaw_api')
+
+
+def _autoload_control_command_classifier() -> None:
+    global _control_command_autoload_attempted
+    if _control_command_autoload_attempted:
+        return
+    _control_command_autoload_attempted = True
+    if str(os.environ.get('JORDAN_DISABLE_LLM_CONTROL_COMMAND') or '').strip().lower() in {
+        '1', 'true', 'yes',
+    }:
+        return
+    hook_ref = (
+        os.environ.get('JORDAN_LLM_CONTROL_COMMAND_HOOK')
+        or os.environ.get('JORDAN_LLM_DIALOGUE_CONTROL_HOOK')
+        or ''
+    ).strip()
+    if hook_ref and ':' in hook_ref:
+        module_name, attr_name = hook_ref.split(':', 1)
+        try:
+            module = importlib.import_module(module_name.strip())
+            candidate = getattr(module, attr_name.strip(), None)
+        except Exception:
+            candidate = None
+        if callable(candidate):
+            _set_control_command_classifier(candidate, backend='custom_hook')
+            return
+    if not _runtime_classifier_enabled():
+        return
+    if anthropic_api_renderer.is_available():
+        _set_control_command_classifier(classify_control_command_with_anthropic, backend='anthropic_api')
+        return
+    if openclaw_api_renderer.is_available():
+        _set_control_command_classifier(classify_control_command_with_llm, backend='openclaw_api')
 
 
 @dataclass(frozen=True)
@@ -281,6 +337,53 @@ class LLMMarginalRouteResult:
         }
 
 
+@dataclass(frozen=True)
+class LLMControlCommandRequest:
+    question: str
+    dialogue_act: str
+    dialogue_state: dict[str, Any]
+    dialogue_frame: dict[str, Any]
+    previous_topic: str = ''
+    previous_route: str = ''
+    previous_goal: str = ''
+    previous_stance: str = ''
+    previous_reason_code: str = ''
+    recovery_state: str = ''
+
+
+@dataclass
+class LLMControlCommandResult:
+    command_name: str = 'no_command'
+    confidence: float = 0.0
+    reason: str = ''
+    abstraction_shift: str = ''
+    kb_posture: str = ''
+    source: str = 'deterministic_fallback'
+    used: bool = False
+    backend: str = 'none'
+    backend_detail: str = ''
+    status: str = 'not_configured'
+    fallback_used: bool = True
+    rejection_reason: str = ''
+    exception_detail: str = ''
+
+    def metadata(self) -> dict[str, Any]:
+        return {
+            'control_command_used': self.used,
+            'control_command_backend': self.backend,
+            'control_command_backend_detail': self.backend_detail,
+            'control_command_status': self.status,
+            'control_command_confidence': self.confidence,
+            'control_command_name': self.command_name,
+            'control_command_reason': self.reason,
+            'control_command_kb_posture': self.kb_posture,
+            'control_command_abstraction_shift': self.abstraction_shift,
+            'control_command_fallback_used': self.fallback_used,
+            'control_command_rejection_reason': self.rejection_reason,
+            'control_command_exception_detail': self.exception_detail,
+        }
+
+
 def _build_family_prompt(request: LLMFamilyClassificationRequest) -> dict[str, str]:
     candidate_lines = []
     for candidate in request.candidates:
@@ -369,6 +472,57 @@ def _build_marginal_route_prompt(request: LLMMarginalRouteRequest) -> dict[str, 
         f'previous_route={request.previous_route}',
         f'previous_goal={request.previous_goal}',
         f'previous_stance={request.previous_stance}',
+        f'active_frame={json.dumps(request.dialogue_frame, ensure_ascii=False)}',
+        f'active_state={json.dumps(request.dialogue_state, ensure_ascii=False)}',
+    ])
+    return {'system': system, 'user': user}
+
+
+def _build_control_command_prompt(request: LLMControlCommandRequest) -> dict[str, str]:
+    allowed_commands = (
+        'start_social_opening',
+        'start_broad_help_opening',
+        'start_human_problem_opening',
+        'start_relationship_broad_opening',
+        'start_symptom_self_report_opening',
+        'repair_misunderstanding',
+        'repair_meta_friction',
+        'repair_wrong_level',
+        'repair_wrong_topic',
+        'shift_scope_more_general',
+        'shift_scope_more_personal',
+        'request_kb_grounding',
+        'continue_current_flow',
+        'no_command',
+    )
+    allowed_kb_posture = ('skip_kb', 'optional_kb', 'require_kb', '')
+    allowed_abstraction = ('preserve', 'more_general', 'more_personal', 'simplify', '')
+    system = (
+        'Ты принимаешь bounded control-решение для одного пользовательского хода. '
+        'Нельзя придумывать новые темы, советы, диагнозы или текст ответа. '
+        'Верни только JSON без markdown. '
+        'Допустимые command_name: '
+        + ', '.join(allowed_commands)
+        + '. Допустимые kb_posture: '
+        + ', '.join(allowed_kb_posture)
+        + '. Допустимые abstraction_shift: '
+        + ', '.join(allowed_abstraction)
+        + '. Формат: '
+        '{"command_name":"<allowed_command>",'
+        '"confidence":0.0,'
+        '"reason":"<short_reason>",'
+        '"abstraction_shift":"<allowed_or_empty>",'
+        '"kb_posture":"<allowed_or_empty>"}'
+    )
+    user = '\n'.join([
+        f'question={request.question}',
+        f'dialogue_act={request.dialogue_act}',
+        f'previous_topic={request.previous_topic}',
+        f'previous_route={request.previous_route}',
+        f'previous_goal={request.previous_goal}',
+        f'previous_stance={request.previous_stance}',
+        f'previous_reason_code={request.previous_reason_code}',
+        f'recovery_state={request.recovery_state}',
         f'active_frame={json.dumps(request.dialogue_frame, ensure_ascii=False)}',
         f'active_state={json.dumps(request.dialogue_state, ensure_ascii=False)}',
     ])
@@ -590,6 +744,73 @@ def maybe_route_marginal_turn(request: LLMMarginalRouteRequest) -> LLMMarginalRo
     result.confidence = float(payload.get('confidence', 0.0) or 0.0)
     result.reason = str(payload.get('reason', '') or '')
     result.source = str(payload.get('source', 'marginal_router') or 'marginal_router')
+    result.status = 'classified'
+    result.fallback_used = False
+    return result
+
+
+def classify_control_command_with_llm(*, request: LLMControlCommandRequest) -> dict[str, Any]:
+    return _call_openclaw_api_json(_build_control_command_prompt(request))
+
+
+classify_control_command_with_llm.__jordan_classifier_backend_detail__ = describe_api_classifier_backend
+
+
+def classify_control_command_with_anthropic(*, request: LLMControlCommandRequest) -> dict[str, Any]:
+    timeout = float((os.environ.get('JORDAN_LLM_CONTROL_COMMAND_TIMEOUT_SECONDS') or '4').strip() or '4')
+    return anthropic_api_renderer.call_anthropic_json(
+        prompt=_build_control_command_prompt(request),
+        timeout_seconds=timeout,
+        max_tokens=240,
+    )
+
+
+classify_control_command_with_anthropic.__jordan_classifier_backend_detail__ = (
+    describe_anthropic_classifier_backend
+)
+
+
+def maybe_classify_control_command(request: LLMControlCommandRequest) -> LLMControlCommandResult:
+    _autoload_control_command_classifier()
+    result = LLMControlCommandResult(
+        backend=_control_command_backend,
+        backend_detail=_control_command_backend_detail,
+        status='not_configured' if _control_command_classifier is None else 'not_used',
+        fallback_used=True,
+    )
+    if _control_command_classifier is None:
+        return result
+    try:
+        payload = _control_command_classifier(request=request)
+    except Exception as exc:
+        result.used = True
+        result.status = 'exception'
+        result.rejection_reason = 'exception'
+        result.reason = f'{type(exc).__name__}: {exc}'
+        result.exception_detail = f'{type(exc).__name__}: {exc}'
+        return result
+
+    if isinstance(payload, LLMControlCommandResult):
+        payload.used = True
+        payload.backend = _control_command_backend
+        payload.backend_detail = _control_command_backend_detail
+        return payload
+
+    if not isinstance(payload, dict):
+        result.used = True
+        result.status = 'invalid_payload'
+        result.rejection_reason = 'invalid_payload'
+        return result
+
+    result.used = True
+    result.backend = _control_command_backend
+    result.backend_detail = _control_command_backend_detail
+    result.command_name = str(payload.get('command_name', 'no_command') or 'no_command')
+    result.confidence = float(payload.get('confidence', 0.0) or 0.0)
+    result.reason = str(payload.get('reason', '') or '')
+    result.abstraction_shift = str(payload.get('abstraction_shift', '') or '')
+    result.kb_posture = str(payload.get('kb_posture', '') or '')
+    result.source = str(payload.get('source', 'control_command') or 'control_command')
     result.status = 'classified'
     result.fallback_used = False
     return result

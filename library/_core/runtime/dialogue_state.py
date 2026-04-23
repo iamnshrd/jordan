@@ -266,6 +266,7 @@ class DialogueState:
     candidate_axes: list[str] = field(default_factory=list)
     active_axis: str = ''
     active_detail: str = ''
+    recovery_state: str = 'none'
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -292,6 +293,7 @@ def coerce_state(data: dict | None) -> DialogueState:
         candidate_axes=list(payload.get('candidate_axes') or []),
         active_axis=payload.get('active_axis', '') or '',
         active_detail=payload.get('active_detail', '') or '',
+        recovery_state=payload.get('recovery_state', 'none') or 'none',
     )
 
 
@@ -333,6 +335,53 @@ def infer_active_topic(question: str, *, route_name: str = '',
     return route_name or ''
 
 
+def _next_recovery_state(current: str, *, control_command: str,
+                         clarify_profile: str, reason_code: str,
+                         dialogue_act: str, next_topic: str,
+                         kb_posture: str = '') -> str:
+    current = current or 'none'
+    repair_map = {
+        'repair_misunderstanding': 'recent_misunderstanding',
+        'repair_meta_friction': 'recent_meta_friction',
+        'repair_wrong_level': 'recent_over_narrowing',
+        'repair_wrong_topic': 'recent_over_narrowing',
+    }
+    if control_command in repair_map:
+        return repair_map[control_command]
+    if clarify_profile in {
+        'repair-misunderstanding',
+        'repair-meta-friction',
+        'repair-wrong-level',
+        'repair-wrong-topic',
+    }:
+        return {
+            'repair-misunderstanding': 'recent_misunderstanding',
+            'repair-meta-friction': 'recent_meta_friction',
+            'repair-wrong-level': 'recent_over_narrowing',
+            'repair-wrong-topic': 'recent_over_narrowing',
+        }.get(clarify_profile, 'none')
+    if control_command in {
+        'start_social_opening',
+        'start_broad_help_opening',
+        'start_human_problem_opening',
+        'start_relationship_broad_opening',
+        'start_symptom_self_report_opening',
+        'shift_scope_more_general',
+        'shift_scope_more_personal',
+        'request_kb_grounding',
+    }:
+        return 'none'
+    if reason_code == 'source-lookup' and current.startswith('recent_'):
+        return current
+    if kb_posture == 'require_kb':
+        return 'none'
+    if dialogue_act in {'topic_shift', 'greeting_opening', 'request_menu'}:
+        return 'none'
+    if next_topic and not next_topic.startswith('repair-') and next_topic not in {'scope-shift-meta'}:
+        return 'none'
+    return current
+
+
 def advance_dialogue_state(current_state: dict | None, *, question: str,
                            dialogue_act: str, route_name: str = '',
                            clarify_profile: str = '',
@@ -342,7 +391,9 @@ def advance_dialogue_state(current_state: dict | None, *, question: str,
                            question_kind: str = '',
                            confidence: str = '',
                            selected_axis: str = '',
-                           selected_detail: str = '') -> DialogueState:
+                           selected_detail: str = '',
+                           control_command: str = '',
+                           control_kb_posture: str = '') -> DialogueState:
     state = coerce_state(current_state)
     next_state = coerce_state(state.as_dict())
     now = now_iso()
@@ -381,6 +432,15 @@ def advance_dialogue_state(current_state: dict | None, *, question: str,
         family_spec = get_dialogue_family_spec(next_state.active_topic)
         if family_spec and family_spec.candidate_axes:
             next_state.candidate_axes = list(family_spec.candidate_axes)
+        next_state.recovery_state = _next_recovery_state(
+            state.recovery_state,
+            control_command=control_command,
+            clarify_profile=clarify_profile,
+            reason_code=reason_code,
+            dialogue_act=dialogue_act,
+            next_topic=next_state.active_topic,
+            kb_posture=control_kb_posture,
+        )
         return next_state
 
     if transition_result:
@@ -467,6 +527,15 @@ def advance_dialogue_state(current_state: dict | None, *, question: str,
     family_spec = get_dialogue_family_spec(next_state.active_topic)
     if family_spec and family_spec.candidate_axes:
         next_state.candidate_axes = list(family_spec.candidate_axes)
+    next_state.recovery_state = _next_recovery_state(
+        state.recovery_state,
+        control_command=control_command,
+        clarify_profile=clarify_profile,
+        reason_code=reason_code,
+        dialogue_act=dialogue_act,
+        next_topic=next_state.active_topic,
+        kb_posture=control_kb_posture,
+    )
     return next_state
 
 
@@ -483,6 +552,7 @@ def build_dialogue_metadata(state: dict | DialogueState | None, *,
         'pending_slot': coerced.pending_slot,
         'active_axis': coerced.active_axis,
         'active_detail': coerced.active_detail,
+        'recovery_state': coerced.recovery_state,
         'topic_reused': bool(topic_reused),
         'turn_count_in_topic': coerced.turn_count_in_topic,
     }

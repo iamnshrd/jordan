@@ -9,6 +9,13 @@ This repository now writes unified structured runtime logs to one canonical file
 Use this file as the primary artifact when copying logs off the server for
 analysis.
 
+Jordan's preferred v1 operational model is now:
+
+1. build a release bundle locally
+2. upload and activate that bundle on the VPS
+3. keep `systemd` as the runtime orchestrator
+4. pull canonical log snapshots back locally
+
 ## Assumptions
 
 - repo can live anywhere on disk
@@ -57,6 +64,13 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now jordan-mentor-dispatch.timer
 ```
 
+Install the release-activation backend helper:
+
+```bash
+sudo cp deploy/systemd/activate-jordan-release.sh /usr/local/bin/activate-jordan-release
+sudo chmod +x /usr/local/bin/activate-jordan-release
+```
+
 Point OpenClaw file logging at the shared log directory:
 
 ```bash
@@ -70,6 +84,35 @@ sudo systemctl start jordan-mentor-dispatch.service
 ```
 
 ## Operations
+
+## Remote-Ops Workflow
+
+Build a release locally:
+
+```bash
+python3 scripts/build-jordan-release --json
+```
+
+Deploy the newest local bundle to the VPS:
+
+```bash
+python3 scripts/deploy-jordan-release --remote root@your-vps --json
+```
+
+The activation backend extracts the bundle under:
+
+```bash
+$JORDAN_HOME/runtime/releases/<release-id>
+```
+
+and moves the stable runtime pointer to:
+
+```bash
+$JORDAN_HOME/runtime/current
+```
+
+Current `systemd` helpers automatically prefer `runtime/current` when it exists,
+so existing service names do not need to change.
 
 Status:
 
@@ -89,6 +132,9 @@ Pull latest code, clear fresh logs, and restart everything in one step:
 ```bash
 /usr/local/bin/update-jordan-runtime
 ```
+
+That helper is still supported for repo-based updates, but it is no longer the
+preferred path once release-bundle deploy is in place.
 
 If OpenClaw is installed as a user service, prefer running the helper without
 `sudo` so it can reach the user bus cleanly:
@@ -142,6 +188,12 @@ On the VPS, bundle the canonical logs first:
 JORDAN_HOME=/root/jordan /root/jordan/deploy/systemd/export-jordan-logs.sh
 ```
 
+From the local machine, prefer the canonical pull helper instead:
+
+```bash
+python3 scripts/pull-jordan-logs --remote root@your-vps --json
+```
+
 This writes a timestamped archive under:
 
 ```bash
@@ -158,6 +210,14 @@ reconstructs the exported audit file from `workspace/logs/jordan.jsonl` by
 filtering `conversation.*` and delivery-related events. That makes the archive
 internally consistent even when the standalone audit file was cleared before
 export.
+
+The export manifest also records:
+
+- release revision / commit SHA
+- release id when a release bundle is active
+- canonical source paths for each log file
+- file sizes and mtimes
+- `conversation_audit_source`
 
 Then copy that archive somewhere outside the repo root on your local machine:
 

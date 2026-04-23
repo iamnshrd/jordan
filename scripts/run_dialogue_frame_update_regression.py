@@ -218,7 +218,7 @@ def main() -> None:
             'pass': (
                 shift_update.is_new_topic
                 and shift_update.relation_to_previous == 'shift'
-                and shift_update.update_source in {'intent_registry', 'marginal_router', 'family_registry'}
+                and shift_update.update_source in {'intent_registry', 'control_command', 'marginal_router', 'family_registry'}
                 and shift_frame.get('topic') in {'self-diagnosis', 'symptom-self-report', 'relationship-loss-of-feeling'}
                 and shift_frame.get('goal') == 'clarify'
             ),

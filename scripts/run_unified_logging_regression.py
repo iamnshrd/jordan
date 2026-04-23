@@ -129,10 +129,15 @@ def main() -> None:
                 'name': 'adapter_result_includes_classifier_metadata',
                 'pass': (
                     len(adapter_renderer_rows) == 1
+                    and 'control_command_status' in adapter_renderer_rows[0]
+                    and 'control_command_name' in adapter_renderer_rows[0]
+                    and 'control_command_exception_detail' in adapter_renderer_rows[0]
                     and 'marginal_router_status' in adapter_renderer_rows[0]
                     and 'marginal_router_result_route' in adapter_renderer_rows[0]
                     and 'marginal_router_exception_detail' in adapter_renderer_rows[0]
                     and 'family_classifier_status' in adapter_renderer_rows[0]
+                    and 'recovery_state_before' in adapter_renderer_rows[0]
+                    and 'recovery_state_after' in adapter_renderer_rows[0]
                     and 'mode_classifier_status' in adapter_renderer_rows[0]
                     and 'kb_classifier_status' in adapter_renderer_rows[0]
                 ),

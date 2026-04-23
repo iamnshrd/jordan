@@ -220,7 +220,7 @@ def main() -> None:
                 and greeting_meta.get('frame_topic') == 'greeting'
                 and greeting_meta.get('frame_goal') == 'opening'
                 and greeting_meta.get('frame_type') == 'greeting'
-                and greeting_meta.get('frame_update_source') == 'family_registry'
+                and greeting_meta.get('frame_update_source') in {'family_registry', 'control_command'}
                 and greeting_meta.get('clarify_reason_code') == 'greeting-opening'
                 and greeting_frame.get('topic') == 'greeting'
                 and greeting_frame.get('goal') == 'opening'

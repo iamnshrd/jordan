@@ -17,6 +17,7 @@ fi
 . "$COMMON_SH"
 
 JORDAN_HOME="$(resolve_jordan_home)"
+RUNTIME_JORDAN_HOME="$(resolve_jordan_runtime_home "$JORDAN_HOME")"
 
 log() {
   jordan_log restart "$*"
@@ -26,15 +27,15 @@ run_jordan_warmup() {
   local python_bin module
   python_bin="${OPENCLAW_JORDAN_BRIDGE_PYTHON:-}"
   module="${OPENCLAW_JORDAN_BRIDGE_MODULE:-library}"
-  if [ -z "$python_bin" ] && [ -x "$JORDAN_HOME/.venv/bin/python3" ]; then
-    python_bin="$JORDAN_HOME/.venv/bin/python3"
+  if [ -z "$python_bin" ] && [ -x "$RUNTIME_JORDAN_HOME/.venv/bin/python3" ]; then
+    python_bin="$RUNTIME_JORDAN_HOME/.venv/bin/python3"
   fi
   if [ -z "$python_bin" ]; then
     python_bin="python3"
   fi
 
   log "warming Jordan runtime"
-  if (cd "$JORDAN_HOME" && "$python_bin" -m "$module" warmup --timeout-seconds 60 --retry-interval 2); then
+  if (cd "$RUNTIME_JORDAN_HOME" && "$python_bin" -m "$module" warmup --timeout-seconds 60 --retry-interval 2); then
     log "Jordan warmup complete"
   else
     log "Jordan warmup failed; continuing"
@@ -127,7 +128,10 @@ export_user_unit_environment() {
 }
 
 main() {
-  if [ -x "$JORDAN_HOME/deploy/systemd/configure-openclaw-logging.sh" ]; then
+  if [ -x "$RUNTIME_JORDAN_HOME/deploy/systemd/configure-openclaw-logging.sh" ]; then
+    log "configuring OpenClaw file logging"
+    "$RUNTIME_JORDAN_HOME/deploy/systemd/configure-openclaw-logging.sh" >/dev/null
+  elif [ -x "$JORDAN_HOME/deploy/systemd/configure-openclaw-logging.sh" ]; then
     log "configuring OpenClaw file logging"
     "$JORDAN_HOME/deploy/systemd/configure-openclaw-logging.sh" >/dev/null
   fi

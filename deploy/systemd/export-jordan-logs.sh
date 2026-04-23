@@ -17,12 +17,14 @@ fi
 . "$COMMON_SH"
 
 JORDAN_HOME="$(resolve_jordan_home)"
+RUNTIME_JORDAN_HOME="$(resolve_jordan_runtime_home "$JORDAN_HOME")"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-EXPORT_ROOT="${JORDAN_HOME}/workspace/logs/exports"
+EXPORT_ROOT="${RUNTIME_JORDAN_HOME}/workspace/logs/exports"
 EXPORT_DIR="${EXPORT_ROOT}/${TIMESTAMP}"
-RUNTIME_LOG="${JORDAN_HOME}/workspace/logs/jordan.jsonl"
-CONVERSATION_AUDIT_LOG="${JORDAN_HOME}/workspace/logs/conversation_audit.jsonl"
-OPENCLAW_LOG="${JORDAN_HOME}/workspace/logs/openclaw.log"
+RUNTIME_LOG="${RUNTIME_JORDAN_HOME}/workspace/logs/jordan.jsonl"
+CONVERSATION_AUDIT_LOG="${RUNTIME_JORDAN_HOME}/workspace/logs/conversation_audit.jsonl"
+OPENCLAW_LOG="${RUNTIME_JORDAN_HOME}/workspace/logs/openclaw.log"
+RELEASE_MANIFEST="${RUNTIME_JORDAN_HOME}/release-manifest.json"
 
 mkdir -p "$EXPORT_DIR"
 
@@ -90,8 +92,9 @@ PY
 write_export_manifest() {
   local audit_source="$1"
   local manifest="${EXPORT_DIR}/manifest.json"
-  python3 - "$manifest" "$RUNTIME_LOG" "$CONVERSATION_AUDIT_LOG" "$OPENCLAW_LOG" "$EXPORT_DIR/conversation_audit.jsonl" "$audit_source" <<'PY'
+  python3 - "$manifest" "$RUNTIME_LOG" "$CONVERSATION_AUDIT_LOG" "$OPENCLAW_LOG" "$EXPORT_DIR/conversation_audit.jsonl" "$audit_source" "$RELEASE_MANIFEST" "$RUNTIME_JORDAN_HOME" "$JORDAN_HOME" <<'PY'
 import json
+import subprocess
 import os
 import sys
 from datetime import datetime, timezone
@@ -103,6 +106,9 @@ audit_path = Path(sys.argv[3])
 openclaw_path = Path(sys.argv[4])
 export_audit_path = Path(sys.argv[5])
 audit_source = sys.argv[6]
+release_manifest_path = Path(sys.argv[7])
+runtime_root = Path(sys.argv[8])
+ops_root = Path(sys.argv[9])
 
 def stat_payload(path: Path) -> dict:
     if not path.exists():
@@ -114,8 +120,46 @@ def stat_payload(path: Path) -> dict:
         "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
     }
 
+def read_release_manifest(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+def git_revision(path: Path) -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except Exception:
+        return ""
+    return proc.stdout.strip()
+
+release_manifest = read_release_manifest(release_manifest_path)
+release_revision = (
+    str(release_manifest.get("commit_sha") or "").strip()
+    or git_revision(runtime_root)
+    or git_revision(ops_root)
+)
+
 payload = {
     "exported_at": datetime.now(timezone.utc).isoformat(),
+    "runtime_root": str(runtime_root),
+    "ops_root": str(ops_root),
+    "canonical_paths": {
+        "runtime_log": str(runtime_path),
+        "conversation_audit_log": str(audit_path),
+        "openclaw_log": str(openclaw_path),
+    },
+    "release_revision": release_revision,
+    "release_id": str(release_manifest.get("release_id") or ""),
+    "release_manifest": release_manifest,
     "runtime_log": stat_payload(runtime_path),
     "canonical_conversation_audit_log": stat_payload(audit_path),
     "openclaw_log": stat_payload(openclaw_path),

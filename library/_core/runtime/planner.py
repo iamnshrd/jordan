@@ -386,6 +386,7 @@ def _merge_dialogue_metadata(metadata: dict | None,
                              selected_axis: str = '',
                              selected_detail: str = '') -> tuple[dict, dict, dict]:
     payload = dict(metadata or {})
+    recovery_state_before = (dialogue_state or {}).get('recovery_state', '') or 'none'
     next_state = advance_dialogue_state(
         dialogue_state,
         question=question,
@@ -399,6 +400,8 @@ def _merge_dialogue_metadata(metadata: dict | None,
         confidence=confidence,
         selected_axis=selected_axis,
         selected_detail=selected_detail,
+        control_command=payload.get('control_command_name', ''),
+        control_kb_posture=payload.get('control_command_kb_posture', ''),
     )
     next_frame = frame_from_state(next_state, dialogue_act=dialogue_act).as_dict()
     next_frame.update(
@@ -450,6 +453,8 @@ def _merge_dialogue_metadata(metadata: dict | None,
         ),
     )
     payload.update(build_frame_metadata(next_frame))
+    payload['recovery_state_before'] = recovery_state_before
+    payload['recovery_state_after'] = next_state.recovery_state or 'none'
     if selected_axis:
         payload['selected_axis'] = selected_axis
     if selected_detail:
@@ -532,15 +537,43 @@ _SPECIAL_ROUTE_DIRECT_TOPICS = {
     'repair-wrong-level',
     'repair-wrong-topic',
     'vague-help-request',
-    'symptom-self-report',
+    'self-diagnosis',
     'scope-shift-meta',
     'relationship-opening-broad',
+    'problem-sharing-opening',
+    'life-direction-opening',
+    'social-small-talk',
+    'greeting',
     'teasing-opening',
 }
 
 
-def _should_bypass_kb_for_special_frame(interpreted_frame: dict | None) -> bool:
+def _should_bypass_kb_for_special_frame(interpreted_frame: dict | None, classifier_metadata: dict | None = None,
+                                        dialogue_state: dict | None = None) -> bool:
     frame = dict(interpreted_frame or {})
+    metadata = dict(classifier_metadata or {})
+    state = dict(dialogue_state or {})
+    command_name = str(metadata.get('control_command_name', '') or '')
+    kb_posture = str(metadata.get('control_command_kb_posture', '') or '')
+    recovery_state = str(state.get('recovery_state', '') or '')
+    if command_name in {
+        'start_social_opening',
+        'start_broad_help_opening',
+        'start_human_problem_opening',
+        'start_relationship_broad_opening',
+        'start_symptom_self_report_opening',
+        'repair_misunderstanding',
+        'repair_meta_friction',
+        'repair_wrong_level',
+        'repair_wrong_topic',
+        'shift_scope_more_general',
+        'shift_scope_more_personal',
+    }:
+        return True
+    if kb_posture == 'skip_kb':
+        return True
+    if recovery_state.startswith('recent_') and kb_posture != 'require_kb':
+        return True
     return frame.get('topic', '') in _SPECIAL_ROUTE_DIRECT_TOPICS
 
 
@@ -621,6 +654,10 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 'planner.classifier_status',
                 store=store,
                 user_id=user_id,
+                control_command_status=classifier_metadata.get('control_command_status', ''),
+                control_command_name=classifier_metadata.get('control_command_name', ''),
+                control_command_kb_posture=classifier_metadata.get('control_command_kb_posture', ''),
+                control_command_rejection_reason=classifier_metadata.get('control_command_rejection_reason', ''),
                 marginal_router_status=classifier_metadata.get('marginal_router_status', ''),
                 marginal_router_result_route=classifier_metadata.get('marginal_router_result_route', ''),
                 marginal_router_result_topic=classifier_metadata.get('marginal_router_result_topic', ''),
@@ -686,7 +723,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 user=question,
             ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 
-        if _should_bypass_kb_for_special_frame(interpreted_frame):
+        if _should_bypass_kb_for_special_frame(interpreted_frame, classifier_metadata, dialogue_state):
             clarification, clarify_metadata = _select_clarification(
                 question,
                 stage='special_route_direct',
@@ -716,7 +753,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 mode=mode,
                 use_kb=False,
                 confidence='high',
-                reason='Special marginal route bypassed retrieval and rendered a repair/recovery frame directly.',
+                reason='Control command bypassed retrieval and rendered a direct repair/opening frame.',
                 metadata=clarify_metadata,
             )
             log_event(
@@ -729,6 +766,7 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 frame_goal=interpreted_frame.get('goal', ''),
                 clarify_type=clarify_metadata.get('clarify_type', ''),
                 clarify_profile=clarify_metadata.get('clarify_profile', ''),
+                control_command_name=classifier_metadata.get('control_command_name', ''),
                 marginal_router_status=classifier_metadata.get('marginal_router_status', ''),
                 marginal_router_result_route=classifier_metadata.get('marginal_router_result_route', ''),
             )
@@ -745,7 +783,19 @@ def build_answer_plan(question: str, user_id: str = 'default',
                 user=question,
             ), dialogue_state=next_dialogue_state, dialogue_frame=next_dialogue_frame, user_id=user_id, store=store)
 
-        use_kb, kb_classifier_metadata = should_use_kb_with_metadata(question)
+        control_kb_posture = str(classifier_metadata.get('control_command_kb_posture', '') or '')
+        if control_kb_posture == 'require_kb':
+            use_kb = True
+            kb_classifier_metadata = {
+                'kb_classifier_used': False,
+                'kb_classifier_status': 'control_required',
+                'kb_classifier_backend': 'none',
+                'kb_classifier_backend_detail': '',
+                'kb_classifier_confidence': 1.0,
+                'kb_classifier_reason': 'control_command_requires_kb',
+            }
+        else:
+            use_kb, kb_classifier_metadata = should_use_kb_with_metadata(question)
         classifier_metadata.update(kb_classifier_metadata)
         if not use_kb:
             clarification, clarify_metadata = _select_clarification(

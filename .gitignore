@@ -44,6 +44,7 @@ workspace/user_reaction_estimate.json
 workspace/user_state.json
 workspace/.openclaw/
 workspace/logs/
+workspace/releases/
 library/books/
 workspace/mentor_state.json
 workspace/mentor_events.jsonl

@@ -16,10 +16,13 @@ if [ ! -r "$COMMON_SH" ] && [ -r "$PWD/deploy/systemd/common.sh" ]; then
 fi
 . "$COMMON_SH"
 
-export JORDAN_HOME="${JORDAN_HOME:-$(resolve_jordan_home)}"
-export JORDAN_LOG_PATH="${JORDAN_LOG_PATH:-$JORDAN_HOME/workspace/logs/jordan.jsonl}"
+OPS_JORDAN_HOME="${JORDAN_HOME:-$(resolve_jordan_home)}"
+RUNTIME_JORDAN_HOME="$(resolve_jordan_runtime_home "$OPS_JORDAN_HOME")"
 
-cd "$JORDAN_HOME"
+export JORDAN_HOME="$RUNTIME_JORDAN_HOME"
+export JORDAN_LOG_PATH="${JORDAN_LOG_PATH:-$RUNTIME_JORDAN_HOME/workspace/logs/jordan.jsonl}"
+
+cd "$RUNTIME_JORDAN_HOME"
 
 if [ -f ".venv/bin/activate" ]; then
   # shellcheck disable=SC1091

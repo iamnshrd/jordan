@@ -13,6 +13,7 @@ from _helpers import REPO_ROOT
 
 ALWAYS_RUN = [
     'run_legacy_cleanup_regression.py',
+    'run_remote_ops_regression.py',
     'run_default_workspace_audit_regression.py',
     'run_default_workspace_migration_regression.py',
     'run_diagnostics_boundary_regression.py',

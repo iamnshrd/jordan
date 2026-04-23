@@ -23,6 +23,7 @@ _DEFAULT_V1: dict = {
     'turn_count_in_topic': 0,
     'topic_confidence': '',
     'candidate_axes': [],
+    'recovery_state': 'none',
 }
 
 

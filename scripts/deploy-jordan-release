@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+SCRIPT_PATH = Path(__file__).resolve()
+REPO_ROOT = SCRIPT_PATH.parent.parent
+DEFAULT_RELEASE_DIR = REPO_ROOT / 'workspace' / 'releases'
+ACTIVATE_SCRIPT = REPO_ROOT / 'deploy' / 'systemd' / 'activate-jordan-release.sh'
+
+
+def _latest_bundle(release_dir: Path) -> Path:
+    bundles = sorted(release_dir.glob('jordan-release-*.tar.gz'))
+    if not bundles:
+        raise SystemExit(f'No release bundles found in {release_dir}')
+    return bundles[-1]
+
+
+def _run(cmd: list[str], *, dry_run: bool) -> None:
+    if dry_run:
+        return
+    subprocess.run(cmd, check=True)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--remote', default=os.environ.get('JORDAN_REMOTE', '').strip())
+    parser.add_argument('--remote-home', default=os.environ.get('JORDAN_REMOTE_HOME', '/root/jordan').strip() or '/root/jordan')
+    parser.add_argument('--bundle', default='')
+    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--json', action='store_true')
+    args = parser.parse_args()
+
+    if not args.remote:
+      raise SystemExit('Missing --remote or JORDAN_REMOTE')
+
+    bundle = Path(args.bundle).expanduser() if args.bundle else _latest_bundle(DEFAULT_RELEASE_DIR)
+    if not bundle.exists():
+        raise SystemExit(f'Bundle not found: {bundle}')
+
+    remote_tmp = f'{args.remote_home}/runtime/incoming'
+    remote_bundle = f'{remote_tmp}/{bundle.name}'
+    remote_activate = f'{remote_tmp}/activate-jordan-release.sh'
+
+    mkdir_cmd = ['ssh', args.remote, f'mkdir -p {remote_tmp}']
+    upload_bundle_cmd = ['scp', str(bundle), f'{args.remote}:{remote_bundle}']
+    upload_activate_cmd = ['scp', str(ACTIVATE_SCRIPT), f'{args.remote}:{remote_activate}']
+    activate_cmd = [
+        'ssh',
+        args.remote,
+        (
+            f'chmod +x {remote_activate} && '
+            f'JORDAN_HOME={args.remote_home} bash {remote_activate} {remote_bundle}'
+        ),
+    ]
+
+    for cmd in (mkdir_cmd, upload_bundle_cmd, upload_activate_cmd, activate_cmd):
+        _run(cmd, dry_run=args.dry_run)
+
+    result = {
+        'remote': args.remote,
+        'remote_home': args.remote_home,
+        'bundle': str(bundle),
+        'remote_bundle': remote_bundle,
+        'dry_run': args.dry_run,
+        'commands': [mkdir_cmd, upload_bundle_cmd, upload_activate_cmd, activate_cmd],
+    }
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(remote_bundle)
+
+
+if __name__ == '__main__':
+    main()

@@ -7,6 +7,14 @@ Keep reusable runtime code in `library/`.
 Keep one-off checks, experiments, and operator-facing regression entrypoints in
 `scripts/`.
 
+Operator-facing remote-ops helpers also live here:
+
+```bash
+python3 scripts/build-jordan-release --json
+python3 scripts/deploy-jordan-release --remote root@your-vps --json
+python3 scripts/pull-jordan-logs --remote root@your-vps --json
+```
+
 ## Post-Refactor Check
 
 Use the canonical one-shot local gate after refactors:

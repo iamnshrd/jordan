@@ -18,8 +18,10 @@ from library._core.runtime.dialogue_intent_registry import infer_dialogue_intent
 from library._core.runtime.dialogue_intent_registry import question_has_dialogue_intent_marker
 from library._core.runtime.dialogue_acts import extract_dialogue_axis, extract_dialogue_detail
 from library._core.runtime.llm_classifiers import (
+    LLMControlCommandRequest,
     LLMFamilyClassificationRequest,
     LLMMarginalRouteRequest,
+    maybe_classify_control_command,
     maybe_classify_dialogue_family,
     maybe_route_marginal_turn,
 )
@@ -202,6 +204,196 @@ _SPECIAL_ROUTE_ALLOWED_GOALS = {
     'example',
 }
 
+_CONTROL_COMMAND_ALLOWED = {
+    'start_social_opening',
+    'start_broad_help_opening',
+    'start_human_problem_opening',
+    'start_relationship_broad_opening',
+    'start_symptom_self_report_opening',
+    'repair_misunderstanding',
+    'repair_meta_friction',
+    'repair_wrong_level',
+    'repair_wrong_topic',
+    'shift_scope_more_general',
+    'shift_scope_more_personal',
+    'request_kb_grounding',
+    'continue_current_flow',
+    'no_command',
+}
+
+_CONTROL_COMMAND_ALLOWED_KB_POSTURE = {'', 'skip_kb', 'optional_kb', 'require_kb'}
+_CONTROL_COMMAND_ALLOWED_ABSTRACTION = {'', 'preserve', 'more_general', 'more_personal', 'simplify'}
+
+_CONTROL_COMMAND_TOPIC_DEFAULTS = {
+    'start_social_opening': {
+        'topic': 'social-small-talk',
+        'route': 'general',
+        'stance': 'general',
+        'goal': 'opening',
+        'relation': 'new',
+        'pending_slot': '',
+        'bypass_kb': True,
+    },
+    'start_broad_help_opening': {
+        'topic': 'problem-sharing-opening',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'new',
+        'pending_slot': 'topic_selection',
+        'bypass_kb': True,
+    },
+    'start_human_problem_opening': {
+        'topic': 'problem-sharing-opening',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'new',
+        'pending_slot': 'topic_selection',
+        'bypass_kb': True,
+    },
+    'start_relationship_broad_opening': {
+        'topic': 'relationship-opening-broad',
+        'route': 'relationship-maintenance',
+        'stance': 'general',
+        'goal': 'opening',
+        'relation': 'reframe',
+        'pending_slot': 'pattern_family',
+        'bypass_kb': True,
+    },
+    'start_symptom_self_report_opening': {
+        'topic': 'self-diagnosis',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'reframe',
+        'pending_slot': 'symptom_narrowing',
+        'bypass_kb': True,
+    },
+    'repair_misunderstanding': {
+        'topic': 'repair-misunderstanding',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'reframe',
+        'pending_slot': '',
+        'bypass_kb': True,
+    },
+    'repair_meta_friction': {
+        'topic': 'repair-meta-friction',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'reframe',
+        'pending_slot': '',
+        'bypass_kb': True,
+    },
+    'repair_wrong_level': {
+        'topic': 'repair-wrong-level',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'reframe',
+        'pending_slot': '',
+        'bypass_kb': True,
+    },
+    'repair_wrong_topic': {
+        'topic': 'repair-wrong-topic',
+        'route': 'general',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'reframe',
+        'pending_slot': '',
+        'bypass_kb': True,
+    },
+    'shift_scope_more_general': {
+        'topic': 'scope-shift-meta',
+        'route': 'general',
+        'stance': 'general',
+        'goal': 'overview',
+        'relation': 'reframe',
+        'pending_slot': 'topic_selection',
+        'bypass_kb': True,
+    },
+    'shift_scope_more_personal': {
+        'topic': '',
+        'route': '',
+        'stance': 'personal',
+        'goal': 'clarify',
+        'relation': 'reframe',
+        'pending_slot': 'narrowing_axis',
+        'bypass_kb': True,
+    },
+    'request_kb_grounding': {
+        'topic': '',
+        'route': '',
+        'stance': '',
+        'goal': '',
+        'relation': 'continue',
+        'pending_slot': '',
+        'bypass_kb': False,
+    },
+    'continue_current_flow': {
+        'topic': '',
+        'route': '',
+        'stance': '',
+        'goal': '',
+        'relation': 'continue',
+        'pending_slot': '',
+        'bypass_kb': False,
+    },
+}
+
+_HEURISTIC_CONTROL_COMMAND_PATTERNS = (
+    ('repair_misunderstanding', _MARGINAL_ROUTE_MARKERS['repair_misunderstanding']),
+    ('repair_meta_friction', _MARGINAL_ROUTE_MARKERS['repair_meta_friction']),
+    ('repair_wrong_level', _MARGINAL_ROUTE_MARKERS['repair_wrong_level']),
+    ('start_broad_help_opening', (
+        'помогите мне',
+        'помоги мне',
+        'наладить жизнь',
+        'как мне дальше жить',
+        'как дальше жить',
+        'не знаю как жить',
+        'помогите наладить жизнь',
+    )),
+    ('start_human_problem_opening', (
+        'у меня есть некоторые проблемы',
+        'я хочу поделиться',
+        'у меня проблемы',
+        'мне тяжело',
+    )),
+    ('start_symptom_self_report_opening', _MARGINAL_ROUTE_MARKERS['symptom_self_report']),
+    ('shift_scope_more_general', _MARGINAL_ROUTE_MARKERS['scope_shift_meta']),
+    ('start_relationship_broad_opening', _MARGINAL_ROUTE_MARKERS['relationship_opening_broad']),
+    ('start_social_opening', (
+        'добрый вечер',
+        'добрый день',
+        'доброе утро',
+        'привет',
+        'здарова',
+        'здорова',
+        'как ваши дела',
+        'как дела',
+        'джордан...',
+        'я тебе пишу сообщение',
+        'проверяем рендерер',
+    )),
+    ('start_social_opening', _MARGINAL_ROUTE_MARKERS['teasing_or_guessing_opening']),
+    ('request_kb_grounding', (
+        'по петерсону',
+        'у петерсона',
+        'в какой книге',
+        'из какой книги',
+        'цитат',
+        'цитату',
+        'где он пишет',
+        'beyond order',
+        '12 rules',
+        'maps of meaning',
+    )),
+)
+
 _SPECIAL_ROUTE_TOPIC_DEFAULTS = {
     'repair_misunderstanding': {
         'topic': 'repair-misunderstanding',
@@ -318,6 +510,39 @@ def _looks_like_slot_followup_candidate(text: str) -> bool:
     return len(text.split()) <= 4 and text.startswith('из ')
 
 
+def _looks_like_social_opening(text: str) -> bool:
+    return _contains_any(text, _HEURISTIC_CONTROL_COMMAND_PATTERNS[7][1])
+
+
+def _looks_like_greeting_only(text: str) -> bool:
+    return _contains_any(text, ('добрый вечер', 'добрый день', 'доброе утро', 'привет', 'здарова', 'здорова'))
+
+
+def _broad_help_topic_for(question: str) -> str:
+    q = _normalize(question)
+    if any(marker in q for marker in ('наладить жизнь', 'как мне дальше жить', 'как дальше жить', 'не знаю как жить')):
+        return 'life-direction-opening'
+    return 'problem-sharing-opening'
+
+
+def _control_command_defaults(command_name: str, *, question: str, state: dict, frame: DialogueFrame) -> dict:
+    defaults = dict(_CONTROL_COMMAND_TOPIC_DEFAULTS.get(command_name) or {})
+    if command_name == 'start_social_opening':
+        normalized = _normalize(question)
+        defaults['topic'] = 'greeting' if _looks_like_greeting_only(normalized) else 'social-small-talk'
+    elif command_name == 'start_broad_help_opening':
+        defaults['topic'] = _broad_help_topic_for(question)
+        defaults['pending_slot'] = _family_opening_pending_slot(defaults['topic'])
+        defaults['goal'] = 'clarify'
+    elif command_name == 'shift_scope_more_personal':
+        active_topic = frame.topic or state.get('active_topic', '')
+        if active_topic:
+            defaults['topic'] = active_topic
+            defaults['route'] = frame.route or state.get('active_route', '')
+            defaults['pending_slot'] = state.get('pending_slot', '') or frame.pending_slot or _family_opening_pending_slot(active_topic)
+    return defaults
+
+
 def _family_stance_goal(topic: str) -> tuple[str, str]:
     spec = get_dialogue_family_spec(topic)
     if spec is None:
@@ -383,6 +608,23 @@ def _fallback_marginal_metadata(*, status: str = 'not_applicable', reason: str =
     }
 
 
+def _fallback_control_metadata(*, status: str = 'not_applicable', reason: str = '') -> dict:
+    return {
+        'control_command_used': False,
+        'control_command_backend': 'none',
+        'control_command_backend_detail': '',
+        'control_command_status': status,
+        'control_command_confidence': 0.0,
+        'control_command_name': '',
+        'control_command_reason': reason,
+        'control_command_kb_posture': '',
+        'control_command_abstraction_shift': '',
+        'control_command_fallback_used': True,
+        'control_command_rejection_reason': '',
+        'control_command_exception_detail': '',
+    }
+
+
 def _build_family_shortlist(question: str, *,
                             state: dict,
                             frame: DialogueFrame,
@@ -443,6 +685,170 @@ def _looks_like_marginal_turn(question: str, *, state: dict, frame: DialogueFram
     if active_topic and len(q.split()) <= 8:
         return True
     return False
+
+
+def _looks_like_control_turn(question: str, *, state: dict, frame: DialogueFrame) -> bool:
+    q = _normalize(question)
+    if not q:
+        return False
+    if any(_contains_any(q, markers) for _, markers in _HEURISTIC_CONTROL_COMMAND_PATTERNS):
+        return True
+    if _looks_like_marginal_turn(question, state=state, frame=frame):
+        return True
+    if len(q.split()) <= 6 and state.get('recovery_state', ''):
+        return True
+    return False
+
+
+def _should_use_control_command(question: str, *,
+                                dialogue_act: str,
+                                state: dict,
+                                frame: DialogueFrame,
+                                slotish_followup: bool) -> bool:
+    if slotish_followup:
+        return False
+    if detect_policy_block(question) is not None:
+        return False
+    if dialogue_act in {
+        'supply_narrowing_axis',
+        'supply_concrete_manifestation',
+        'abstractify_previous_question',
+        'confirm_scope',
+        'personalize_previous_question',
+        'request_cause_list',
+        'request_example',
+        'request_next_step',
+        'request_mini_analysis',
+    }:
+        return False
+    return _looks_like_control_turn(question, state=state, frame=frame)
+
+
+def _resolve_control_command(question: str, *,
+                             dialogue_act: str,
+                             state: dict,
+                             frame: DialogueFrame,
+                             slotish_followup: bool = False) -> tuple[dict, dict]:
+    metadata = _fallback_control_metadata()
+
+    def _heuristic_command(rejection_reason: str = '') -> tuple[dict, dict]:
+        q = _normalize(question)
+        command_name = 'no_command'
+        for candidate_command, markers in _HEURISTIC_CONTROL_COMMAND_PATTERNS:
+            if _contains_any(q, markers):
+                command_name = candidate_command
+                break
+        if command_name == 'no_command':
+            return {}, metadata
+        defaults = _control_command_defaults(command_name, question=question, state=state, frame=frame)
+        heuristic_metadata = dict(metadata)
+        heuristic_metadata.update({
+            'control_command_status': 'heuristic_fallback',
+            'control_command_confidence': 0.87,
+            'control_command_name': command_name,
+            'control_command_reason': 'marker_match',
+            'control_command_kb_posture': 'require_kb' if command_name == 'request_kb_grounding' else 'skip_kb',
+            'control_command_abstraction_shift': 'more_general' if command_name == 'shift_scope_more_general' else '',
+            'control_command_fallback_used': True,
+            'control_command_rejection_reason': rejection_reason,
+        })
+        return {
+            'command_name': command_name,
+            'confidence': 0.87,
+            'reason': 'marker_match',
+            'abstraction_shift': heuristic_metadata.get('control_command_abstraction_shift', ''),
+            'kb_posture': heuristic_metadata.get('control_command_kb_posture', ''),
+            'topic_candidate': defaults.get('topic', ''),
+            'route_candidate': defaults.get('route', ''),
+            'stance_shift': defaults.get('stance', ''),
+            'goal_candidate': defaults.get('goal', ''),
+            'relation_to_previous': defaults.get('relation', 'reframe'),
+            'pending_slot': defaults.get('pending_slot', ''),
+            'bypass_kb': bool(defaults.get('bypass_kb', False)),
+        }, heuristic_metadata
+
+    if not _should_use_control_command(
+        question,
+        dialogue_act=dialogue_act,
+        state=state,
+        frame=frame,
+        slotish_followup=slotish_followup,
+    ):
+        return {}, metadata
+    request = LLMControlCommandRequest(
+        question=question,
+        dialogue_act=dialogue_act,
+        dialogue_state=dict(state or {}),
+        dialogue_frame=frame.as_dict(),
+        previous_topic=frame.topic or state.get('active_topic', ''),
+        previous_route=frame.route or state.get('active_route', ''),
+        previous_goal=frame.goal,
+        previous_stance=frame.stance or state.get('abstraction_level', ''),
+        previous_reason_code=state.get('last_reason_code', ''),
+        recovery_state=state.get('recovery_state', ''),
+    )
+    result = maybe_classify_control_command(request)
+    metadata.update(result.metadata())
+    if not result.used:
+        return _heuristic_command()
+    if result.status == 'exception':
+        metadata['control_command_rejection_reason'] = 'exception'
+        return _heuristic_command('exception')
+    if result.command_name not in _CONTROL_COMMAND_ALLOWED:
+        metadata['control_command_status'] = 'rejected'
+        metadata['control_command_rejection_reason'] = 'invalid_command'
+        return _heuristic_command('invalid_command')
+    if result.kb_posture and result.kb_posture not in _CONTROL_COMMAND_ALLOWED_KB_POSTURE:
+        metadata['control_command_status'] = 'rejected'
+        metadata['control_command_rejection_reason'] = 'invalid_kb_posture'
+        return _heuristic_command('invalid_kb_posture')
+    if result.abstraction_shift and result.abstraction_shift not in _CONTROL_COMMAND_ALLOWED_ABSTRACTION:
+        metadata['control_command_status'] = 'rejected'
+        metadata['control_command_rejection_reason'] = 'invalid_abstraction_shift'
+        return _heuristic_command('invalid_abstraction_shift')
+    if float(result.confidence or 0.0) < 0.78:
+        metadata['control_command_status'] = 'rejected'
+        metadata['control_command_rejection_reason'] = 'low_confidence'
+        return _heuristic_command('low_confidence')
+    if result.command_name in {'no_command', 'continue_current_flow'}:
+        metadata['control_command_status'] = 'accepted'
+        metadata['control_command_fallback_used'] = False
+        return {
+            'command_name': result.command_name,
+            'confidence': float(result.confidence or 0.0),
+            'reason': result.reason,
+            'abstraction_shift': result.abstraction_shift,
+            'kb_posture': result.kb_posture or '',
+            'topic_candidate': '',
+            'route_candidate': '',
+            'stance_shift': '',
+            'goal_candidate': '',
+            'relation_to_previous': 'continue',
+            'pending_slot': '',
+            'bypass_kb': False,
+        }, metadata
+    defaults = _control_command_defaults(result.command_name, question=question, state=state, frame=frame)
+    topic_candidate = defaults.get('topic', '')
+    if topic_candidate and topic_candidate not in {spec.topic for spec in DIALOGUE_FAMILY_REGISTRY}:
+        metadata['control_command_status'] = 'rejected'
+        metadata['control_command_rejection_reason'] = 'invalid_topic'
+        return _heuristic_command('invalid_topic')
+    metadata['control_command_status'] = 'accepted'
+    metadata['control_command_fallback_used'] = False
+    return {
+        'command_name': result.command_name,
+        'confidence': float(result.confidence or 0.0),
+        'reason': result.reason,
+        'abstraction_shift': result.abstraction_shift,
+        'kb_posture': result.kb_posture or ('require_kb' if result.command_name == 'request_kb_grounding' else 'skip_kb'),
+        'topic_candidate': topic_candidate,
+        'route_candidate': defaults.get('route', ''),
+        'stance_shift': defaults.get('stance', ''),
+        'goal_candidate': defaults.get('goal', ''),
+        'relation_to_previous': defaults.get('relation', 'reframe'),
+        'pending_slot': defaults.get('pending_slot', ''),
+        'bypass_kb': bool(defaults.get('bypass_kb', False)),
+    }, metadata
 
 
 def _should_use_marginal_router(question: str, *,
@@ -840,6 +1246,50 @@ def _infer_update_from_question(question: str, *,
         )
 
     slotish_followup = bool(active_topic) and _looks_like_slot_followup_candidate(q) and not _looks_like_fresh_topic_opening(q)
+    control_command, control_metadata = _resolve_control_command(
+        question,
+        dialogue_act=dialogue_act,
+        state=state,
+        frame=frame,
+        slotish_followup=slotish_followup,
+    )
+    if control_command:
+        command_name = control_command.get('command_name', '')
+        classifier_metadata = {
+            **control_metadata,
+            **_fallback_marginal_metadata(status='not_applicable'),
+            **_fallback_family_metadata(status='not_applicable'),
+        }
+        if command_name in {'request_kb_grounding', 'continue_current_flow', 'no_command'}:
+            return _build_update_payload(
+                relation_to_previous=control_command.get('relation_to_previous', relation_from_act(dialogue_act)),
+                is_new_topic=False,
+                topic_candidate=frame.topic or state.get('active_topic', ''),
+                route_candidate=frame.route or state.get('active_route', ''),
+                stance_shift='general' if control_command.get('abstraction_shift') == 'more_general' else (
+                    'personal' if control_command.get('abstraction_shift') == 'more_personal' else ''
+                ),
+                goal_candidate='overview' if control_command.get('abstraction_shift') == 'more_general' else '',
+                transition_kind='',
+                pending_slot=state.get('pending_slot', '') or frame.pending_slot,
+                confidence=float(control_command.get('confidence', 0.0) or 0.0),
+                update_source='control_command',
+                classifier_metadata=classifier_metadata,
+            )
+        return _build_update_payload(
+            relation_to_previous=control_command.get('relation_to_previous', 'reframe'),
+            is_new_topic=bool(control_command.get('topic_candidate')),
+            topic_candidate=control_command.get('topic_candidate', ''),
+            route_candidate=control_command.get('route_candidate', ''),
+            stance_shift=control_command.get('stance_shift', ''),
+            goal_candidate=control_command.get('goal_candidate', ''),
+            transition_kind='opening',
+            pending_slot=control_command.get('pending_slot', ''),
+            confidence=float(control_command.get('confidence', 0.84) or 0.84),
+            update_source='control_command',
+            classifier_metadata=classifier_metadata,
+        )
+
     marginal_route, marginal_metadata = _resolve_marginal_route(
         question,
         dialogue_act=dialogue_act,
@@ -859,7 +1309,7 @@ def _infer_update_from_question(question: str, *,
             pending_slot=marginal_route.get('pending_slot', ''),
             confidence=float(marginal_route.get('confidence', 0.84) or 0.84),
             update_source='marginal_router',
-            classifier_metadata=marginal_metadata,
+            classifier_metadata={**control_metadata, **marginal_metadata, **_fallback_family_metadata(status='not_applicable')},
         )
     semantic_family, classifier_metadata = _resolve_semantic_family(
         question,
@@ -868,7 +1318,7 @@ def _infer_update_from_question(question: str, *,
         frame=frame,
         slotish_followup=slotish_followup,
     )
-    classifier_metadata = {**marginal_metadata, **classifier_metadata}
+    classifier_metadata = {**control_metadata, **marginal_metadata, **classifier_metadata}
 
     if semantic_family:
         return _build_update_payload(

@@ -29,6 +29,20 @@ resolve_jordan_home() {
   printf '%s\n' "$repo_root"
 }
 
+resolve_jordan_runtime_home() {
+  local base_home="${1:-}"
+  if [ -z "$base_home" ]; then
+    base_home="$(resolve_jordan_home)"
+  fi
+
+  if [ -L "$base_home/runtime/current" ] || [ -d "$base_home/runtime/current" ]; then
+    printf '%s\n' "$base_home/runtime/current"
+    return 0
+  fi
+
+  printf '%s\n' "$base_home"
+}
+
 jordan_log() {
   local prefix="$1"
   shift

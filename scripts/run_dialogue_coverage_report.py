@@ -55,6 +55,9 @@ def main() -> None:
     family_overrides: Counter[str] = Counter()
     family_rejections: Counter[str] = Counter()
     family_accepted_source_lookup_avoidance: Counter[str] = Counter()
+    control_commands: Counter[str] = Counter()
+    control_rejections: Counter[str] = Counter()
+    control_source_lookup_avoidance: Counter[str] = Counter()
     marginal_routes: Counter[str] = Counter()
     marginal_rejections: Counter[str] = Counter()
     marginal_exceptions: Counter[str] = Counter()
@@ -73,6 +76,9 @@ def main() -> None:
         frame_topic = _field(row, metadata, 'frame_topic')
         renderer_status = _field(row, metadata, 'renderer_status')
         renderer_exception_detail = _field(row, metadata, 'renderer_exception_detail')
+        control_status = _field(row, metadata, 'control_command_status')
+        control_name = _field(row, metadata, 'control_command_name')
+        control_rejection_reason = _field(row, metadata, 'control_command_rejection_reason')
         family_status = _field(row, metadata, 'family_classifier_status')
         family_topic = _field(row, metadata, 'family_classifier_result_topic')
         deterministic_topic = _field(row, metadata, 'family_classifier_deterministic_topic')
@@ -119,6 +125,12 @@ def main() -> None:
             family_rejections[family_rejection_reason] += 1
         if family_status == 'accepted' and family_topic and reason_code != 'source-lookup' and text:
             family_accepted_source_lookup_avoidance[text] += 1
+        if control_status == 'accepted' and control_name:
+            control_commands[control_name] += 1
+        if control_rejection_reason:
+            control_rejections[control_rejection_reason] += 1
+        if control_status == 'accepted' and text and reason_code != 'source-lookup':
+            control_source_lookup_avoidance[text] += 1
         if marginal_status == 'accepted' and marginal_route:
             marginal_routes[marginal_route] += 1
         if marginal_rejection_reason:
@@ -143,6 +155,9 @@ def main() -> None:
         'top_family_classifier_overrides': _top(family_overrides),
         'top_family_classifier_rejections': _top(family_rejections),
         'top_family_classifier_source_lookup_avoidance': _top(family_accepted_source_lookup_avoidance),
+        'top_control_commands': _top(control_commands),
+        'top_control_command_rejections': _top(control_rejections),
+        'top_control_command_source_lookup_avoidance': _top(control_source_lookup_avoidance),
         'top_marginal_routes': _top(marginal_routes),
         'top_marginal_route_rejections': _top(marginal_rejections),
         'top_marginal_route_exceptions': _top(marginal_exceptions),

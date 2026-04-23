@@ -619,8 +619,8 @@ def main() -> None:
                 and reject_scope_meta.get('abstraction_level') == 'personal'
                 and reject_scope_meta.get('dialogue_mode') == 'topic_opening'
                 and reject_scope_meta.get('pending_slot') == 'narrowing_axis'
-                and reject_scope_meta.get('marginal_router_status') == 'heuristic_fallback'
-                and reject_scope_meta.get('marginal_router_result_route') == 'repair_wrong_level'
+                and reject_scope_meta.get('control_command_status') in {'heuristic_fallback', 'accepted'}
+                and reject_scope_meta.get('control_command_name') == 'repair_wrong_level'
                 and reject_scope_meta.get('topic_reused') is False
                 and 'уберём общую рамку' in (reject_scope_payload.get('final_user_text') or '').lower()
             ),

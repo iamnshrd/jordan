@@ -31,6 +31,14 @@ python -m library kb doctor
 - [library/README.md](/tmp/jordan/library/README.md) — source material layout
 - [DEPLOY_SYSTEMD.md](/tmp/jordan/DEPLOY_SYSTEMD.md) — VPS/systemd deploy and unified log workflow
 
+## Remote Ops
+
+The preferred operational model is now:
+- build a release artifact locally
+- deploy that artifact to the VPS
+- keep `systemd` as the runtime orchestrator
+- pull timestamped log snapshots back into `workspace/logs/exports/`
+
 ## Notes
 
 - This agent is intended to run behind a separate Telegram bot binding.
